@@ -26,38 +26,140 @@ flowchart LR
 
 Two rules shape everything else:
 
-1. **Data flows one way.** The sync and the seed write to the database. The app only reads. No request from a browser ever changes data.
+1. **Data flows one way.** The sync and the seed write to the database. The app only reads, and in production it connects with a database role that may do nothing else. No request from a browser ever changes data.
 2. **The database is the only connection between the two sides.** The sync does not know the app exists, and the app does not call NASA. If NASA is down, the site keeps working with the last synced data. If the sync breaks, the site still works.
 
-| Part | Technology | Runs |
+| Part | Technology | Runs in production | Runs locally |
+| --- | --- | --- | --- |
+| Database | Postgres 17 with the `pg_trgm` extension | Neon, Frankfurt | Docker (`docker-compose.yml`) |
+| Sync and seed | TypeScript scripts, started with `tsx` | GitHub Actions, daily | `npm run sync`, `npm run seed:sol` |
+| App | Next.js 16 (App Router), React 19, Tailwind 4, on Node.js 24 | Vercel Functions in Frankfurt (`fra1`) | `npm run dev` |
+| Database access | Drizzle ORM on top of `postgres.js` | inside the scripts and the app | the same |
+| Planet images and 3D models | WebGL 2 with our own shaders | in the browser | the same |
+| Map | three.js | in the browser | the same |
+| Tests | Vitest, Playwright with axe-core | GitHub Actions on every change | `npm run test:all` |
+
+## Where it runs
+
+```mermaid
+flowchart LR
+    Browser
+    NASA[NASA Exoplanet Archive]
+    subgraph Vercel
+        FW[Firewall<br>DDoS protection,<br>rate limit on /search]
+        Edge[Edge network<br>prebuilt frames, images, scripts]
+        Fn[Functions, Frankfurt<br>Next.js server]
+        Build[Build<br>migrations, next build]
+    end
+    subgraph Neon[Neon, Frankfurt]
+        Pooler
+        PG[(Postgres 17)]
+    end
+    subgraph GitHub
+        Repo[Repository, main]
+        Actions[GitHub Actions]
+    end
+
+    Browser -->|HTTPS| FW --> Edge --> Fn
+    Fn -->|role exoatlas_web, read only| Pooler --> PG
+    Repo -->|merge to main| Build
+    Build -->|owner, direct: migrations| PG
+    NASA -->|catalogue| Actions
+    Actions -->|owner, direct: daily sync, weekly backup| PG
+    Actions -->|after each deployment, hourly| FW
+```
+
+- **Vercel** serves the site. The firewall in front stops floods and limits search requests per IP. The edge network delivers what does not change between requests: the prebuilt page frames, images, scripts and the legal pages. Everything that needs the database runs in a function in Frankfurt, next to the database.
+- **Neon** holds the database in Frankfurt. The site reaches it through Neon's pooler, because Vercel starts many functions at once. The database goes to sleep after a few minutes without queries and wakes on the next one.
+- **GitHub** holds the code and runs everything that is not a page view: the checks of every change, the daily sync with NASA, the weekly backup, the hourly health check and the smoke test after each deployment.
+
+### Who may do what
+
+Each part gets only the access it needs.
+
+| Who | Connects with | May |
 | --- | --- | --- |
-| Database | Postgres 17 with the `pg_trgm` extension | in Docker (`docker-compose.yml`) |
-| Sync and seed | TypeScript scripts, started with `tsx` | on demand from the command line |
-| App | Next.js 16 (App Router), React 19, Tailwind 4 | as a Node.js server |
-| Database access | Drizzle ORM on top of `postgres.js` | inside the scripts and the app |
-| Planet images and 3D models | WebGL 2 with our own shaders | in the browser |
-| Map | three.js | in the browser |
+| The website (Vercel Functions) | `DATABASE_URL_READONLY`: role `exoatlas_web`, through the pooler | read, every query cancelled after 5 seconds |
+| The production build | `DATABASE_URL_UNPOOLED`: the owner, direct | change the tables (migrations) |
+| Sync, seed and backup (GitHub Actions) | secret `PRODUCTION_DATABASE_URL`: the owner, direct | write and read all data |
+| Smoke test and rollback (GitHub Actions) | `VERCEL_TOKEN`, `VERCEL_AUTOMATION_BYPASS_SECRET` | open protected deployments, choose which deployment is live |
+| Visitors | nothing but HTTPS | read pages |
+
+### The automatic jobs
+
+| Workflow | When | Does |
+| --- | --- | --- |
+| [ci.yml](../.github/workflows/ci.yml) | every pull request and push to `main` | type check, lint, unit, database and browser tests, `npm audit`, build |
+| [codeql.yml](../.github/workflows/codeql.yml) | every pull request and push to `main`, Mondays | scans the code for security problems |
+| [deploy-check.yml](../.github/workflows/deploy-check.yml) | after every Vercel deployment | smoke test; puts the previous production deployment back if production fails it |
+| [health.yml](../.github/workflows/health.yml) | hourly | asks `/health` on the live site |
+| [sync.yml](../.github/workflows/sync.yml) | daily, 03:17 UTC | compares the catalogue with NASA and writes the differences |
+| [backup.yml](../.github/workflows/backup.yml) | Sundays, 04:41 UTC | dumps the database and keeps the dump for 90 days |
+| [Dependabot](../.github/dependabot.yml) | Mondays | pull requests for outdated or vulnerable dependencies |
+
+A failed run turns red and GitHub sends an e-mail.
+
+### From a change to the live site
+
+```mermaid
+sequenceDiagram
+    participant Dev as Developer or Dependabot
+    participant GH as GitHub
+    participant V as Vercel
+    participant DB as Neon
+
+    Dev->>GH: pull request
+    GH->>GH: CI and CodeQL
+    V->>V: preview deployment
+    GH->>V: smoke test of the preview
+    Dev->>GH: merge, only when all five checks are green
+    GH->>V: main changed
+    V->>DB: migrations, as owner
+    V->>V: next build, then live
+    GH->>V: smoke test of production
+    GH-->>V: rollback to the previous deployment, if it fails
+```
+
+`main` only accepts pull requests whose checks `check`, `audit`, `db`, `e2e` and `analyze` are green, and it cannot be deleted or force-pushed. Setting all of this up, step by step: [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Code layout
 
 Every feature lives in its own folder inside `src/app/`. A feature folder holds everything that belongs to the feature: its pages, its components, its database queries, its logic and its tests.
 
 ```
+.github/
+  workflows/              CI, CodeQL, deployment check, health check, sync, backup
+  dependabot.yml          weekly update pull requests
 scripts/
   sync.ts                 command line entry: calls runSync
   seed-solar-system.ts    command line entry: calls seedSolarSystem
+  migrate-on-deploy.ts    migrations during a Vercel production build
+  create-readonly-role.ts creates the read-only database role of the website
+  rollback-production.ts  puts the previous production deployment back live
   fetch-textures.ts       downloads and scales the images in public/textures
   docs-screenshots.ts     takes the screenshots of the user guide with headless Playwright
-docs/wiki/                the user guide as GitHub Wiki pages, with its screenshots in images/
+docs/
+  ARCHITECTURE.md         this file
+  DEPLOYMENT.md           hosting, setup step by step, operations
+  wiki/                   the user guide as GitHub Wiki pages, with its screenshots in images/
 drizzle/                  SQL migrations: one generated from the schema, two written by hand
 public/textures/          surface maps of the solar system, panorama of the sky
+e2e/                      browser tests (Playwright): flows, security, accessibility
+smoke/                    the smoke test that runs against every deployment
+vercel.json               build command for Vercel
 src/
+  proxy.ts                answers broken percent-encoding with 400
   db/
     schema.ts             all tables
-    client.ts             the database connection (getDb, closeDb)
+    client.ts             the database connection (getDb, closeDb), read-only inside Next.js
+    readonly.ts           the statements that create the read-only role
+  deploy/
+    rollback.ts           picks the deployment to roll back to
+  test/                   test database and the small test catalogue
   shared/
     slug.ts               names to URL slugs and search keys
     format.ts             numbers, dates and unit conversions
+    security-headers.ts   the HTTP headers of every answer
     ui.tsx                small building blocks: Section, Facts, Fact, Notice, PageSkeleton
   app/
     layout.tsx            frame of every page: header, footer
@@ -76,6 +178,7 @@ src/
     sync/                 the comparison with NASA
     solar-system/         the Sun and its eight planets
     legal/                /legal/notice, /legal/privacy and who runs this copy
+    health/               /health: is the site up and does it reach its database
 ```
 
 Next.js only turns files named `page.tsx` and `route.ts` into addresses. Every other file in `src/app/` is ordinary code, so features can keep their logic next to their pages.
