@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -29,7 +29,7 @@ jobs:
       - run: npm run build
 
   audit:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -44,7 +44,7 @@ jobs:
         run: npm audit --audit-level=high
 
   db:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:17
@@ -68,7 +68,7 @@ jobs:
       - run: npm run test:db
 
   e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
       postgres:
@@ -90,6 +90,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Pinned to ubuntu-24.04: ubuntu-latest moved to Ubuntu 26, for which this
+      # Playwright version cannot install the browser dependencies.
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       - name: Keep the report of a failed run

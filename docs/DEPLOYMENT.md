@@ -44,17 +44,21 @@ If the pooler runs in transaction mode and does not support prepared statements 
 
 ### 2. Vercel project
 
-In Vercel: *Add New → Project*, choose the repository. Vercel recognises Next.js; the build command comes from `vercel.json`. Then set under *Settings → Environment Variables*:
+In Vercel: *Add New → Project*, choose the repository. Vercel recognises Next.js; the build command comes from `vercel.json`. Select **Deploy** without setting any variable: this first build fails, because there is no database yet. Then set *Settings → Functions → Function Region* to the region of the database (Frankfurt, `fra1`, for a database in `eu-central-1`).
 
-| Variable | Environments | Content |
-| --- | --- | --- |
-| `DATABASE_URL` | Production, Preview | pooled address |
-| `DATABASE_URL_UNPOOLED` | Production | direct address, for the migrations |
-| `DATABASE_PREPARE` | Production, Preview | only if needed, see above |
-| `DATABASE_URL_READONLY` | Production | the address of the read-only role, see step 7 |
-| `LEGAL_NAME`, `LEGAL_STREET`, `LEGAL_CITY`, `LEGAL_EMAIL` | Production | the operator, see [.env.example](../.env.example) |
-| `LEGAL_HOSTING`, `LEGAL_HOSTING_TRANSFER`, `LEGAL_HOSTING_DPA` | Production | the host, see [Legal pages](#legal-pages) |
-| `LEGAL_COUNTRY`, `LEGAL_PHONE`, `LEGAL_EMAIL_PROVIDER`, `LEGAL_LOG_DAYS` | Production | optional, see [Legal pages](#legal-pages) |
+All variables of the project at a glance, under *Settings → Environment Variables*. Most of them are set in later steps:
+
+| Variable | Environments | Content | Comes from |
+| --- | --- | --- | --- |
+| `DATABASE_URL` | Production, Preview | pooled address | set by Vercel when you connect the database (step 1) |
+| `DATABASE_URL_UNPOOLED` | Production | direct address, for the migrations | set by Vercel when you connect the database (step 1) |
+| `DATABASE_PREPARE` | Production, Preview | only if needed, see above | you, only with such a pooler |
+| `LEGAL_NAME`, `LEGAL_STREET`, `LEGAL_CITY`, `LEGAL_EMAIL` | Production | the operator, see [.env.example](../.env.example) | you, after the database |
+| `LEGAL_HOSTING`, `LEGAL_HOSTING_TRANSFER`, `LEGAL_HOSTING_DPA` | Production | the host | fixed texts, see [Legal pages](#legal-pages) |
+| `LEGAL_COUNTRY`, `LEGAL_PHONE`, `LEGAL_EMAIL_PROVIDER`, `LEGAL_LOG_DAYS` | Production | optional | you, see [Legal pages](#legal-pages) |
+| `DATABASE_URL_READONLY` | Production | the address of the read-only role | printed by `npm run db:readonly-role` (step 7) |
+
+Once the database and the `LEGAL_*` values are set, deploy again (*Deployments → … → Redeploy*): this build creates the tables.
 
 The `LEGAL_*` values are read when the app is built. After changing one, deploy again (*Deployments → … → Redeploy*).
 

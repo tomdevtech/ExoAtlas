@@ -22,7 +22,7 @@ concurrency:
 jobs:
   smoke:
     if: ${{ github.event.deployment_status.state == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:
       reachable: ${{ steps.reach.outputs.reachable }}
@@ -56,6 +56,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Pinned to ubuntu-24.04: ubuntu-latest moved to Ubuntu 26, for which this
+      # Playwright version cannot install the browser dependencies.
       - run: npx playwright install --with-deps chromium
       - run: npm run test:smoke
       - name: Keep the report of a failed check
@@ -73,7 +75,7 @@ jobs:
       ${{ failure()
       && needs.smoke.outputs.reachable == 'true'
       && startsWith(github.event.deployment.environment, 'Production') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
