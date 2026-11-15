@@ -59,7 +59,15 @@ flowchart LR
 | Hosting | Vercel (app, firewall), Neon (database) |
 | Automation | GitHub Actions (checks, sync, backup, health check, TLS check, rollback), CodeQL, Dependabot |
 
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains where everything runs, the data flow, the database, the sync, the search, the images, the map and the code layout in detail.
+More in detail:
+
+| Document | Covers |
+| --- | --- |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | where everything runs, the data flows, the database, the sync, the search, the images, the map, the code layout |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | hosting on Vercel and Neon, setting everything up step by step, operations |
+| [docs/TESTING.md](docs/TESTING.md) | every test and check, when it runs and what it catches |
+| [docs/SECURITY.md](docs/SECURITY.md) | the protective measures layer by layer, what to do when something happens |
+| [SECURITY.md](SECURITY.md) | how to report a vulnerability |
 
 ### Code layout
 
