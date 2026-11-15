@@ -1,0 +1,119 @@
+{
+  "folders": [
+    {
+      "name": "exoatlas",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "typescript.tsdk": "node_modules/typescript/lib",
+    "typescript.enablePromptUseWorkspaceTsdk": true,
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll.eslint": "explicit"
+    },
+    "eslint.useFlatConfig": true,
+    "files.associations": {
+      "*.css": "tailwindcss"
+    },
+    "files.exclude": {
+      "**/.next": true,
+      "**/*.tsbuildinfo": true
+    },
+    "search.exclude": {
+      "**/node_modules": true,
+      "**/.next": true,
+      "**/drizzle/meta": true,
+      "package-lock.json": true
+    }
+  },
+  "extensions": {
+    "recommendations": [
+      "dbaeumer.vscode-eslint",
+      "bradlc.vscode-tailwindcss",
+      "vitest.explorer",
+      "ms-playwright.playwright",
+      "ms-azuretools.vscode-docker"
+    ]
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Next.js: dev (server)",
+        "type": "node-terminal",
+        "request": "launch",
+        "command": "npm run dev"
+      },
+      {
+        "name": "Next.js: dev (full stack)",
+        "type": "node-terminal",
+        "request": "launch",
+        "command": "npm run dev",
+        "serverReadyAction": {
+          "pattern": "- Local:.+(https?://.+)",
+          "uriFormat": "%s",
+          "action": "debugWithChrome"
+        }
+      }
+    ]
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "dev",
+        "type": "npm",
+        "script": "dev",
+        "isBackground": true,
+        "problemMatcher": []
+      },
+      {
+        "label": "db:up",
+        "type": "npm",
+        "script": "db:up",
+        "problemMatcher": []
+      },
+      {
+        "label": "typecheck",
+        "type": "npm",
+        "script": "typecheck",
+        "problemMatcher": ["$tsc"]
+      },
+      {
+        "label": "lint",
+        "type": "npm",
+        "script": "lint",
+        "problemMatcher": ["$eslint-stylish"]
+      },
+      {
+        "label": "test",
+        "type": "npm",
+        "script": "test",
+        "group": { "kind": "test", "isDefault": true },
+        "problemMatcher": []
+      },
+      {
+        "label": "test:db",
+        "type": "npm",
+        "script": "test:db",
+        "group": "test",
+        "problemMatcher": []
+      },
+      {
+        "label": "test:e2e",
+        "type": "npm",
+        "script": "test:e2e",
+        "group": "test",
+        "problemMatcher": []
+      },
+      {
+        "label": "test:all",
+        "type": "npm",
+        "script": "test:all",
+        "group": "test",
+        "problemMatcher": []
+      }
+    ]
+  }
+}

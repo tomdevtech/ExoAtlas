@@ -1,0 +1,109 @@
+name: Deployment check
+
+# Runs when Vercel reports a finished deployment to GitHub. It smoke-tests the
+# deployment's own address (npm run test:smoke). When that fails for a
+# production deployment, it puts the previous production deployment back live.
+#
+# Setup: docs/DEPLOYMENT.md, "Smoke test after each deployment" and
+# "Automatic rollback". Secrets: VERCEL_AUTOMATION_BYPASS_SECRET (only with
+# Deployment Protection), VERCEL_TOKEN. Variables: VERCEL_ORG_ID,
+# VERCEL_PROJECT_ID.
+
+on: deployment_status
+
+permissions:
+  contents: read
+
+# One check per environment at a time; a newer deployment waits for the older check.
+concurrency:
+  group: deploy-check-${{ github.event.deployment.environment }}
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    if: ${{ github.event.deployment_status.state == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      reachable: ${{ steps.reach.outputs.reachable }}
+    env:
+      SMOKE_BASE_URL: ${{ github.event.deployment_status.environment_url || github.event.deployment_status.target_url }}
+      SMOKE_EXPECTED_SHA: ${{ github.event.deployment.sha }}
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+    steps:
+      # A deployment the check cannot even open (Deployment Protection without
+      # the bypass secret) is a setup problem, not a broken deployment: then
+      # nothing is rolled back.
+      - name: Can the check reach the deployment?
+        id: reach
+        run: |
+          echo "Checking $SMOKE_BASE_URL (${{ github.event.deployment.environment }})"
+          status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
+            -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" \
+            "$SMOKE_BASE_URL/health" || true)
+          echo "/health answered ${status:-nothing}"
+          if [ "$status" = "401" ] || [ "$status" = "403" ]; then
+            echo "reachable=false" >> "$GITHUB_OUTPUT"
+            echo "::error::Vercel's Deployment Protection blocks the check. Set the secret VERCEL_AUTOMATION_BYPASS_SECRET (docs/DEPLOYMENT.md)."
+            exit 1
+          fi
+          echo "reachable=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.deployment.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:smoke
+      - name: Keep the report of a failed check
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-report
+          path: playwright-report/
+          retention-days: 14
+
+  rollback:
+    needs: smoke
+    # Only production, only when the smoke test ran and failed.
+    if: >-
+      ${{ failure()
+      && needs.smoke.outputs.reachable == 'true'
+      && startsWith(github.event.deployment.environment, 'Production') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+      FAILED_DEPLOYMENT_URL: ${{ github.event.deployment_status.environment_url || github.event.deployment_status.target_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.deployment.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run deploy:rollback
+      - name: Summary
+        if: ${{ always() }}
+        run: |
+          {
+            echo "## Production deployment failed its smoke test"
+            echo ""
+            echo "Failed deployment: $FAILED_DEPLOYMENT_URL (commit ${{ github.event.deployment.sha }})"
+            if [ "${{ job.status }}" = "success" ]; then
+              echo ""
+              echo "The previous production deployment is live again."
+              echo "Vercel now holds back new production deployments until one is promoted by hand:"
+              echo "fix the problem, then in Vercel *Deployments → … → Promote* (see docs/DEPLOYMENT.md)."
+            else
+              echo ""
+              echo "**The rollback failed.** Roll back by hand in Vercel: *Deployments → … → Instant Rollback*."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

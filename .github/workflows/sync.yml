@@ -1,0 +1,49 @@
+name: Sync with NASA
+
+# Compares the catalogue with the NASA Exoplanet Archive once a day and writes
+# the changes to the production database. Needs the repository secret
+# PRODUCTION_DATABASE_URL (Settings → Secrets and variables → Actions).
+# Can also be started by hand under Actions → "Sync with NASA" → Run workflow.
+
+on:
+  schedule:
+    - cron: "17 3 * * *" # every day at 03:17 UTC
+  workflow_dispatch:
+    inputs:
+      seed-solar-system:
+        description: "Store the solar system first (needed once for a new database)"
+        type: boolean
+        default: false
+      force:
+        description: "Write even when the response from NASA looks implausible"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Never two syncs at the same time. A run that is waiting replaces an older waiting one.
+concurrency:
+  group: sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Store the solar system
+        if: ${{ inputs.seed-solar-system }}
+        run: npm run seed:sol
+      - name: Sync
+        env:
+          FORCE: ${{ inputs.force && '--force' || '' }}
+        run: npm run sync -- $FORCE

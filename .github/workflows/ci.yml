@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# A new push to the same branch cancels the run that is still going.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # What ships to visitors must have no known vulnerability at all.
+      - name: Production dependencies
+        run: npm audit --omit=dev --audit-level=low
+      # Tools that only run on our machines and here may have moderate ones,
+      # which often wait for a new release of the tool.
+      - name: All dependencies
+        run: npm audit --audit-level=high
+
+  db:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: exoatlas
+          POSTGRES_PASSWORD: exoatlas
+          POSTGRES_DB: exoatlas_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U exoatlas -d exoatlas_test"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      TEST_DATABASE_URL: postgres://exoatlas:exoatlas@localhost:5432/exoatlas_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test:db
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: exoatlas
+          POSTGRES_PASSWORD: exoatlas
+          POSTGRES_DB: exoatlas_e2e
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U exoatlas -d exoatlas_e2e"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      E2E_DATABASE_URL: postgres://exoatlas:exoatlas@localhost:5432/exoatlas_e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - name: Keep the report of a failed run
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14

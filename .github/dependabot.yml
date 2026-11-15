@@ -1,0 +1,34 @@
+# Dependabot opens pull requests for outdated dependencies and, at once, for
+# dependencies with a known vulnerability. CI checks each pull request.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      # Small updates in one pull request instead of one each.
+      minor-and-patch:
+        update-types: [minor, patch]
+      # Next.js, React and their ESLint config belong together.
+      next-react:
+        patterns: ["next", "eslint-config-next", "react", "react-dom", "@types/react", "@types/react-dom"]
+      # The test runner and the browser library must have the same version.
+      playwright:
+        patterns: ["playwright", "@playwright/test"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: monthly

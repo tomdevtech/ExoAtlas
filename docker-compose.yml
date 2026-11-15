@@ -1,0 +1,22 @@
+# Local development database. Start it with: docker compose up -d
+services:
+  db:
+    image: postgres:17
+    container_name: exoatlas-db
+    environment:
+      POSTGRES_USER: exoatlas
+      POSTGRES_PASSWORD: exoatlas
+      POSTGRES_DB: exoatlas
+    ports:
+      # Reachable from this machine only.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U exoatlas -d exoatlas"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  pgdata:
