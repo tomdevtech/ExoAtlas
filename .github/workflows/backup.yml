@@ -46,7 +46,7 @@ jobs:
           ls -l backup
       - name: Keep the dump
         if: ${{ env.DATABASE_URL != '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: exoatlas-db-${{ github.run_id }}
           path: backup/exoatlas.dump
