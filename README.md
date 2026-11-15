@@ -123,22 +123,46 @@ flowchart LR
 2. **The website** reads from the database and never writes to it. Pages arrive in two steps: the frame at once, the data a moment later.
 3. **Your device** draws the 3D planets and the map. Nothing about you is sent back.
 
-Built with
+### 🛠️ Tech stack
+
+**Website and 3D**
 
 <p>
-  <img src="https://img.shields.io/badge/Next.js_16-000000?logo=nextdotjs&logoColor=white" alt="Next.js 16">
-  <img src="https://img.shields.io/badge/React_19-20232a?logo=react&logoColor=61dafb" alt="React 19">
-  <img src="https://img.shields.io/badge/TypeScript-3178c6?logo=typescript&logoColor=white" alt="TypeScript">
-  <img src="https://img.shields.io/badge/Tailwind_CSS-0f172a?logo=tailwindcss&logoColor=38bdf8" alt="Tailwind CSS">
-  <img src="https://img.shields.io/badge/three.js-000000?logo=threedotjs&logoColor=white" alt="three.js">
-  <img src="https://img.shields.io/badge/WebGL_2-990000?logo=webgl&logoColor=white" alt="WebGL 2">
-  <img src="https://img.shields.io/badge/PostgreSQL_17-4169e1?logo=postgresql&logoColor=white" alt="PostgreSQL 17">
-  <img src="https://img.shields.io/badge/Drizzle_ORM-c5f74f?logo=drizzle&logoColor=black" alt="Drizzle ORM">
-  <img src="https://img.shields.io/badge/Vercel-000000?logo=vercel&logoColor=white" alt="Vercel">
-  <img src="https://img.shields.io/badge/Neon-00e599?logoColor=black" alt="Neon">
-  <img src="https://img.shields.io/badge/Vitest-6e9f18?logo=vitest&logoColor=white" alt="Vitest">
-  <img src="https://img.shields.io/badge/Playwright-2ead33?logoColor=white" alt="Playwright">
-  <img src="https://img.shields.io/badge/GitHub_Actions-2088ff?logo=githubactions&logoColor=white" alt="GitHub Actions">
+  <img src="https://skillicons.dev/icons?i=nextjs,react,ts,tailwind,threejs,nodejs" alt="Next.js, React, TypeScript, Tailwind CSS, three.js, Node.js">
+</p>
+<p>
+  <img src="https://img.shields.io/badge/WebGL_2_shaders-990000?style=for-the-badge&logo=webgl&logoColor=white" alt="WebGL 2 with our own shaders">
+</p>
+
+**Data**
+
+<p>
+  <img src="https://skillicons.dev/icons?i=postgres" alt="PostgreSQL">
+</p>
+<p>
+  <img src="https://img.shields.io/badge/Drizzle_ORM-1a1a1a?style=for-the-badge&logo=drizzle&logoColor=c5f74f" alt="Drizzle ORM">
+  <img src="https://img.shields.io/badge/Neon-0c0d0d?style=for-the-badge&logoColor=00e599" alt="Neon">
+  <img src="https://img.shields.io/badge/NASA_Exoplanet_Archive-0b3d91?style=for-the-badge" alt="NASA Exoplanet Archive">
+</p>
+
+**Hosting and automation**
+
+<p>
+  <img src="https://skillicons.dev/icons?i=vercel,github,githubactions,docker" alt="Vercel, GitHub, GitHub Actions, Docker">
+</p>
+<p>
+  <img src="https://img.shields.io/badge/CodeQL-2088ff?style=for-the-badge" alt="CodeQL">
+  <img src="https://img.shields.io/badge/Dependabot-025e8c?style=for-the-badge&logo=dependabot&logoColor=white" alt="Dependabot">
+</p>
+
+**Tests**
+
+<p>
+  <img src="https://skillicons.dev/icons?i=vitest" alt="Vitest">
+</p>
+<p>
+  <img src="https://img.shields.io/badge/Playwright-2ead33?style=for-the-badge" alt="Playwright">
+  <img src="https://img.shields.io/badge/axe--core-663399?style=for-the-badge" alt="axe-core">
 </p>
 
 The planets are drawn by our own shaders, one description per planet for the still picture, the turning image, the 3D model and the map. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains every part in detail.
