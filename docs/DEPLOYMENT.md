@@ -83,6 +83,7 @@ In GitHub: *Settings → Branches → Add branch ruleset* (or *Branch protection
 
 Without this step the site works, but nothing notices when a deployment is broken. What each part does is described below.
 
+0. **Deployment events.** In Vercel, *Settings → Git*: switch on **repository_dispatch Events**. Vercel then tells GitHub about every finished deployment, and that starts the check.
 1. **Deployment Protection.** In Vercel, *Settings → Deployment Protection*: if it is on (by default it protects every address except the production domain), create a secret under *Protection Bypass for Automation*. Store it in GitHub (*Settings → Secrets and variables → Actions → Secrets*) as `VERCEL_AUTOMATION_BYPASS_SECRET`.
 2. **Token for the rollback.** In Vercel, *Account Settings → Tokens*: create a token with access to the team of the project. Store it in GitHub as the secret `VERCEL_TOKEN`.
 3. **Project and team.** In GitHub, under *Variables* (not *Secrets*), set `VERCEL_PROJECT_ID` (Vercel: project *Settings → General → Project ID*) and `VERCEL_ORG_ID` (the team ID under *Team Settings → General*, or for a personal account the user ID under *Account Settings*). `npx vercel link` also writes both into `.vercel/project.json`.
@@ -121,7 +122,7 @@ On Vercel there is no server process that could hang and would need a restart: e
 
 ## Smoke test after each deployment
 
-When Vercel has finished a deployment, it reports it to GitHub. [deploy-check.yml](../.github/workflows/deploy-check.yml) then runs `npm run test:smoke` ([smoke/](../smoke)) against the deployment's own address, for previews and production alike. In about a minute it checks:
+When Vercel has finished a deployment, it reports it to GitHub as a `repository_dispatch` event (`vercel.deployment.success`, with the address, the environment and the commit). [deploy-check.yml](../.github/workflows/deploy-check.yml) then runs `npm run test:smoke` ([smoke/](../smoke)) against the deployment's own address, for previews and production alike. In about a minute it checks:
 
 - `/health` answers 200 and the deployment runs the commit it was started for,
 - the start page, the planet list, a planet and a star page, the search, the map and the legal pages answer 200 with the security headers,
@@ -135,6 +136,8 @@ By hand, against any address:
 ```bash
 SMOKE_BASE_URL=https://exoatlas-abc123.vercel.app npm run test:smoke
 ```
+
+Or in GitHub: *Actions → Deployment check → Run workflow* with the address. A check started by hand never rolls back.
 
 Vercel puts its toolbar into preview deployments. The Content Security Policy of the site blocks it, so it does not appear in previews. The smoke test ignores the resulting messages in the browser console.
 
