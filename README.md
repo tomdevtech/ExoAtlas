@@ -18,8 +18,7 @@ Working today:
 - Real surface maps for the planets of the solar system, with Earth's clouds and city lights and Saturn's rings
 - A map of the Milky Way to fly through: 4,835 stars at their measured positions, and every system with its planets on their orbits in 3D
 - A legal notice and a privacy policy, which name whoever runs the copy
-
-Ready for hosting on Vercel, with a daily sync, weekly backups and a read-only database role for the site: see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+- Online on Vercel with a Neon database in Frankfurt: a daily sync with NASA, weekly backups, a read-only database role for the site, a rate limit on the search, a smoke test after each deployment with automatic rollback, and an hourly health check. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## What it does
 
@@ -39,26 +38,28 @@ Three parts:
 
 ```mermaid
 flowchart LR
-    NASA[NASA Exoplanet Archive] --> Sync[Sync<br>npm run sync]
-    Sync --> DB[(Postgres)]
-    DB --> App[Next.js app]
+    NASA[NASA Exoplanet Archive] --> Sync[Sync<br>daily in GitHub Actions]
+    Sync --> DB[(Postgres<br>Neon)]
+    DB -->|read only| App[Next.js app<br>Vercel]
     App --> Browser
 ```
 
-- **Postgres** holds all data. Locally it runs in Docker.
-- **The sync** is a script. It fetches the catalogue, compares it with the database and writes only the differences.
-- **The app** (Next.js) reads straight from the database. It never writes. The planets and the map are drawn in the browser with WebGL.
+- **Postgres** holds all data. Online it runs at Neon in Frankfurt, locally in Docker.
+- **The sync** is a script. It fetches the catalogue, compares it with the database and writes only the differences. Online, GitHub Actions starts it every day.
+- **The app** (Next.js) reads straight from the database, online with a role that may only read. It never writes. It runs on Vercel; the planets and the map are drawn in the browser with WebGL.
 
 | Area | Technology |
 | --- | --- |
-| App | Next.js 16, React 19, TypeScript, Tailwind 4 |
+| App | Next.js 16, React 19, TypeScript, Tailwind 4, Node.js 24 |
 | Database | Postgres 17 with `pg_trgm` for the search |
 | Database access | Drizzle ORM, migrations with drizzle-kit |
-| Tests | Vitest |
 | Planet images and 3D models | WebGL 2 with our own shaders |
 | Map | three.js |
+| Tests | Vitest (unit and database), Playwright with axe-core (browser, accessibility, smoke test) |
+| Hosting | Vercel (app, firewall), Neon (database) |
+| Automation | GitHub Actions (checks, sync, backup, health check, rollback), CodeQL, Dependabot |
 
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains the data flow, the database, the sync, the search, the images, the map and the code layout in detail.
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains where everything runs, the data flow, the database, the sync, the search, the images, the map and the code layout in detail.
 
 ### Code layout
 
@@ -72,11 +73,14 @@ Every feature lives in its own folder inside `src/app/`, with its pages, compone
 | [src/app/search/](src/app/search/) | Search page, suggestions, search field |
 | [src/app/catalog/](src/app/catalog/) | Numbers and featured planets on the start page |
 | [src/app/legal/](src/app/legal/) | Legal notice and privacy policy |
+| [src/app/health/](src/app/health/) | `/health` for the smoke test and the health check |
 | [src/app/sync/](src/app/sync/) | The comparison with NASA |
 | [src/app/solar-system/](src/app/solar-system/) | The Sun and its planets |
-| [src/db/](src/db/) | Schema and database connection |
-| [src/shared/](src/shared/) | Helpers used by several features |
-| [scripts/](scripts/) | Command line entry points for sync, seed and textures |
+| [src/db/](src/db/) | Schema, database connection, the read-only role |
+| [src/shared/](src/shared/) | Helpers used by several features, the security headers |
+| [scripts/](scripts/) | Command line entry points: sync, seed, migrations on deploy, read-only role, rollback, textures |
+| [e2e/](e2e/), [smoke/](smoke/) | Browser tests and the smoke test after each deployment |
+| [.github/workflows/](.github/workflows/) | CI, CodeQL, deployment check, health check, sync, backup |
 | [public/textures/](public/textures/) | Surface maps of the solar system and the panorama of the sky |
 
 ## Run it locally
@@ -149,7 +153,6 @@ A model or an illustration:
 
 - Stars without known planets. A complete star catalogue would multiply the amount of data and would first have to be matched with the NASA data.
 - The complete NASA row with more than 700 columns. The planet page links to the archive instead.
-- The choice of a host. Options are a database service plus an app host, or a small server of our own with Docker Compose.
 
 ## Data sources
 
