@@ -22,6 +22,33 @@ Working today:
 
 ## What it does
 
+```mermaid
+mindmap
+  root((ExoAtlas))
+    Search
+      suggestions while typing
+      tolerant of typos
+      former names
+    All planets
+      every known planet
+      filter by name
+      by name or year of discovery
+    Planet pages
+      measured or calculated values
+      history of changes
+      turning image and 3D model
+    Star pages
+      planets of the system
+      position and distance
+    Map of the Milky Way
+      stars at measured positions
+      fly into any system
+      planets on their orbits
+    Solar system
+      real surface maps
+      clouds, city lights, rings
+```
+
 **Search.** By planet or star, tolerant of typos and spelling (`kepler 22b` finds `Kepler-22 b`).
 
 **A list of all planets.** Every known planet, one per row, 200 per page, with a field that narrows the list while you type. The list is sorted by name or by year of discovery, newest first. Each row shows a plain image, the name, the star and the year of discovery, so the long list stays light.

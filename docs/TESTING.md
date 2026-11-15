@@ -2,6 +2,36 @@
 
 What checks ExoAtlas, when it runs and what it catches. The checks form layers: the fast ones run on every change before it can be merged, the slower ones after each deployment, and a few keep watching the live site.
 
+```mermaid
+flowchart LR
+    subgraph Before["1. Before the merge"]
+        direction TB
+        T1[Type check and lint]
+        T2[Unit tests]
+        T3[Database tests]
+        T4[Browser tests<br>flows, security, accessibility]
+        T5[Build, npm audit, CodeQL]
+    end
+    subgraph After["2. After each deployment"]
+        direction TB
+        S1[Smoke test]
+        S2[Rollback if<br>production fails]
+    end
+    subgraph Live["3. On the live site"]
+        direction TB
+        L1[Uptime monitor, 5 min]
+        L2[Health check, hourly]
+        L3[Sync guard, daily]
+        L4[Backup, weekly]
+        L5[TLS check, monthly]
+    end
+    Before -->|merge only when green| After -->|deployment stays live| Live
+
+    style Before fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
+    style After fill:#fef3c7,stroke:#d97706,color:#78350f
+    style Live fill:#d1fae5,stroke:#059669,color:#064e3b
+```
+
 ## At a glance
 
 | Layer | Tool | Runs | Catches |
@@ -25,18 +55,35 @@ What checks ExoAtlas, when it runs and what it catches. The checks form layers: 
 
 ## When what runs
 
+On every change:
+
 ```mermaid
 flowchart LR
-    PR[Pull request] --> CI[CI: types, lint, unit,<br>database, browser, audit, build]
-    PR --> CQ[CodeQL]
-    PR --> Prev[Vercel preview] --> SP[Smoke test<br>of the preview]
+    PR([Pull request]):::change --> CI[CI: types, lint, unit,<br>database, browser, audit, build]:::check
+    PR --> CQ[CodeQL]:::check
+    PR --> Prev[Preview deployment]:::vercel --> SP[Smoke test<br>of the preview]:::check
     CI --> Merge{all five checks<br>green?}
     CQ --> Merge
-    Merge -->|yes| Prod[Vercel production] --> SProd[Smoke test<br>of production]
-    SProd -->|fails| RB[Rollback to the<br>previous deployment]
-    Live[Live site] --- U[Uptime monitor<br>every 5 min]
-    Live --- H[Health check<br>hourly]
-    Live --- T[TLS check<br>monthly]
+    Merge -->|yes| Prod[Production deployment]:::vercel --> SProd[Smoke test<br>of production]:::check
+    Merge -->|no| Fix([fix it in the<br>pull request]):::change
+    SProd -->|fails| RB[Rollback to the<br>previous deployment]:::alarm
+
+    classDef change fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
+    classDef check fill:#d1fae5,stroke:#059669,color:#064e3b
+    classDef vercel fill:#f3f4f6,stroke:#4b5563,color:#111827
+    classDef alarm fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
+```
+
+On the live site, without any change:
+
+```mermaid
+timeline
+    title How often the live site is checked
+    Every 5 minutes : Uptime monitor asks the legal notice
+    Every hour : Health check asks /health
+    Every day : NASA sync, stops on an implausible answer
+    Every week : Backup on Sunday : CodeQL and Dependabot on Monday
+    Every month : TLS check on the 1st
 ```
 
 ## The layers in detail

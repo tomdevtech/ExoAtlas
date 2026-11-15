@@ -13,6 +13,47 @@ ExoAtlas is a public catalogue without accounts, forms, uploads or payments. No 
 
 ## The layers at a glance
 
+The way of a request, from the address bar to the database, and what guards each step:
+
+```mermaid
+flowchart TB
+    V([Visitor or attacker]) --> L1
+    L1["DNS · Namecheap<br>DNSSEC: no forged answers<br>registrar lock: domain cannot be moved away"]:::net
+    L1 --> L2["Firewall · Vercel<br>DDoS protection<br>100 search requests per minute and IP"]:::net
+    L2 --> L3["Transport<br>TLS 1.2 and 1.3 only, HSTS for two years<br>certificates renewed by Vercel"]:::net
+    L3 --> L4["Application · Next.js<br>security headers and Content Security Policy<br>checked input, bound parameters, no details in errors"]:::app
+    L4 --> L5["Database · Neon<br>role exoatlas_web: SELECT only<br>read-only transactions, 5 seconds per query"]:::db
+    W["Watching<br>smoke test and rollback, uptime monitor,<br>health check, TLS check, backup"]:::watch -.-> L2 & L4 & L5
+
+    classDef net fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
+    classDef app fill:#f3f4f6,stroke:#4b5563,color:#111827
+    classDef db fill:#fef3c7,stroke:#d97706,color:#78350f
+    classDef watch fill:#d1fae5,stroke:#059669,color:#064e3b
+```
+
+## Threats and what stops them
+
+```mermaid
+flowchart LR
+    T1[Flood of requests]:::threat --> M1[Vercel DDoS protection<br>rate limit on the search]:::measure
+    T2[Eavesdropping,<br>downgrade to HTTP]:::threat --> M2[TLS 1.2 and 1.3,<br>HSTS, redirects]:::measure
+    T3[Forged DNS answers]:::threat --> M3[DNSSEC]:::measure
+    T4[Script injection]:::threat --> M4[React escapes output,<br>Content Security Policy]:::measure
+    T5[SQL injection]:::threat --> M5[bound parameters,<br>read-only database role]:::measure
+    T6[Framing the site,<br>clickjacking]:::threat --> M6[frame-ancestors none,<br>X-Frame-Options]:::measure
+    T7[E-mail in the<br>domain's name]:::threat --> M7[SPF -all,<br>DMARC reject]:::measure
+    T8[Vulnerable dependency]:::threat --> M8[npm audit, Dependabot,<br>CodeQL]:::measure
+    T9[Leaked secret]:::threat --> M9[push protection,<br>Sensitive variables, rotation]:::measure
+    T10[Taken-over account]:::threat --> M10[two-factor sign-in,<br>protected main]:::measure
+    T11[Broken deployment]:::threat --> M11[smoke test,<br>automatic rollback]:::measure
+    T12[Lost data]:::threat --> M12[weekly backup,<br>Neon history]:::measure
+
+    classDef threat fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
+    classDef measure fill:#d1fae5,stroke:#059669,color:#064e3b
+```
+
+In short:
+
 | Layer | Measures |
 | --- | --- |
 | Accounts | two-factor sign-in everywhere, `main` protected, secrets only in GitHub and Vercel, push protection |
@@ -25,6 +66,20 @@ ExoAtlas is a public catalogue without accounts, forms, uploads or payments. No 
 
 ## Accounts and access
 
+Which account controls what. The e-mail account sits on top: it can reset the passwords of all the others.
+
+```mermaid
+flowchart TB
+    Mail["E-mail account<br>password resets for all accounts below"]:::key
+    Mail --> GH["GitHub<br>code, workflows,<br>Actions secrets"]:::acct
+    Mail --> VC["Vercel<br>deployments, variables,<br>firewall, domains"]:::acct
+    Mail --> NC["Namecheap<br>the domain and its DNS"]:::acct
+    VC --> NE["Neon<br>the database,<br>reached through Vercel"]:::acct
+
+    classDef key fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
+    classDef acct fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
+```
+
 - **Two-factor sign-in** on GitHub, Vercel, Namecheap and the e-mail account. Neon is reached through Vercel and covered by Vercel's sign-in.
 - **`main` is protected** by a ruleset: changes only through pull requests whose checks `check`, `audit`, `db`, `e2e` and `analyze` are green; no deletion, no force push. The repository admin may bypass it for pull requests only, never for direct pushes.
 - **Secrets live in GitHub Actions secrets and Vercel environment variables**, never in the repository. `.env*` files are ignored by Git, except the example without values. The database addresses in Vercel are marked *Sensitive*: they cannot be read back in the dashboard.
@@ -32,6 +87,21 @@ ExoAtlas is a public catalogue without accounts, forms, uploads or payments. No 
 - **Each part has only the access it needs**; the table is in [ARCHITECTURE.md](ARCHITECTURE.md), "Who may do what". The workflows run with read-only access to the repository (`permissions: contents: read`); only CodeQL may also write its findings.
 
 ## Code and dependencies
+
+```mermaid
+flowchart LR
+    Dev([Developer]):::who --> PR[Pull request]
+    Bot([Dependabot<br>weekly, or at once<br>for a vulnerability]):::who --> PR
+    PR --> Checks{"check · audit · db<br>e2e · analyze"}
+    Checks -->|all green| Main[main]:::ok
+    Checks -->|one red| Blocked[cannot be merged]:::stop
+    Push([Direct push<br>or force push]):::who -.->|refused by the ruleset| Main
+    Secret([A key in a commit]):::who -.->|refused by push protection| PR
+
+    classDef who fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
+    classDef ok fill:#d1fae5,stroke:#059669,color:#064e3b
+    classDef stop fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
+```
 
 - **Every change is a pull request** that runs type check, lint, unit, database and browser tests, the build, `npm audit` and CodeQL ([TESTING.md](TESTING.md)).
 - **CodeQL** scans with the `security-and-quality` queries on every change and every Monday. A finding rated high or above fails the check.
@@ -95,6 +165,24 @@ ExoAtlas is a public catalogue without accounts, forms, uploads or payments. No 
 Neon keeps its own short history in addition to the weekly dump. A restore from the dump was tried in November 2026 and worked.
 
 ## When something happens
+
+```mermaid
+flowchart TB
+    Start([Something is wrong]) --> Q1{Which signal?}
+    Q1 -->|UptimeRobot e-mail:<br>site down| A1[Vercel: last deployment<br>and its smoke test]
+    Q1 -->|Health check red:<br>database unreachable| A2[Neon console:<br>is the database up?]
+    Q1 -->|Deployment check red| A3[Rollback has run by itself.<br>Fix in a pull request,<br>then promote by hand]
+    Q1 -->|TLS check red| A4[Read the failed line:<br>certificate, protocol,<br>header or redirect]
+    Q1 -->|Sync red| A5[NASA answer implausible:<br>nothing was written.<br>Look, then rerun or wait]
+    Q1 -->|Secret or account<br>may be exposed| A6[Replace the secret,<br>see the table below]
+    A1 --> R1{Fixed?}
+    R1 -->|no| A7[Instant Rollback<br>in Vercel]
+    A2 --> R2{Data wrong<br>or lost?}
+    R2 -->|yes| A8[Restore the last dump<br>or use Neon's history]
+
+    classDef default fill:#f3f4f6,stroke:#4b5563,color:#111827
+    style Start fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
+```
 
 | Situation | What to do |
 | --- | --- |

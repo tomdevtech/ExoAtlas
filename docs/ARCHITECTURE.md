@@ -91,6 +91,21 @@ flowchart LR
 
 Each part gets only the access it needs.
 
+```mermaid
+flowchart LR
+    Visitors([Visitors, UptimeRobot,<br>health and TLS check]):::who -->|HTTPS only| Site[Website<br>Vercel Functions]:::app
+    Site -->|role exoatlas_web| Read[read the catalogue]:::ro
+    Build[Production build]:::job -->|owner| Schema[change the tables]:::rw
+    Jobs[Sync, seed, backup<br>GitHub Actions]:::job -->|owner| Data[write and read all data]:::rw
+    Deploy[Smoke test, rollback<br>GitHub Actions]:::job -->|Vercel token| Live[choose the live deployment]:::rw
+
+    classDef who fill:#f3f4f6,stroke:#4b5563,color:#111827
+    classDef app fill:#f3f4f6,stroke:#4b5563,color:#111827
+    classDef job fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
+    classDef ro fill:#d1fae5,stroke:#059669,color:#064e3b
+    classDef rw fill:#fef3c7,stroke:#d97706,color:#78350f
+```
+
 | Who | Connects with | May |
 | --- | --- | --- |
 | The website (Vercel Functions) | `DATABASE_URL_READONLY`: role `exoatlas_web`, through the pooler | read, every query cancelled after 5 seconds |
