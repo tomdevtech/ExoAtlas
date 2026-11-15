@@ -107,10 +107,10 @@ Almost no exoplanet has ever been photographed. ExoAtlas shows the measured valu
 
 ```mermaid
 flowchart LR
-    NASA[🛰️ NASA<br>Exoplanet Archive]:::source -->|every night| Sync[🔄 Sync<br>compares and keeps<br>only what changed]:::job
-    Sync --> DB[(🗄️ Database)]:::db
-    DB -->|reads only| Site[🌐 Website]:::site
-    Site -->|pages and data| You([👤 You<br>your device draws the<br>3D planets and the map]):::you
+    NASA[NASA<br>Exoplanet Archive]:::source -->|every night| Sync[Sync<br>compares and keeps<br>only what changed]:::job
+    Sync --> DB[(Database)]:::db
+    DB -->|reads only| Site[Website]:::site
+    Site -->|pages and data| You([You<br>your device draws the<br>3D planets and the map]):::you
 
     classDef source fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
     classDef job fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
@@ -137,12 +137,12 @@ The planets are drawn by our own shaders, one description per planet for the sti
 
 ```mermaid
 flowchart LR
-    Change([✏️ A change]):::change --> Checks[✅ Five automatic checks<br>tests, security scan,<br>accessibility, build]:::check
-    Checks -->|only when all pass| Live[🌐 Live]:::site
-    Live --> Smoke[🧪 Tested again<br>right after going live]:::check
-    Smoke -->|if it fails| Back[↩️ The previous version<br>comes back by itself]:::alarm
-    Live --- Watch[👀 Watched around the clock<br>every 5 minutes, hourly, monthly]:::check
-    Live --- Backup[💾 Weekly backup]:::check
+    Change([A change]):::change --> Checks[Five automatic checks<br>tests, security scan,<br>accessibility, build]:::check
+    Checks -->|only when all pass| Live[Live]:::site
+    Live --> Smoke[Tested again<br>right after going live]:::check
+    Smoke -->|if it fails| Back[The previous version<br>comes back by itself]:::alarm
+    Live --- Watch[Watched around the clock<br>every 5 minutes, hourly, monthly]:::check
+    Live --- Backup[Weekly backup]:::check
 
     classDef change fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
     classDef check fill:#d1fae5,stroke:#059669,color:#064e3b
