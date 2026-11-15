@@ -19,21 +19,56 @@ Once a deployment is ready, [deploy-check.yml](../.github/workflows/deploy-check
 
 The NASA sync does not run on Vercel. [sync.yml](../.github/workflows/sync.yml) starts it once a day in GitHub Actions.
 
+```mermaid
+flowchart LR
+    PR([Pull request]):::change --> CI[CI and CodeQL<br>five checks]:::check
+    PR --> Prev[Preview deployment]:::vercel --> SP[Smoke test<br>of the preview]:::check
+    CI -->|all green| Merge([Merge to main]):::change
+    Merge --> Mig[Migrations<br>as owner]:::vercel --> Build[next build]:::vercel --> Live[Production live]:::vercel
+    Live --> SProd[Smoke test<br>of production]:::check
+    SProd -->|fails| RB[Rollback to the<br>previous deployment]:::alarm
+
+    classDef change fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
+    classDef check fill:#d1fae5,stroke:#059669,color:#064e3b
+    classDef vercel fill:#f3f4f6,stroke:#4b5563,color:#111827
+    classDef alarm fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
 ```
-pull request ──► CI (checks)          ──┐
-             └─► Vercel (preview) ──► smoke test
-                                        ├─ merge when green ──► main ──► Vercel (production)
-                                        │                                 ├─ migrations, then build
-                                        │                                 └─► smoke test ──✗──► rollback to the previous deployment
-GitHub Actions, daily ──► NASA sync ──► production database ◄── the live site reads from it
-GitHub Actions, hourly ──► GET /health on the live site
+
+Around the clock, without anybody starting it:
+
+```mermaid
+flowchart LR
+    NASA[NASA Exoplanet Archive] -->|daily, 03:17 UTC| Sync[Sync]:::job --> DB[(Neon database)]:::db
+    DB -->|Sundays| Backup[Backup<br>kept 90 days]:::job
+    Site[Live site]:::vercel -->|reads| DB
+    Uptime[UptimeRobot<br>every 5 minutes]:::check --> Site
+    Health[Health check<br>hourly]:::check --> Site
+    TLS[TLS check<br>monthly]:::check --> Site
+
+    classDef job fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
+    classDef check fill:#d1fae5,stroke:#059669,color:#064e3b
+    classDef vercel fill:#f3f4f6,stroke:#4b5563,color:#111827
+    classDef db fill:#fef3c7,stroke:#d97706,color:#78350f
 ```
 
 ## Setting it up once
 
-### 1. Database
+```mermaid
+flowchart LR
+    S1[1 Vercel project<br>region Frankfurt]:::step --> S2[2 Database<br>Neon via Vercel]:::step --> S3[3 Secret<br>for the sync]:::step --> S4[4 Protect main]:::step
+    S4 --> S5[5 First deployment<br>and data]:::step --> S6[6 Smoke test, rollback,<br>monitoring]:::step --> S7[7 Security]:::step --> Done([Live]):::done
 
-Any hosted PostgreSQL that allows the extension `pg_trgm` works, for example Neon (also available in the Vercel Marketplace) or Supabase. Note two addresses:
+    classDef step fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
+    classDef done fill:#d1fae5,stroke:#059669,color:#064e3b
+```
+
+### 1. Vercel project
+
+In Vercel: *Add New → Project*, choose the repository. Vercel recognises Next.js; the build command comes from `vercel.json`. Select **Deploy** without setting any variable: this first build fails, because there is no database yet. Then set *Settings → Functions → Function Region* to the region of the database (Frankfurt, `fra1`, for a database in `eu-central-1`).
+
+### 2. Database
+
+Any hosted PostgreSQL that allows the extension `pg_trgm` works, for example Neon (also available in the Vercel Marketplace) or Supabase. With Neon: *Storage → Create Database → Neon*, region Frankfurt, then connect it to the project for Production and Preview, **without** a database branch per deployment, with the prefix `DATABASE`. Note two addresses:
 
 - **pooled**: goes through the pooler of the provider. The site uses it, because Vercel starts many instances at once and each keeps up to `DATABASE_POOL_SIZE` connections.
 - **direct** (unpooled): goes straight to the database. Migrations, the sync and the seed use it.
@@ -42,21 +77,45 @@ Neon calls them `DATABASE_URL` and `DATABASE_URL_UNPOOLED` and, when connected t
 
 If the pooler runs in transaction mode and does not support prepared statements (Supabase on port 6543, for example), set `DATABASE_PREPARE=false`.
 
-### 2. Vercel project
+### Where every value comes from
 
-In Vercel: *Add New → Project*, choose the repository. Vercel recognises Next.js; the build command comes from `vercel.json`. Select **Deploy** without setting any variable: this first build fails, because there is no database yet. Then set *Settings → Functions → Function Region* to the region of the database (Frankfurt, `fra1`, for a database in `eu-central-1`).
+In Vercel, under *Settings → Environment Variables*:
 
-All variables of the project at a glance, under *Settings → Environment Variables*. Most of them are set in later steps:
+```mermaid
+flowchart LR
+    Neon[(Neon)]:::source -->|set by the integration| DU[DATABASE_URL<br>DATABASE_URL_UNPOOLED]:::target
+    You([You]):::source -->|typed in| LEG[LEGAL_*]:::target
+    Script[npm run db:readonly-role]:::source -->|printed once| DUR[DATABASE_URL_READONLY]:::target
+
+    classDef source fill:#fef3c7,stroke:#d97706,color:#78350f
+    classDef target fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
+```
+
+In GitHub, under *Settings → Secrets and variables → Actions*:
+
+```mermaid
+flowchart LR
+    Neon[(Neon)]:::source -->|direct address, copied| PDU[secret<br>PRODUCTION_DATABASE_URL]:::target
+    Tokens[Vercel: Account Settings,<br>Tokens]:::source --> VT[secret<br>VERCEL_TOKEN]:::target
+    Prot[Vercel: Deployment Protection]:::source --> VB[secret<br>VERCEL_AUTOMATION_BYPASS_SECRET]:::target
+    Gen[Vercel: Settings, General]:::source --> IDS[variables<br>VERCEL_PROJECT_ID, VERCEL_ORG_ID]:::target
+    You([You]):::source -->|the live address| PURL[variable<br>PRODUCTION_URL]:::target
+
+    classDef source fill:#fef3c7,stroke:#d97706,color:#78350f
+    classDef target fill:#d1fae5,stroke:#059669,color:#064e3b
+```
+
+All variables of the project, under *Settings → Environment Variables*. Most of them are set in later steps:
 
 | Variable | Environments | Content | Comes from |
 | --- | --- | --- | --- |
-| `DATABASE_URL` | Production, Preview | pooled address | set by Vercel when you connect the database (step 1) |
-| `DATABASE_URL_UNPOOLED` | Production | direct address, for the migrations | set by Vercel when you connect the database (step 1) |
+| `DATABASE_URL` | Production, Preview | pooled address | set by Vercel when you connect the database (step 2) |
+| `DATABASE_URL_UNPOOLED` | Production | direct address, for the migrations | set by Vercel when you connect the database (step 2) |
 | `DATABASE_PREPARE` | Production, Preview | only if needed, see above | you, only with such a pooler |
 | `LEGAL_NAME`, `LEGAL_STREET`, `LEGAL_CITY`, `LEGAL_EMAIL` | Production | the operator, see [.env.example](../.env.example) | you, after the database |
 | `LEGAL_HOSTING`, `LEGAL_HOSTING_TRANSFER`, `LEGAL_HOSTING_DPA` | Production | the host | fixed texts, see [Legal pages](#legal-pages) |
 | `LEGAL_COUNTRY`, `LEGAL_PHONE`, `LEGAL_EMAIL_PROVIDER`, `LEGAL_LOG_DAYS` | Production | optional | you, see [Legal pages](#legal-pages) |
-| `DATABASE_URL_READONLY` | Production | the address of the read-only role | printed by `npm run db:readonly-role` (step 7) |
+| `DATABASE_URL_READONLY` | Production, Preview | the address of the read-only role | printed by `npm run db:readonly-role` (step 7) |
 
 Once the database and the `LEGAL_*` values are set, deploy again (*Deployments → … → Redeploy*): this build creates the tables.
 
@@ -103,7 +162,7 @@ The site has no logins, forms, cookies or uploads, so most of a usual security c
    DATABASE_URL="<pooled owner address>" DATABASE_URL_UNPOOLED="<direct owner address>" npm run db:readonly-role
    ```
 
-   Store the address it prints in Vercel as `DATABASE_URL_READONLY` (Production) and deploy again. See [Read-only database role](#read-only-database-role).
+   Store the address it prints in Vercel as `DATABASE_URL_READONLY` (Production and Preview) and deploy again. See [Read-only database role](#read-only-database-role).
 3. **Rate limit** for the search, see [Rate limiting](#rate-limiting).
 4. **Domain** at Namecheap, see [Domain](#domain).
 5. **Backups** run by themselves once `PRODUCTION_DATABASE_URL` is set (step 3), see [Backups](#backups). Try a restore once.
@@ -122,7 +181,7 @@ On Vercel there is no server process that could hang and would need a restart: e
 
 ## Smoke test after each deployment
 
-When Vercel has finished a deployment, it reports it to GitHub as a `repository_dispatch` event (`vercel.deployment.success`, with the address, the environment and the commit). [deploy-check.yml](../.github/workflows/deploy-check.yml) then runs `npm run test:smoke` ([smoke/](../smoke)) against the deployment's own address, for previews and production alike. In about a minute it checks:
+When Vercel has finished a deployment, it reports it to GitHub as a `repository_dispatch` event (`vercel.deployment.success`, with the address, the environment and the commit). [deploy-check.yml](../.github/workflows/deploy-check.yml) then runs `npm run test:smoke` ([tests/smoke/](../tests/smoke)) against the deployment's own address, for previews and production alike. In about a minute it checks:
 
 - `/health` answers 200 and the deployment runs the commit it was started for,
 - the start page, the planet list, a planet and a star page, the search, the map and the legal pages answer 200 with the security headers,
@@ -143,6 +202,22 @@ Vercel puts its toolbar into preview deployments. The Content Security Policy of
 
 ## Automatic rollback
 
+```mermaid
+sequenceDiagram
+    participant V as Vercel
+    participant GH as GitHub Actions
+    participant New as New deployment
+    V->>GH: vercel.deployment.success<br>(address, environment, commit)
+    GH->>New: smoke test
+    alt every test passes
+        GH-->>GH: green, nothing else happens
+    else production fails it
+        GH->>V: vercel rollback
+        V-->>New: the previous deployment is live again
+        GH-->>GH: red, GitHub sends an e-mail
+    end
+```
+
 If the smoke test of a **production** deployment fails, the second job of [deploy-check.yml](../.github/workflows/deploy-check.yml) runs `npm run deploy:rollback` ([rollback-production.ts](../scripts/rollback-production.ts)): it asks the Vercel CLI for the newest earlier production deployment that is ready and makes it live again with `vercel rollback`. The run turns red, GitHub sends an e-mail, and the summary of the run says what happened.
 
 No rollback happens when the smoke test could not open the deployment at all (Deployment Protection without the bypass secret): that is a setup problem, not a broken deployment. Previews are never rolled back.
@@ -160,6 +235,17 @@ What to know:
 
 The new migration runs a minute or two before the new code goes live, so the old code briefly works with the new tables. A migration must therefore not break the code that is still live: add columns and tables first, and remove old ones in a later deployment.
 
+```mermaid
+sequenceDiagram
+    participant Old as Old code, live
+    participant DB as Database
+    participant New as New deployment
+    New->>DB: migrations, during the build
+    Note over Old,DB: for a minute or two the old code<br>works with the new tables
+    New->>New: build finished, goes live
+    Note over New,DB: only the new code is live
+```
+
 Preview deployments use the production database unless they get their own. A preview whose code expects a newer schema then fails until the change is merged. If the provider can create a database branch for each preview (Neon can), set `DATABASE_MIGRATE_ON_BUILD=true` for the Preview environment: previews then migrate their own branch.
 
 ## The daily sync
@@ -175,13 +261,39 @@ The website never writes to the database; only the sync and the seed do. `npm ru
 - it may read every table, also those of later migrations, and nothing else: no writing, no deleting, no new tables,
 - every transaction is read-only, and a query is cancelled after 5 seconds, so one expensive query cannot tie up the database.
 
+```mermaid
+flowchart LR
+    Site[Website<br>Vercel Functions]:::app -->|DATABASE_URL_READONLY| RO[role exoatlas_web<br>SELECT only, read-only,<br>5 s per query]:::ro
+    Build[Production build]:::job -->|DATABASE_URL_UNPOOLED| Owner[owner role<br>may change everything]:::owner
+    Jobs[Sync, seed, backup<br>GitHub Actions]:::job -->|PRODUCTION_DATABASE_URL| Owner
+    RO --> DB[(Neon database)]
+    Owner --> DB
+
+    classDef app fill:#f3f4f6,stroke:#4b5563,color:#111827
+    classDef job fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
+    classDef ro fill:#d1fae5,stroke:#059669,color:#064e3b
+    classDef owner fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
+```
+
 Inside the Next.js server the site connects with `DATABASE_URL_READONLY` when that is set ([client.ts](../src/db/client.ts)); scripts and tests always take `DATABASE_URL`. A flaw in a query of the website can therefore read the public catalogue at most, never change it.
 
 Running the command again gives the role a new password; store the new address in Vercel and deploy again. If the role is missing or its address is wrong, `/health` answers 503 and the smoke test rolls the deployment back.
 
 ## Rate limiting
 
-Every search, and every suggestion while typing, asks the database. A rule in the Vercel Firewall stops a single source from flooding it. Available on the Hobby plan too (one rate limit rule per project):
+Every search, and every suggestion while typing, asks the database. A rule in the Vercel Firewall stops a single source from flooding it.
+
+```mermaid
+flowchart LR
+    Req[Request to /search<br>or /search/suggest] --> Q{More than 100<br>from this IP<br>in 60 seconds?}
+    Q -->|no| OK[Search answers]:::ok
+    Q -->|yes| No[429 Too Many Requests<br>until the minute is over]:::stop
+
+    classDef ok fill:#d1fae5,stroke:#059669,color:#064e3b
+    classDef stop fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
+```
+
+Available on the Hobby plan too (one rate limit rule per project):
 
 *Vercel → project → Firewall → Configure → + New Rule*
 
@@ -198,6 +310,16 @@ Then *Review Changes → Publish*. Someone who types fast sends a few suggestion
 
 [backup.yml](../.github/workflows/backup.yml) dumps the production database every Sunday with `pg_dump` and keeps the dump for 90 days as an artifact of the run. Most of the data could be fetched from NASA again; the dump keeps what could not: the change history, former names and the sync runs. The database holds no personal data. Neon keeps its own short history in addition, which helps after a mistake of the last hours.
 
+```mermaid
+flowchart LR
+    DB[(Neon database)]:::db -->|pg_dump, Sundays| Dump[exoatlas.dump]:::file --> Art[Artifact of the run<br>kept 90 days]:::file
+    Art -.->|restore by hand| Empty[(empty database)]:::db -.-> Role[npm run db:readonly-role<br>again]:::step
+
+    classDef db fill:#fef3c7,stroke:#d97706,color:#78350f
+    classDef file fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
+    classDef step fill:#d1fae5,stroke:#059669,color:#064e3b
+```
+
 To restore: download the artifact from *Actions → Database backup → a run*, unpack it, and load it into an empty database with the owner's direct address:
 
 ```bash
@@ -209,7 +331,23 @@ Then run `npm run db:readonly-role` again, so that the read-only role can read t
 
 ## Domain
 
-The domain is registered at Namecheap; its DNS points at Vercel. In Namecheap, under *Domain List → Manage*:
+The site lives at `https://www.exoatlas.space`. The domain is registered at Namecheap, whose DNS points it at Vercel: an `A` record for `@` and a `CNAME` for `www`, with the values that Vercel shows under *Settings → Domains*. Vercel redirects `exoatlas.space` to `www.exoatlas.space` and issues the certificates itself.
+
+```mermaid
+flowchart LR
+    subgraph DNS["Namecheap DNS"]
+        RA["A @ to Vercel"]
+        RW["CNAME www to Vercel"]
+    end
+    A1["http://exoatlas.space"] -->|308| A2["https://exoatlas.space"] -->|308| W["https://www.exoatlas.space"]:::target
+    B1["http://www.exoatlas.space"] -->|308| W
+    RA -.-> A1
+    RW -.-> B1
+
+    classDef target fill:#d1fae5,stroke:#059669,color:#064e3b
+```
+
+In Namecheap, under *Domain List → Manage*:
 
 - keep **Registrar Lock** on, so that the domain cannot be moved to another registrar without you,
 - switch on **DNSSEC** (*Advanced DNS*), as long as Namecheap serves the DNS records,
@@ -217,6 +355,19 @@ The domain is registered at Namecheap; its DNS points at Vercel. In Namecheap, u
 - if no e-mail is sent from the domain, publish two records so that nobody can send mail in its name: `@  TXT  "v=spf1 -all"` and `_dmarc  TXT  "v=DMARC1; p=reject"`.
 
 HSTS is sent without `preload`. The preload list can hardly be left again and would bind every subdomain to HTTPS; it only makes sense for a domain used for nothing else.
+
+## TLS check
+
+[tls.yml](../.github/workflows/tls.yml) runs [check-tls.sh](../scripts/check-tls.sh) against `PRODUCTION_URL` on the 1st of every month, and on pull requests that change the check. It looks at the site from the outside:
+
+- the security headers of the start page, HSTS for at least a year,
+- `http://`, the domain without `www` and both together all end on `https://www.…/` with status 200,
+- TLS 1.2 and 1.3 are accepted, TLS 1.0 and 1.1 refused,
+- the certificates of both names are trusted, issued for the right name and valid for at least 21 more days.
+
+A failed run turns red and GitHub sends an e-mail, so an expiring certificate is noticed three weeks ahead. The TLS setup comes from Vercel, not from the code, so a push does not change it; the headers of each deployment are also checked by the smoke test. By hand: `bash scripts/check-tls.sh www.exoatlas.space` (needs curl and OpenSSL 3), or *Actions → TLS check → Run workflow*. A test with [SSL Labs](https://www.ssllabs.com/ssltest/) now and then, after changes to the domain, gives a second opinion; it rated the site A+ in November 2026.
+
+**Do not hammer the site while testing.** A few hundred requests in a short time from one address, or a scan that opens many connections, make Vercel's automatic DDoS protection challenge that address for a while: requests then get `403` with `x-vercel-mitigated: challenge`. The check script says so instead of reporting missing headers. The challenge page sets a cookie of Vercel's; it only reaches traffic that Vercel takes for an attack.
 
 ## Legal pages
 

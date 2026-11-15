@@ -2,6 +2,14 @@
 
 How ExoAtlas is built, how data moves through it and how the parts work together.
 
+| Document | Covers |
+| --- | --- |
+| ARCHITECTURE.md (this one) | the parts, where they run, the code, the database, the data flows |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | hosting, setting everything up step by step, operations |
+| [TESTING.md](TESTING.md) | every test and check, when it runs and what it catches |
+| [SECURITY.md](SECURITY.md) | the protective measures layer by layer, what to do when something happens |
+| [wiki/](wiki/) | the user guide |
+
 ## The system in one picture
 
 ExoAtlas has three parts: a Postgres database, a sync script and a Next.js app.
@@ -59,23 +67,44 @@ flowchart LR
         Repo[Repository, main]
         Actions[GitHub Actions]
     end
+    Uptime[UptimeRobot]
+    DNS[Namecheap DNS<br>www.exoatlas.space]
 
+    Browser -.->|looks up| DNS
     Browser -->|HTTPS| FW --> Edge --> Fn
     Fn -->|role exoatlas_web, read only| Pooler --> PG
     Repo -->|merge to main| Build
     Build -->|owner, direct: migrations| PG
     NASA -->|catalogue| Actions
     Actions -->|owner, direct: daily sync, weekly backup| PG
-    Actions -->|after each deployment, hourly| FW
+    Actions -->|smoke test after each deployment,<br>hourly health check, monthly TLS check| FW
+    Uptime -->|every 5 minutes: /legal/notice| FW
 ```
 
+- **Namecheap** holds the domain `exoatlas.space` and its DNS, which points at Vercel. Vercel redirects the domain without `www` to `https://www.exoatlas.space`.
 - **Vercel** serves the site. The firewall in front stops floods and limits search requests per IP. The edge network delivers what does not change between requests: the prebuilt page frames, images, scripts and the legal pages. Everything that needs the database runs in a function in Frankfurt, next to the database.
 - **Neon** holds the database in Frankfurt. The site reaches it through Neon's pooler, because Vercel starts many functions at once. The database goes to sleep after a few minutes without queries and wakes on the next one.
-- **GitHub** holds the code and runs everything that is not a page view: the checks of every change, the daily sync with NASA, the weekly backup, the hourly health check and the smoke test after each deployment.
+- **GitHub** holds the code and runs everything that is not a page view: the checks of every change, the daily sync with NASA, the weekly backup, the smoke test after each deployment, the hourly health check and the monthly TLS check.
+- **UptimeRobot** asks the site every five minutes from the outside and e-mails when it does not answer. It asks the prebuilt legal notice, so the database can sleep in between.
 
 ### Who may do what
 
 Each part gets only the access it needs.
+
+```mermaid
+flowchart LR
+    Visitors([Visitors, UptimeRobot,<br>health and TLS check]):::who -->|HTTPS only| Site[Website<br>Vercel Functions]:::app
+    Site -->|role exoatlas_web| Read[read the catalogue]:::ro
+    Build[Production build]:::job -->|owner| Schema[change the tables]:::rw
+    Jobs[Sync, seed, backup<br>GitHub Actions]:::job -->|owner| Data[write and read all data]:::rw
+    Deploy[Smoke test, rollback<br>GitHub Actions]:::job -->|Vercel token| Live[choose the live deployment]:::rw
+
+    classDef who fill:#f3f4f6,stroke:#4b5563,color:#111827
+    classDef app fill:#f3f4f6,stroke:#4b5563,color:#111827
+    classDef job fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
+    classDef ro fill:#d1fae5,stroke:#059669,color:#064e3b
+    classDef rw fill:#fef3c7,stroke:#d97706,color:#78350f
+```
 
 | Who | Connects with | May |
 | --- | --- | --- |
@@ -83,6 +112,7 @@ Each part gets only the access it needs.
 | The production build | `DATABASE_URL_UNPOOLED`: the owner, direct | change the tables (migrations) |
 | Sync, seed and backup (GitHub Actions) | secret `PRODUCTION_DATABASE_URL`: the owner, direct | write and read all data |
 | Smoke test and rollback (GitHub Actions) | `VERCEL_TOKEN`, `VERCEL_AUTOMATION_BYPASS_SECRET` | open protected deployments, choose which deployment is live |
+| Health check, TLS check (GitHub Actions), UptimeRobot | nothing but HTTPS | read pages, like a visitor |
 | Visitors | nothing but HTTPS | read pages |
 
 ### The automatic jobs
@@ -95,9 +125,11 @@ Each part gets only the access it needs.
 | [health.yml](../.github/workflows/health.yml) | hourly | asks `/health` on the live site |
 | [sync.yml](../.github/workflows/sync.yml) | daily, 03:17 UTC | compares the catalogue with NASA and writes the differences |
 | [backup.yml](../.github/workflows/backup.yml) | Sundays, 04:41 UTC | dumps the database and keeps the dump for 90 days |
+| [tls.yml](../.github/workflows/tls.yml) | 1st of every month | protocols, certificates, headers and redirects of the live site |
 | [Dependabot](../.github/dependabot.yml) | Mondays | pull requests for outdated or vulnerable dependencies |
+| UptimeRobot (outside the repository) | every 5 minutes | asks `/legal/notice` on the live site |
 
-A failed run turns red and GitHub sends an e-mail.
+A failed run turns red and GitHub sends an e-mail; UptimeRobot sends its own. What each check catches: [TESTING.md](TESTING.md).
 
 ### From a change to the live site
 
@@ -124,11 +156,11 @@ sequenceDiagram
 
 ## Code layout
 
-Every feature lives in its own folder inside `src/app/`. A feature folder holds everything that belongs to the feature: its pages, its components, its database queries, its logic and its tests.
+Every feature lives in its own folder inside `src/app/`. A feature folder holds everything that belongs to the feature: its pages, its components, its database queries and its logic. Its tests live in `tests/`, at the same path: the tests of `src/app/planets/classify.ts` are in `tests/unit/app/planets/classify.test.ts`.
 
 ```
 .github/
-  workflows/              CI, CodeQL, deployment check, health check, sync, backup
+  workflows/              CI, CodeQL, deployment check, health check, TLS check, sync, backup
   dependabot.yml          weekly update pull requests
 scripts/
   sync.ts                 command line entry: calls runSync
@@ -136,6 +168,7 @@ scripts/
   migrate-on-deploy.ts    migrations during a Vercel production build
   create-readonly-role.ts creates the read-only database role of the website
   rollback-production.ts  puts the previous production deployment back live
+  check-tls.sh            checks protocols, certificates, headers and redirects of the live site
   fetch-textures.ts       downloads and scales the images in public/textures
   docs-screenshots.ts     takes the screenshots of the user guide with headless Playwright
 docs/
@@ -144,8 +177,12 @@ docs/
   wiki/                   the user guide as GitHub Wiki pages, with its screenshots in images/
 drizzle/                  SQL migrations: one generated from the schema, two written by hand
 public/textures/          surface maps of the solar system, panorama of the sky
-e2e/                      browser tests (Playwright): flows, security, accessibility
-smoke/                    the smoke test that runs against every deployment
+tests/
+  unit/                   unit tests, at the same paths as the code in src/
+  db/                     tests against a real PostgreSQL
+  e2e/                    browser tests (Playwright): flows, security, accessibility
+  smoke/                  the smoke test that runs against every deployment
+  support/                test catalogue, test databases, sample rows from NASA
 vercel.json               build command for Vercel
 src/
   proxy.ts                answers broken percent-encoding with 400
@@ -155,7 +192,6 @@ src/
     readonly.ts           the statements that create the read-only role
   deploy/
     rollback.ts           picks the deployment to roll back to
-  test/                   test database and the small test catalogue
   shared/
     slug.ts               names to URL slugs and search keys
     format.ts             numbers, dates and unit conversions
@@ -189,7 +225,8 @@ Next.js only turns files named `page.tsx` and `route.ts` into addresses. Every o
 | `queries.ts`, `query.ts`, `stats.ts` | Reads from the database |
 | `*.tsx` with a capital letter | A component |
 | other `*.ts` | Logic without database or UI, for example `classify.ts` |
-| `*.test.ts` | Tests, next to the code they test |
+
+`src/` holds only the app. Every test lives in `tests/` ([TESTING.md](TESTING.md)).
 
 ### Who may import whom
 
@@ -570,32 +607,28 @@ Two limits come from streaming. The server has already sent the status 200 and t
 
 ## Tests and checks
 
+[TESTING.md](TESTING.md) describes every layer in detail: what runs when, what each layer catches, the test data, and what is not tested automatically. In short:
+
 | Command | Checks |
 | --- | --- |
 | `npm test` | Unit tests for the logic without database: classification, appearance, coordinates, slugs, formatting, the pages of the planet list, the details of the operator, reading the NASA response, planning the sync, the description of a globe and its shader values, the noise of the planet shaders, the model of the galaxy, the orbits, the answers of the map. Also the security headers, the proxy, and what the JSON endpoints answer when the database fails (no details may leak) |
 | `npm run test:db` | Tests against a real PostgreSQL (`*.db.test.ts`): the search and its ranking, the planet list with filter, order and pages, planets, stars, the map, the figures of the start page, the three JSON endpoints, and whole sync runs (unchanged, changed values, new planets, renames, an implausible or broken answer from NASA). Every query also gets hostile input: SQL fragments, wildcards, null bytes, 100,000 characters |
-| `npm run test:e2e` | Browser tests with Playwright ([e2e/](../e2e)): builds the app and clicks through it in Chromium, on a desktop and a phone screen. Start page, header and footer, search with suggestions and keyboard, planet list, planet and star pages with the 3D model, the map, not-found pages, former names. Security: the headers on every kind of answer, hostile input over HTTP, script injection through the address, framing by another site, no CSP violation. Accessibility: axe-core checks every page against WCAG 2.1 A and AA |
+| `npm run test:e2e` | Browser tests with Playwright ([tests/e2e/](../tests/e2e)): builds the app and clicks through it in Chromium, on a desktop and a phone screen. Start page, header and footer, search with suggestions and keyboard, planet list, planet and star pages with the 3D model, the map, not-found pages, former names. Security: the headers on every kind of answer, hostile input over HTTP, script injection through the address, framing by another site, no CSP violation. Accessibility: axe-core checks every page against WCAG 2.1 A and AA |
 | `npm run test:all` | All three |
-| `npm run test:smoke` | The smoke test ([smoke/](../smoke)) against a running deployment: `/health`, the main pages with their security headers, the JSON endpoints, a short walk in the browser. Runs after every Vercel deployment and rolls production back when it fails ([DEPLOYMENT.md](DEPLOYMENT.md)); `test:e2e` runs it against the local build |
+| `npm run test:smoke` | The smoke test ([tests/smoke/](../tests/smoke)) against a running deployment: `/health`, the main pages with their security headers, the JSON endpoints, a short walk in the browser. Runs after every Vercel deployment and rolls production back when it fails ([DEPLOYMENT.md](DEPLOYMENT.md)); `test:e2e` runs it against the local build |
 | `npm run typecheck` | Route types and TypeScript |
 | `npm run lint` | ESLint |
 | `npm run build` | The production build |
 
-The database and browser tests need the database from docker-compose.yml (`npm run db:up`). They never touch the database of `DATABASE_URL`: they create their own, `exoatlas_test` and `exoatlas_e2e`, empty them and fill them with a small test catalogue ([src/test/catalog.ts](../src/test/catalog.ts): TRAPPIST-1, Proxima Cen b, a few Kepler planets, the solar system, a star without a distance and a planet that NASA withdraws). [src/test/db.ts](../src/test/db.ts) refuses any database whose name does not end in `_test` or `_e2e`. `TEST_DATABASE_URL` and `E2E_DATABASE_URL` point them elsewhere. The browser tests need Chromium once: `npm run e2e:install`. They fail on every error in the browser console, so a hydration error or a blocked script shows up even when the page looks right.
+The database and browser tests use their own databases (`exoatlas_test`, `exoatlas_e2e`) and never the one of `DATABASE_URL`. GitHub Actions runs all of it on every pull request and push, with CodeQL and `npm audit` next to it; the live site is watched by the smoke test after each deployment, the hourly health check, the monthly TLS check and an uptime monitor.
 
-`npm run docs:screenshots` is not a check: it renews the pictures of the user guide in `docs/wiki/images` against the running dev server (another address with `BASE_URL`). Run it after a visible change to the interface and look over the pages of the guide.
+## Security
 
-GitHub Actions ([ci.yml](../.github/workflows/ci.yml)) runs all of it on every push and pull request, the database and browser tests with a PostgreSQL service, plus `npm audit`: production dependencies must have no known vulnerability, development tools none rated high or critical. [codeql.yml](../.github/workflows/codeql.yml) scans the code for security problems, and [Dependabot](../.github/dependabot.yml) opens pull requests for outdated or vulnerable dependencies every week. Whether the shaders and the map *look* right is still checked by eye.
+[SECURITY.md](SECURITY.md) describes the measures layer by layer: accounts, code and dependencies, network and transport, the application, the database, privacy, watching and recovery, what to do when something happens, and the known limits. The parts that shape the code:
 
-### Security headers
-
-[security-headers.ts](../src/shared/security-headers.ts) defines the headers that [next.config.ts](../next.config.ts) puts on every answer: a Content Security Policy that only allows this site as a source and forbids framing, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` (no camera, microphone or location; fullscreen stays allowed for the planet model), `Cross-Origin-Opener-Policy` and `Strict-Transport-Security`. `X-Powered-By` is switched off. Scripts need `'unsafe-inline'`, because Next.js writes the data of each page into small inline scripts. Nonces would avoid that, but force every page to render on each request and lose the prerendered frames.
-
-[proxy.ts](../src/proxy.ts) answers addresses with broken percent-encoding (`/planets/%E0%A4%A`) with 400; Next.js would answer 500. Slugs from the address are checked with `isSlug` ([slug.ts](../src/shared/slug.ts)) before they reach the database, so a null byte or a 5,000-character slug is simply "not found" instead of a database error.
-
-### Database access
-
-The website only reads. Inside the Next.js server [client.ts](../src/db/client.ts) connects with `DATABASE_URL_READONLY` when that is set: the role `exoatlas_web` ([readonly.ts](../src/db/readonly.ts)), which may only `SELECT`, runs every transaction read-only and cancels a query after 5 seconds. Scripts and tests run outside Next.js and write with `DATABASE_URL`. All queries go through Drizzle with bound parameters. Outside the code, a rule in the Vercel Firewall limits search requests per IP, and a weekly `pg_dump` keeps a backup ([DEPLOYMENT.md](DEPLOYMENT.md), "Security").
+- **Security headers** on every answer ([security-headers.ts](../src/shared/security-headers.ts)): a Content Security Policy that only allows the site itself and forbids framing, HSTS, and the usual protective headers. Scripts need `'unsafe-inline'` for the inline data of Next.js.
+- **Checked input.** Queries use bound parameters. Slugs are checked with `isSlug` ([slug.ts](../src/shared/slug.ts)) before they reach the database, the search reduces a query to letters and digits, and [proxy.ts](../src/proxy.ts) answers broken percent-encoding with 400.
+- **Read-only database access.** Inside the Next.js server [client.ts](../src/db/client.ts) connects with `DATABASE_URL_READONLY` when that is set: the role `exoatlas_web` ([readonly.ts](../src/db/readonly.ts)) may only `SELECT`, runs every transaction read-only and cancels a query after 5 seconds. Scripts and tests run outside Next.js and write with `DATABASE_URL`.
 
 ## Not built yet
 
