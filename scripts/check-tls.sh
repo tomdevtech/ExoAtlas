@@ -2,7 +2,7 @@
 # Checks the HTTPS setup of the live site from the outside: security headers,
 # redirects, protocols and certificates.
 #
-#   bash scripts/check-tls.sh www.exoatlas.space
+#   bash scripts/check-tls.sh www.exofinder.space
 #
 # Needs bash, curl and OpenSSL 3. GitHub Actions runs it once a month
 # (.github/workflows/tls.yml); see docs/DEPLOYMENT.md, "TLS check".
@@ -17,7 +17,7 @@
 
 set -uo pipefail
 
-host="${1:?usage: check-tls.sh <host>, for example www.exoatlas.space}"
+host="${1:?usage: check-tls.sh <host>, for example www.exofinder.space}"
 apex="${host#www.}"
 min_days="${MIN_CERT_DAYS:-21}"
 failures=0

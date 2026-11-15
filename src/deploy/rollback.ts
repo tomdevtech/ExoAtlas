@@ -16,7 +16,7 @@ interface ListedDeployment {
   readyState?: unknown;
 }
 
-/** "https://exoatlas-abc.vercel.app/" and "exoatlas-abc.vercel.app" are the same deployment. */
+/** "https://exofinder-abc.vercel.app/" and "exofinder-abc.vercel.app" are the same deployment. */
 export function deploymentHost(url: string): string {
   return url.trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "").toLowerCase();
 }

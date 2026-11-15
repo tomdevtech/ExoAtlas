@@ -20,7 +20,7 @@ import { planetAliases, planets, starAliases, stars } from "@/db/schema";
 import { FIXTURE_ROWS, FIXTURE_ROWS_AFTER_RETRACTION } from "@tests/support/catalog";
 
 /** The database from docker-compose.yml, with the name the tests may use. */
-const LOCAL = "postgres://exoatlas:exoatlas@localhost:5432/";
+const LOCAL = "postgres://exofinder:exofinder@localhost:5432/";
 
 /** Vitest and Playwright do not read .env.local themselves. Variables set before win. */
 function localEnv(name: "TEST_DATABASE_URL" | "E2E_DATABASE_URL"): string | undefined {
@@ -32,12 +32,12 @@ function localEnv(name: "TEST_DATABASE_URL" | "E2E_DATABASE_URL"): string | unde
 
 /** Database of the Vitest database tests (`npm run test:db`). */
 export function testDatabaseUrl(): string {
-  return localEnv("TEST_DATABASE_URL") ?? `${LOCAL}exoatlas_test`;
+  return localEnv("TEST_DATABASE_URL") ?? `${LOCAL}exofinder_test`;
 }
 
 /** Database of the browser tests (`npm run test:e2e`). */
 export function e2eDatabaseUrl(): string {
-  return localEnv("E2E_DATABASE_URL") ?? `${LOCAL}exoatlas_e2e`;
+  return localEnv("E2E_DATABASE_URL") ?? `${LOCAL}exofinder_e2e`;
 }
 
 /** The name of the database in a connection URL. */

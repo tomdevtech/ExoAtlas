@@ -4,7 +4,7 @@
  *
  * The Content Security Policy only lets the browser load scripts, styles,
  * images, fonts and data from this site, and forbids other sites to show
- * ExoAtlas in a frame. Next.js puts small inline scripts into every page that
+ * ExoFinder in a frame. Next.js puts small inline scripts into every page that
  * carry the data of the page, so scripts need 'unsafe-inline'. A policy with
  * nonces would avoid that, but would force every page to be rendered on each
  * request and lose the prerendered frames (see the Next.js guide

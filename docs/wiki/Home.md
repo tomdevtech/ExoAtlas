@@ -1,8 +1,8 @@
-# Welcome to ExoAtlas
+# Welcome to ExoFinder
 
-ExoAtlas shows every known exoplanet in one place. An exoplanet is a planet that circles a star other than our Sun. NASA has confirmed more than 6,000 of them, and ExoAtlas has a page for each one, for each of their stars and for the planets of our own solar system.
+ExoFinder shows every known exoplanet in one place. An exoplanet is a planet that circles a star other than our Sun. NASA has confirmed more than 6,000 of them, and ExoFinder has a page for each one, for each of their stars and for the planets of our own solar system.
 
-![The start page of ExoAtlas](images/home.png)
+![The start page of ExoFinder](images/home.png)
 
 ## What you can do
 
@@ -20,6 +20,6 @@ ExoAtlas shows every known exoplanet in one place. An exoplanet is a planet that
 ## Good to know
 
 - You do not need an account. Everything is free to look at.
-- ExoAtlas works on a computer, a tablet and a phone.
+- ExoFinder works on a computer, a tablet and a phone.
 - The [map](The-Map) and the 3D models need a browser with WebGL 2. All current versions of Chrome, Edge, Firefox and Safari have it.
-- The data comes from the [NASA Exoplanet Archive](https://exoplanetarchive.ipac.caltech.edu/). Each time ExoAtlas is compared with NASA again, new planets are added and changed values are updated.
+- The data comes from the [NASA Exoplanet Archive](https://exoplanetarchive.ipac.caltech.edu/). Each time ExoFinder is compared with NASA again, new planets are added and changed values are updated.

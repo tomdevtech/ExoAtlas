@@ -6,10 +6,10 @@
 A planet that circles a star other than our Sun.
 
 **Are the pictures of exoplanets real photos?**
-No. No telescope can see the surface of an exoplanet. ExoAtlas computes each picture from the measured values: a large, cold planet becomes an icy gas giant, a small, hot one becomes a glowing rock. The planets of our solar system are the exception. They show real maps made from spacecraft images.
+No. No telescope can see the surface of an exoplanet. ExoFinder computes each picture from the measured values: a large, cold planet becomes an icy gas giant, a small, hot one becomes a glowing rock. The planets of our solar system are the exception. They show real maps made from spacecraft images.
 
 **What do "rocky planet", "Super-Earth", "Neptune-like planet" and "gas giant" mean?**
-These are the four kinds of planets. ExoAtlas sorts them by how wide they are, compared with Earth:
+These are the four kinds of planets. ExoFinder sorts them by how wide they are, compared with Earth:
 
 | Kind | Width | In short |
 | --- | --- | --- |
@@ -18,7 +18,7 @@ These are the four kinds of planets. ExoAtlas sorts them by how wide they are, c
 | Neptune-like planet | 2 to 6 × Earth | with a thick layer of gas, like Neptune |
 | Gas giant | more than 6 × Earth | mostly gas, like Jupiter and Saturn |
 
-If only the weight of a planet is known, ExoAtlas estimates its width from the weight. If neither is known, the planet is not sorted and is simply called "Planet".
+If only the weight of a planet is known, ExoFinder estimates its width from the weight. If neither is known, the planet is not sorted and is simply called "Planet".
 
 **What do "frozen", "cold", "temperate", "hot" and "scorching" mean?**
 They describe how warm the planet is from its starlight alone (the equilibrium temperature on the planet page):
@@ -51,7 +51,7 @@ The exoplanets come from the [NASA Exoplanet Archive](https://exoplanetarchive.i
 As up to date as the last comparison with NASA. The start page says when that was. New planets appear on their own. Changed values are recorded in the change history of the planet page.
 
 **A planet has a notice that NASA no longer lists it. Why?**
-Sometimes a discovery turns out to be wrong, or NASA takes a planet off its list for another reason. Its page stays in ExoAtlas, with the last known values.
+Sometimes a discovery turns out to be wrong, or NASA takes a planet off its list for another reason. Its page stays in ExoFinder, with the last known values.
 
 **I followed an old link and landed on a page with another name.**
 The planet or star was renamed. Old links lead to the new page, and the page lists the former name.

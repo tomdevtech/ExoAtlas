@@ -2,7 +2,7 @@
 
 Every planet has its own page. It shows a 3D model of the planet, its measured values, its orbit, how it was found and its star.
 
-To open a planet page, click a planet anywhere in ExoAtlas: in the [search](Searching), in the [list of all planets](All-Planets), on a [star page](Star-Pages) or in the [map](The-Map).
+To open a planet page, click a planet anywhere in ExoFinder: in the [search](Searching), in the [list of all planets](All-Planets), on a [star page](Star-Pages) or in the [map](The-Map).
 
 ![The page of TRAPPIST-1 e](images/planet-page.png)
 
@@ -69,7 +69,7 @@ The section **Host star** shows the most important values of the star. **More ab
 
 ## Change history
 
-When NASA changes a value of the planet, ExoAtlas records it. The table **Change history** at the end of the page shows the date, the value, what it was before and what it is now. You only see this table if something has changed.
+When NASA changes a value of the planet, ExoFinder records it. The table **Change history** at the end of the page shows the date, the value, what it was before and what it is now. You only see this table if something has changed.
 
 ## Planets that NASA removed
 

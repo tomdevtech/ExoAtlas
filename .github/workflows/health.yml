@@ -6,7 +6,7 @@ name: Health check
 # docs/DEPLOYMENT.md, "Health check and monitoring").
 #
 # Needs the repository variable PRODUCTION_URL, for example
-# https://exoatlas.example.org. Without it the workflow does nothing.
+# https://exofinder.example.org. Without it the workflow does nothing.
 
 on:
   schedule:

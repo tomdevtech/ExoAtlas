@@ -26,7 +26,7 @@ export function LegalPage({
           role="alert"
           className="max-w-2xl rounded-lg border border-warning/50 bg-warning/10 px-4 py-3 text-sm leading-6 text-warning"
         >
-          This page is not complete. Whoever runs this copy of ExoAtlas has not entered their
+          This page is not complete. Whoever runs this copy of ExoFinder has not entered their
           details yet. Missing: {missing.join(", ")}. They are set as environment variables, see
           .env.example.
         </p>

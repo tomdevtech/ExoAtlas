@@ -1,4 +1,4 @@
-**ExoAtlas user guide**
+**ExoFinder user guide**
 
 - [Home](Home)
 - [Getting started](Getting-Started)

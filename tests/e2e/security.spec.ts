@@ -120,10 +120,10 @@ test.describe("framing", () => {
   // The browser reports the refused frame in the console: that is the point.
   test.use({ allowedErrors: /frame/i });
 
-  test("another site cannot show ExoAtlas in a frame", async ({ page, baseURL }) => {
+  test("another site cannot show ExoFinder in a frame", async ({ page, baseURL }) => {
     // A page with a different origin (about:blank) tries to frame the site.
     await page.setContent(`<iframe id="f" src="${baseURL}/"></iframe>`);
     const frame = page.frameLocator("#f");
-    await expect(frame.getByRole("heading", { name: "ExoAtlas" })).toHaveCount(0, { timeout: 5_000 });
+    await expect(frame.getByRole("heading", { name: "ExoFinder" })).toHaveCount(0, { timeout: 5_000 });
   });
 });

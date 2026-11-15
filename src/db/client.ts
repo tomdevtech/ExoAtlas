@@ -5,8 +5,8 @@ import * as schema from "./schema";
 // Next.js reloads modules again and again during development. Without this
 // global slot every reload would open another set of database connections.
 const globalForDb = globalThis as {
-  exoatlasSql?: postgres.Sql;
-  exoatlasDb?: PostgresJsDatabase<typeof schema>;
+  exofinderSql?: postgres.Sql;
+  exofinderDb?: PostgresJsDatabase<typeof schema>;
 };
 
 /**
@@ -53,22 +53,22 @@ export function databaseUrl(
  * also works when no database is reachable.
  */
 export function getDb() {
-  if (!globalForDb.exoatlasDb) {
+  if (!globalForDb.exofinderDb) {
     // Written out in full, so that Next.js can replace it when it bundles the server.
     const inNextServer = Boolean(process.env.NEXT_RUNTIME);
     const url = databaseUrl(process.env, inNextServer);
     if (!url) {
       throw new Error("DATABASE_URL is not set. See .env.example.");
     }
-    globalForDb.exoatlasSql = postgres(url, { ...poolOptions(process.env), onnotice: () => {} });
-    globalForDb.exoatlasDb = drizzle(globalForDb.exoatlasSql, { schema });
+    globalForDb.exofinderSql = postgres(url, { ...poolOptions(process.env), onnotice: () => {} });
+    globalForDb.exofinderDb = drizzle(globalForDb.exofinderSql, { schema });
   }
-  return globalForDb.exoatlasDb;
+  return globalForDb.exofinderDb;
 }
 
 /** Closes the connections. Scripts need this at the end, otherwise Node keeps running. */
 export async function closeDb() {
-  await globalForDb.exoatlasSql?.end();
-  globalForDb.exoatlasSql = undefined;
-  globalForDb.exoatlasDb = undefined;
+  await globalForDb.exofinderSql?.end();
+  globalForDb.exofinderSql = undefined;
+  globalForDb.exofinderDb = undefined;
 }

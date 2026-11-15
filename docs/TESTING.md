@@ -1,6 +1,6 @@
 # Tests and checks
 
-What checks ExoAtlas, when it runs and what it catches. The checks form layers: the fast ones run on every change before it can be merged, the slower ones after each deployment, and a few keep watching the live site.
+What checks ExoFinder, when it runs and what it catches. The checks form layers: the fast ones run on every change before it can be merged, the slower ones after each deployment, and a few keep watching the live site.
 
 ```mermaid
 flowchart LR
@@ -139,8 +139,8 @@ The browser tests fail on every error in the browser console, so a hydration err
 ### Checks of the live site
 
 - **Health check** ([health.yml](../.github/workflows/health.yml), hourly): `GET /health` must answer 200, which means the site reaches its database. Three tries a minute apart.
-- **Uptime monitor** (UptimeRobot, every 5 minutes, set up outside the repository): asks `https://www.exoatlas.space/legal/notice` and e-mails when it does not answer and when it is back. It asks the legal notice, a prebuilt page, so the Neon database can go to sleep between visits; the hourly health check covers the database.
-- **TLS check** ([tls.yml](../.github/workflows/tls.yml), monthly, and on pull requests that change it): [check-tls.sh](../scripts/check-tls.sh) checks the security headers, that every way in ends on `https://www.exoatlas.space/`, that TLS 1.2 and 1.3 are accepted and TLS 1.0 and 1.1 refused, and that both certificates are trusted and valid for at least 21 more days. Details: [DEPLOYMENT.md](DEPLOYMENT.md), "TLS check".
+- **Uptime monitor** (UptimeRobot, every 5 minutes, set up outside the repository): asks `https://www.exofinder.space/legal/notice` and e-mails when it does not answer and when it is back. It asks the legal notice, a prebuilt page, so the Neon database can go to sleep between visits; the hourly health check covers the database.
+- **TLS check** ([tls.yml](../.github/workflows/tls.yml), monthly, and on pull requests that change it): [check-tls.sh](../scripts/check-tls.sh) checks the security headers, that every way in ends on `https://www.exofinder.space/`, that TLS 1.2 and 1.3 are accepted and TLS 1.0 and 1.1 refused, and that both certificates are trusted and valid for at least 21 more days. Details: [DEPLOYMENT.md](DEPLOYMENT.md), "TLS check".
 
 ### Supply chain
 
@@ -150,7 +150,7 @@ The browser tests fail on every error in the browser console, so a hydration err
 
 ## Test data
 
-The database and browser tests never touch the database of `DATABASE_URL`. They create their own, `exoatlas_test` and `exoatlas_e2e`, empty them and fill them with a small test catalogue ([tests/support/catalog.ts](../tests/support/catalog.ts)): TRAPPIST-1, Proxima Cen b, a few Kepler planets, the solar system, a star without a distance and a planet that NASA withdraws. [tests/support/db.ts](../tests/support/db.ts) refuses any database whose name does not end in `_test` or `_e2e`. `TEST_DATABASE_URL` and `E2E_DATABASE_URL` point them elsewhere.
+The database and browser tests never touch the database of `DATABASE_URL`. They create their own, `exofinder_test` and `exofinder_e2e`, empty them and fill them with a small test catalogue ([tests/support/catalog.ts](../tests/support/catalog.ts)): TRAPPIST-1, Proxima Cen b, a few Kepler planets, the solar system, a star without a distance and a planet that NASA withdraws. [tests/support/db.ts](../tests/support/db.ts) refuses any database whose name does not end in `_test` or `_e2e`. `TEST_DATABASE_URL` and `E2E_DATABASE_URL` point them elsewhere.
 
 ## Running them locally
 
@@ -163,7 +163,7 @@ The database and browser tests need the database from `docker-compose.yml` (`npm
 | `npm run test:e2e` | browser tests, including the smoke test against the local build |
 | `npm run test:all` | all three |
 | `SMOKE_BASE_URL=https://… npm run test:smoke` | the smoke test against any deployment |
-| `bash scripts/check-tls.sh www.exoatlas.space` | the TLS check (needs curl and OpenSSL 3) |
+| `bash scripts/check-tls.sh www.exofinder.space` | the TLS check (needs curl and OpenSSL 3) |
 | `npm run typecheck`, `npm run lint`, `npm run build` | type check, lint, production build |
 
 Do not hammer the live site while testing: a few hundred requests from one address in a short time make Vercel's DDoS protection challenge that address for a while ([DEPLOYMENT.md](DEPLOYMENT.md), "TLS check").

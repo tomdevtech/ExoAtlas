@@ -1,7 +1,7 @@
 /**
  * Takes the screenshots for the user guide in docs/wiki/images.
  *
- * Runs a headless Chromium against a running ExoAtlas (by default the dev
+ * Runs a headless Chromium against a running ExoFinder (by default the dev
  * server on http://localhost:3000) and walks through the same steps the guide
  * describes. Run it again after a change to the interface:
  *

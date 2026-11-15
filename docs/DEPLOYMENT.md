@@ -1,6 +1,6 @@
 # Deployment
 
-ExoAtlas runs on Vercel with a hosted PostgreSQL database. This page describes how a change gets online, what has to be set up once, and what to keep in mind.
+ExoFinder runs on Vercel with a hosted PostgreSQL database. This page describes how a change gets online, what has to be set up once, and what to keep in mind.
 
 ## How a change gets online
 
@@ -146,7 +146,7 @@ Without this step the site works, but nothing notices when a deployment is broke
 1. **Deployment Protection.** In Vercel, *Settings → Deployment Protection*: if it is on (by default it protects every address except the production domain), create a secret under *Protection Bypass for Automation*. Store it in GitHub (*Settings → Secrets and variables → Actions → Secrets*) as `VERCEL_AUTOMATION_BYPASS_SECRET`.
 2. **Token for the rollback.** In Vercel, *Account Settings → Tokens*: create a token with access to the team of the project. Store it in GitHub as the secret `VERCEL_TOKEN`.
 3. **Project and team.** In GitHub, under *Variables* (not *Secrets*), set `VERCEL_PROJECT_ID` (Vercel: project *Settings → General → Project ID*) and `VERCEL_ORG_ID` (the team ID under *Team Settings → General*, or for a personal account the user ID under *Account Settings*). `npx vercel link` also writes both into `.vercel/project.json`.
-4. **Live address.** In GitHub, set the variable `PRODUCTION_URL` to the address of the site, for example `https://exoatlas.example.org`.
+4. **Live address.** In GitHub, set the variable `PRODUCTION_URL` to the address of the site, for example `https://exofinder.example.org`.
 5. **Uptime service (recommended).** Let a monitoring service such as UptimeRobot or Better Stack ask `https://<your domain>/legal/notice` every few minutes and e-mail you when it does not answer 200. Not `/health`: that asks the database, and a check every few minutes would keep a Neon database from ever going to sleep. On the free plan that alone would use more compute time than included (about 180 of 100 CU-hours a month at 0.25 CU). The legal notice is a prebuilt page without the database, so it shows whether the site is up; the hourly check of `/health` in GitHub Actions covers the database.
 
 Without the secrets the checks still run; the rollback then fails with a message that names the missing value, and the run turns red.
@@ -193,7 +193,7 @@ It only relies on the solar system, which every filled database has. Failed test
 By hand, against any address:
 
 ```bash
-SMOKE_BASE_URL=https://exoatlas-abc123.vercel.app npm run test:smoke
+SMOKE_BASE_URL=https://exofinder-abc123.vercel.app npm run test:smoke
 ```
 
 Or in GitHub: *Actions → Deployment check → Run workflow* with the address. A check started by hand never rolls back.
@@ -256,14 +256,14 @@ GitHub switches off scheduled workflows of a public repository after 60 days wit
 
 ## Read-only database role
 
-The website never writes to the database; only the sync and the seed do. `npm run db:readonly-role` ([create-readonly-role.ts](../scripts/create-readonly-role.ts), statements in [readonly.ts](../src/db/readonly.ts)) creates the role `exoatlas_web`:
+The website never writes to the database; only the sync and the seed do. `npm run db:readonly-role` ([create-readonly-role.ts](../scripts/create-readonly-role.ts), statements in [readonly.ts](../src/db/readonly.ts)) creates the role `exofinder_web`:
 
 - it may read every table, also those of later migrations, and nothing else: no writing, no deleting, no new tables,
 - every transaction is read-only, and a query is cancelled after 5 seconds, so one expensive query cannot tie up the database.
 
 ```mermaid
 flowchart LR
-    Site[Website<br>Vercel Functions]:::app -->|DATABASE_URL_READONLY| RO[role exoatlas_web<br>SELECT only, read-only,<br>5 s per query]:::ro
+    Site[Website<br>Vercel Functions]:::app -->|DATABASE_URL_READONLY| RO[role exofinder_web<br>SELECT only, read-only,<br>5 s per query]:::ro
     Build[Production build]:::job -->|DATABASE_URL_UNPOOLED| Owner[owner role<br>may change everything]:::owner
     Jobs[Sync, seed, backup<br>GitHub Actions]:::job -->|PRODUCTION_DATABASE_URL| Owner
     RO --> DB[(Neon database)]
@@ -312,7 +312,7 @@ Then *Review Changes → Publish*. Someone who types fast sends a few suggestion
 
 ```mermaid
 flowchart LR
-    DB[(Neon database)]:::db -->|pg_dump, Sundays| Dump[exoatlas.dump]:::file --> Art[Artifact of the run<br>kept 90 days]:::file
+    DB[(Neon database)]:::db -->|pg_dump, Sundays| Dump[exofinder.dump]:::file --> Art[Artifact of the run<br>kept 90 days]:::file
     Art -.->|restore by hand| Empty[(empty database)]:::db -.-> Role[npm run db:readonly-role<br>again]:::step
 
     classDef db fill:#fef3c7,stroke:#d97706,color:#78350f
@@ -324,14 +324,14 @@ To restore: download the artifact from *Actions → Database backup → a run*, 
 
 ```bash
 docker run --rm -v "$PWD:/backup" -e TARGET="<direct owner address>" postgres:18 \
-  sh -c 'pg_restore --dbname="$TARGET" --clean --if-exists --no-owner --no-privileges /backup/exoatlas.dump'
+  sh -c 'pg_restore --dbname="$TARGET" --clean --if-exists --no-owner --no-privileges /backup/exofinder.dump'
 ```
 
 Then run `npm run db:readonly-role` again, so that the read-only role can read the restored tables.
 
 ## Domain
 
-The site lives at `https://www.exoatlas.space`. The domain is registered at Namecheap, whose DNS points it at Vercel: an `A` record for `@` and a `CNAME` for `www`, with the values that Vercel shows under *Settings → Domains*. Vercel redirects `exoatlas.space` to `www.exoatlas.space` and issues the certificates itself.
+The site lives at `https://www.exofinder.space`. The domain is registered at Namecheap, whose DNS points it at Vercel: an `A` record for `@` and a `CNAME` for `www`, with the values that Vercel shows under *Settings → Domains*. Vercel redirects `exofinder.space` to `www.exofinder.space` and issues the certificates itself.
 
 ```mermaid
 flowchart LR
@@ -339,8 +339,8 @@ flowchart LR
         RA["A @ to Vercel"]
         RW["CNAME www to Vercel"]
     end
-    A1["http://exoatlas.space"] -->|308| A2["https://exoatlas.space"] -->|308| W["https://www.exoatlas.space"]:::target
-    B1["http://www.exoatlas.space"] -->|308| W
+    A1["http://exofinder.space"] -->|308| A2["https://exofinder.space"] -->|308| W["https://www.exofinder.space"]:::target
+    B1["http://www.exofinder.space"] -->|308| W
     RA -.-> A1
     RW -.-> B1
 
@@ -365,7 +365,7 @@ HSTS is sent without `preload`. The preload list can hardly be left again and wo
 - TLS 1.2 and 1.3 are accepted, TLS 1.0 and 1.1 refused,
 - the certificates of both names are trusted, issued for the right name and valid for at least 21 more days.
 
-A failed run turns red and GitHub sends an e-mail, so an expiring certificate is noticed three weeks ahead. The TLS setup comes from Vercel, not from the code, so a push does not change it; the headers of each deployment are also checked by the smoke test. By hand: `bash scripts/check-tls.sh www.exoatlas.space` (needs curl and OpenSSL 3), or *Actions → TLS check → Run workflow*. A test with [SSL Labs](https://www.ssllabs.com/ssltest/) now and then, after changes to the domain, gives a second opinion; it rated the site A+ in November 2026.
+A failed run turns red and GitHub sends an e-mail, so an expiring certificate is noticed three weeks ahead. The TLS setup comes from Vercel, not from the code, so a push does not change it; the headers of each deployment are also checked by the smoke test. By hand: `bash scripts/check-tls.sh www.exofinder.space` (needs curl and OpenSSL 3), or *Actions → TLS check → Run workflow*. A test with [SSL Labs](https://www.ssllabs.com/ssltest/) now and then, after changes to the domain, gives a second opinion; it rated the site A+ in November 2026.
 
 **Do not hammer the site while testing.** A few hundred requests in a short time from one address, or a scan that opens many connections, make Vercel's automatic DDoS protection challenge that address for a while: requests then get `403` with `x-vercel-mitigated: challenge`. The check script says so instead of reporting missing headers. The challenge page sets a cookie of Vercel's; it only reaches traffic that Vercel takes for an attack.
 

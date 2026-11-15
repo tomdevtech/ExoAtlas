@@ -4,8 +4,8 @@ import { expect, test } from "@tests/e2e/fixtures";
 test.describe("start page", () => {
   test("shows the intro, featured planets and the catalogue in numbers", async ({ page }) => {
     await page.goto("/");
-    await expect(page).toHaveTitle("ExoAtlas");
-    await expect(page.getByRole("heading", { level: 1, name: "ExoAtlas" })).toBeVisible();
+    await expect(page).toHaveTitle("ExoFinder");
+    await expect(page.getByRole("heading", { level: 1, name: "ExoFinder" })).toBeVisible();
 
     const featured = page.locator("section", { has: page.getByRole("heading", { name: "Places to start" }) });
     for (const name of ["Proxima Cen b", "TRAPPIST-1 e", "Kepler-22 b", "Earth", "Jupiter"]) {
@@ -38,7 +38,7 @@ test.describe("header and footer", () => {
     await expect(page).toHaveURL(/\/stars\/sun$/);
     await expect(page.getByRole("heading", { level: 1, name: "Sun" })).toBeVisible();
 
-    await page.getByRole("banner").getByRole("link", { name: "ExoAtlas" }).click();
+    await page.getByRole("banner").getByRole("link", { name: "ExoFinder" }).click();
     await expect(page).toHaveURL(/\/$/);
 
     // Last, because the map keeps the software renderer of the test browser busy.

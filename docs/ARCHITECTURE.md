@@ -1,6 +1,6 @@
 # Architecture
 
-How ExoAtlas is built, how data moves through it and how the parts work together.
+How ExoFinder is built, how data moves through it and how the parts work together.
 
 | Document | Covers |
 | --- | --- |
@@ -12,7 +12,7 @@ How ExoAtlas is built, how data moves through it and how the parts work together
 
 ## The system in one picture
 
-ExoAtlas has three parts: a Postgres database, a sync script and a Next.js app.
+ExoFinder has three parts: a Postgres database, a sync script and a Next.js app.
 
 ```mermaid
 flowchart LR
@@ -68,11 +68,11 @@ flowchart LR
         Actions[GitHub Actions]
     end
     Uptime[UptimeRobot]
-    DNS[Namecheap DNS<br>www.exoatlas.space]
+    DNS[Namecheap DNS<br>www.exofinder.space]
 
     Browser -.->|looks up| DNS
     Browser -->|HTTPS| FW --> Edge --> Fn
-    Fn -->|role exoatlas_web, read only| Pooler --> PG
+    Fn -->|role exofinder_web, read only| Pooler --> PG
     Repo -->|merge to main| Build
     Build -->|owner, direct: migrations| PG
     NASA -->|catalogue| Actions
@@ -81,7 +81,7 @@ flowchart LR
     Uptime -->|every 5 minutes: /legal/notice| FW
 ```
 
-- **Namecheap** holds the domain `exoatlas.space` and its DNS, which points at Vercel. Vercel redirects the domain without `www` to `https://www.exoatlas.space`.
+- **Namecheap** holds the domain `exofinder.space` and its DNS, which points at Vercel. Vercel redirects the domain without `www` to `https://www.exofinder.space`.
 - **Vercel** serves the site. The firewall in front stops floods and limits search requests per IP. The edge network delivers what does not change between requests: the prebuilt page frames, images, scripts and the legal pages. Everything that needs the database runs in a function in Frankfurt, next to the database.
 - **Neon** holds the database in Frankfurt. The site reaches it through Neon's pooler, because Vercel starts many functions at once. The database goes to sleep after a few minutes without queries and wakes on the next one.
 - **GitHub** holds the code and runs everything that is not a page view: the checks of every change, the daily sync with NASA, the weekly backup, the smoke test after each deployment, the hourly health check and the monthly TLS check.
@@ -94,7 +94,7 @@ Each part gets only the access it needs.
 ```mermaid
 flowchart LR
     Visitors([Visitors, UptimeRobot,<br>health and TLS check]):::who -->|HTTPS only| Site[Website<br>Vercel Functions]:::app
-    Site -->|role exoatlas_web| Read[read the catalogue]:::ro
+    Site -->|role exofinder_web| Read[read the catalogue]:::ro
     Build[Production build]:::job -->|owner| Schema[change the tables]:::rw
     Jobs[Sync, seed, backup<br>GitHub Actions]:::job -->|owner| Data[write and read all data]:::rw
     Deploy[Smoke test, rollback<br>GitHub Actions]:::job -->|Vercel token| Live[choose the live deployment]:::rw
@@ -108,7 +108,7 @@ flowchart LR
 
 | Who | Connects with | May |
 | --- | --- | --- |
-| The website (Vercel Functions) | `DATABASE_URL_READONLY`: role `exoatlas_web`, through the pooler | read, every query cancelled after 5 seconds |
+| The website (Vercel Functions) | `DATABASE_URL_READONLY`: role `exofinder_web`, through the pooler | read, every query cancelled after 5 seconds |
 | The production build | `DATABASE_URL_UNPOOLED`: the owner, direct | change the tables (migrations) |
 | Sync, seed and backup (GitHub Actions) | secret `PRODUCTION_DATABASE_URL`: the owner, direct | write and read all data |
 | Smoke test and rollback (GitHub Actions) | `VERCEL_TOKEN`, `VERCEL_AUTOMATION_BYPASS_SECRET` | open protected deployments, choose which deployment is live |
@@ -620,7 +620,7 @@ Two limits come from streaming. The server has already sent the status 200 and t
 | `npm run lint` | ESLint |
 | `npm run build` | The production build |
 
-The database and browser tests use their own databases (`exoatlas_test`, `exoatlas_e2e`) and never the one of `DATABASE_URL`. GitHub Actions runs all of it on every pull request and push, with CodeQL and `npm audit` next to it; the live site is watched by the smoke test after each deployment, the hourly health check, the monthly TLS check and an uptime monitor.
+The database and browser tests use their own databases (`exofinder_test`, `exofinder_e2e`) and never the one of `DATABASE_URL`. GitHub Actions runs all of it on every pull request and push, with CodeQL and `npm audit` next to it; the live site is watched by the smoke test after each deployment, the hourly health check, the monthly TLS check and an uptime monitor.
 
 ## Security
 
@@ -628,7 +628,7 @@ The database and browser tests use their own databases (`exoatlas_test`, `exoatl
 
 - **Security headers** on every answer ([security-headers.ts](../src/shared/security-headers.ts)): a Content Security Policy that only allows the site itself and forbids framing, HSTS, and the usual protective headers. Scripts need `'unsafe-inline'` for the inline data of Next.js.
 - **Checked input.** Queries use bound parameters. Slugs are checked with `isSlug` ([slug.ts](../src/shared/slug.ts)) before they reach the database, the search reduces a query to letters and digits, and [proxy.ts](../src/proxy.ts) answers broken percent-encoding with 400.
-- **Read-only database access.** Inside the Next.js server [client.ts](../src/db/client.ts) connects with `DATABASE_URL_READONLY` when that is set: the role `exoatlas_web` ([readonly.ts](../src/db/readonly.ts)) may only `SELECT`, runs every transaction read-only and cancels a query after 5 seconds. Scripts and tests run outside Next.js and write with `DATABASE_URL`.
+- **Read-only database access.** Inside the Next.js server [client.ts](../src/db/client.ts) connects with `DATABASE_URL_READONLY` when that is set: the role `exofinder_web` ([readonly.ts](../src/db/readonly.ts)) may only `SELECT`, runs every transaction read-only and cancels a query after 5 seconds. Scripts and tests run outside Next.js and write with `DATABASE_URL`.
 
 ## Not built yet
 

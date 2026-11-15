@@ -30,7 +30,7 @@ export default function LegalNoticePage() {
 
       <LegalSection title="About this website">
         <p>
-          ExoAtlas is a private project without advertising and without commercial purpose. Its
+          ExoFinder is a private project without advertising and without commercial purpose. Its
           source code is public under the MIT licence.
         </p>
       </LegalSection>

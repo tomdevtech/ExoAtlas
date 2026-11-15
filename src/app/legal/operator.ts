@@ -1,5 +1,5 @@
 /**
- * Who runs this copy of ExoAtlas.
+ * Who runs this copy of ExoFinder.
  *
  * The legal notice and the privacy policy must name a person with a postal
  * address. The code is public, so these details are not part of it: whoever

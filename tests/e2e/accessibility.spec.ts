@@ -52,7 +52,7 @@ test.describe("accessibility", () => {
     await page.goto("/planets");
     // The first Tab lands on the logo link in the header.
     await page.keyboard.press("Tab");
-    await expect(page.getByRole("banner").getByRole("link", { name: "ExoAtlas" })).toBeFocused();
+    await expect(page.getByRole("banner").getByRole("link", { name: "ExoFinder" })).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(page.getByRole("banner").getByRole("combobox")).toBeFocused();
   });
