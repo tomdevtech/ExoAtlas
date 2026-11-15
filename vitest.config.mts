@@ -1,31 +1,35 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
-// The same "@/…" alias as in tsconfig.json.
-const resolve = { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } };
+// The same aliases as in tsconfig.json: "@/…" is the app in src/, "@tests/…" the tests.
+const resolve = {
+  alias: {
+    "@tests": fileURLToPath(new URL("./tests", import.meta.url)),
+    "@": fileURLToPath(new URL("./src", import.meta.url)),
+  },
+};
 
 export default defineConfig({
   test: {
     projects: [
       {
-        // Tests sit next to the code they test. They need neither a database
-        // nor a browser: `npm test`.
+        // tests/unit mirrors src/. These tests need neither a database nor a
+        // browser: `npm test`.
         resolve,
         test: {
           name: "unit",
-          include: ["src/**/*.test.ts"],
-          exclude: ["src/**/*.db.test.ts"],
+          include: ["tests/unit/**/*.test.ts"],
         },
       },
       {
         // Tests against a real PostgreSQL with the small test catalogue from
-        // src/test/catalog.ts: `npm run test:db`. See src/test/db.ts.
+        // tests/support/catalog.ts: `npm run test:db`. See tests/support/db.ts.
         resolve,
         test: {
           name: "db",
-          include: ["src/**/*.db.test.ts"],
-          globalSetup: ["src/test/db-global-setup.ts"],
-          setupFiles: ["src/test/db-setup.ts"],
+          include: ["tests/db/**/*.db.test.ts"],
+          globalSetup: ["tests/support/db-global-setup.ts"],
+          setupFiles: ["tests/support/db-setup.ts"],
           // All files share one database, and the sync test changes it.
           fileParallelism: false,
           testTimeout: 30_000,

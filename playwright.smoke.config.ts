@@ -17,7 +17,7 @@ const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
 const CI = !!process.env.CI;
 
 export default defineConfig({
-  testDir: "smoke",
+  testDir: "tests/smoke",
   // A short network hiccup must not roll back a good deployment.
   retries: 2,
   workers: 2,

@@ -32,6 +32,21 @@ flowchart LR
     style Live fill:#d1fae5,stroke:#059669,color:#064e3b
 ```
 
+## Where the tests live
+
+Every test is in `tests/`; `src/` holds only the app. Unit and database tests sit at the same path as the code they test, so `src/app/planets/classify.ts` is tested in `tests/unit/app/planets/classify.test.ts`.
+
+```
+tests/
+├── unit/      unit tests, mirroring src/                 npm test
+├── db/        tests against a real PostgreSQL            npm run test:db
+├── e2e/       browser tests in Chromium                  npm run test:e2e
+├── smoke/     the check of a running deployment          npm run test:smoke
+└── support/   test catalogue, test databases, sample NASA rows
+```
+
+Test code imports the app as `@/…` and the helpers as `@tests/…`, for example `@tests/support/catalog`.
+
 ## At a glance
 
 | Layer | Tool | Runs | Catches |
@@ -90,19 +105,19 @@ timeline
 
 ### Unit tests
 
-`npm test` ([vitest.config.mts](../vitest.config.mts), project `unit`) runs every `*.test.ts` next to the code it tests. They need neither a database nor a browser and take about a second.
+`npm test` ([vitest.config.mts](../vitest.config.mts), project `unit`) runs every `*.test.ts` in `tests/unit/`, which mirrors `src/`. They need neither a database nor a browser and take about a second.
 
 They cover the logic: classification, appearance, coordinates, slugs, formatting, the pages of the planet list, the details of the operator, reading the NASA response, planning the sync, the description of a globe and its shader values, the noise of the planet shaders, the model of the galaxy, the orbits, the answers of the map. And the parts that matter for security and operations: the security headers, the proxy, what the JSON endpoints answer when the database fails (no details may leak), the health report, which address the database connection uses, the statements of the read-only role and the choice of the deployment to roll back to.
 
 ### Database tests
 
-`npm run test:db` (project `db`) runs every `*.db.test.ts` against a real PostgreSQL: the search and its ranking, the planet list with filter, order and pages, planets, stars, the map, the figures of the start page, the three JSON endpoints, and whole sync runs (unchanged, changed values, new planets, renames, an implausible or broken answer from NASA).
+`npm run test:db` (project `db`) runs every `*.db.test.ts` in `tests/db/` against a real PostgreSQL: the search and its ranking, the planet list with filter, order and pages, planets, stars, the map, the figures of the start page, the three JSON endpoints, and whole sync runs (unchanged, changed values, new planets, renames, an implausible or broken answer from NASA).
 
 Every query also gets hostile input: SQL fragments, wildcards, null bytes and 100,000 characters.
 
 ### Browser tests
 
-`npm run test:e2e` ([playwright.config.ts](../playwright.config.ts), [e2e/](../e2e)) builds the app, starts it against its own database and clicks through it in Chromium, once on a desktop screen and once on a phone screen (Pixel 7).
+`npm run test:e2e` ([playwright.config.ts](../playwright.config.ts), [tests/e2e/](../tests/e2e)) builds the app, starts it against its own database and clicks through it in Chromium, once on a desktop screen and once on a phone screen (Pixel 7).
 
 | File | Checks |
 | --- | --- |
@@ -117,7 +132,7 @@ The browser tests fail on every error in the browser console, so a hydration err
 
 ### Smoke test
 
-`npm run test:smoke` ([smoke/](../smoke)) checks a running deployment in about a minute: `/health` answers and runs the expected commit, the main pages answer 200 with their security headers, the JSON endpoints return data, and a short walk in the browser has no console errors. It relies only on the solar system, which every filled database has.
+`npm run test:smoke` ([tests/smoke/](../tests/smoke)) checks a running deployment in about a minute: `/health` answers and runs the expected commit, the main pages answer 200 with their security headers, the JSON endpoints return data, and a short walk in the browser has no console errors. It relies only on the solar system, which every filled database has.
 
 [deploy-check.yml](../.github/workflows/deploy-check.yml) runs it after every Vercel deployment, previews and production. When production fails it, the workflow puts the previous deployment back live ([DEPLOYMENT.md](DEPLOYMENT.md), "Automatic rollback").
 
@@ -135,7 +150,7 @@ The browser tests fail on every error in the browser console, so a hydration err
 
 ## Test data
 
-The database and browser tests never touch the database of `DATABASE_URL`. They create their own, `exoatlas_test` and `exoatlas_e2e`, empty them and fill them with a small test catalogue ([src/test/catalog.ts](../src/test/catalog.ts)): TRAPPIST-1, Proxima Cen b, a few Kepler planets, the solar system, a star without a distance and a planet that NASA withdraws. [src/test/db.ts](../src/test/db.ts) refuses any database whose name does not end in `_test` or `_e2e`. `TEST_DATABASE_URL` and `E2E_DATABASE_URL` point them elsewhere.
+The database and browser tests never touch the database of `DATABASE_URL`. They create their own, `exoatlas_test` and `exoatlas_e2e`, empty them and fill them with a small test catalogue ([tests/support/catalog.ts](../tests/support/catalog.ts)): TRAPPIST-1, Proxima Cen b, a few Kepler planets, the solar system, a star without a distance and a planet that NASA withdraws. [tests/support/db.ts](../tests/support/db.ts) refuses any database whose name does not end in `_test` or `_e2e`. `TEST_DATABASE_URL` and `E2E_DATABASE_URL` point them elsewhere.
 
 ## Running them locally
 
@@ -162,7 +177,7 @@ Do not hammer the live site while testing: a few hundred requests from one addre
 
 ## For new code
 
-- Logic without database or browser gets unit tests next to it.
+- Logic without database or browser gets unit tests in `tests/unit/`, at the same path as the code.
 - A new query gets a database test, including hostile input.
 - A new page or flow gets a browser test; a new page also joins the list of `accessibility.spec.ts` and of the security header checks.
-- A new address that the smoke test should cover joins [smoke/deployment.spec.ts](../smoke/deployment.spec.ts).
+- A new address that the smoke test should cover joins [tests/smoke/deployment.spec.ts](../tests/smoke/deployment.spec.ts).

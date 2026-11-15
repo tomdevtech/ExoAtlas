@@ -156,7 +156,7 @@ sequenceDiagram
 
 ## Code layout
 
-Every feature lives in its own folder inside `src/app/`. A feature folder holds everything that belongs to the feature: its pages, its components, its database queries, its logic and its tests.
+Every feature lives in its own folder inside `src/app/`. A feature folder holds everything that belongs to the feature: its pages, its components, its database queries and its logic. Its tests live in `tests/`, at the same path: the tests of `src/app/planets/classify.ts` are in `tests/unit/app/planets/classify.test.ts`.
 
 ```
 .github/
@@ -177,8 +177,12 @@ docs/
   wiki/                   the user guide as GitHub Wiki pages, with its screenshots in images/
 drizzle/                  SQL migrations: one generated from the schema, two written by hand
 public/textures/          surface maps of the solar system, panorama of the sky
-e2e/                      browser tests (Playwright): flows, security, accessibility
-smoke/                    the smoke test that runs against every deployment
+tests/
+  unit/                   unit tests, at the same paths as the code in src/
+  db/                     tests against a real PostgreSQL
+  e2e/                    browser tests (Playwright): flows, security, accessibility
+  smoke/                  the smoke test that runs against every deployment
+  support/                test catalogue, test databases, sample rows from NASA
 vercel.json               build command for Vercel
 src/
   proxy.ts                answers broken percent-encoding with 400
@@ -188,7 +192,6 @@ src/
     readonly.ts           the statements that create the read-only role
   deploy/
     rollback.ts           picks the deployment to roll back to
-  test/                   test database and the small test catalogue
   shared/
     slug.ts               names to URL slugs and search keys
     format.ts             numbers, dates and unit conversions
@@ -222,7 +225,8 @@ Next.js only turns files named `page.tsx` and `route.ts` into addresses. Every o
 | `queries.ts`, `query.ts`, `stats.ts` | Reads from the database |
 | `*.tsx` with a capital letter | A component |
 | other `*.ts` | Logic without database or UI, for example `classify.ts` |
-| `*.test.ts` | Tests, next to the code they test |
+
+`src/` holds only the app. Every test lives in `tests/` ([TESTING.md](TESTING.md)).
 
 ### Who may import whom
 
@@ -609,9 +613,9 @@ Two limits come from streaming. The server has already sent the status 200 and t
 | --- | --- |
 | `npm test` | Unit tests for the logic without database: classification, appearance, coordinates, slugs, formatting, the pages of the planet list, the details of the operator, reading the NASA response, planning the sync, the description of a globe and its shader values, the noise of the planet shaders, the model of the galaxy, the orbits, the answers of the map. Also the security headers, the proxy, and what the JSON endpoints answer when the database fails (no details may leak) |
 | `npm run test:db` | Tests against a real PostgreSQL (`*.db.test.ts`): the search and its ranking, the planet list with filter, order and pages, planets, stars, the map, the figures of the start page, the three JSON endpoints, and whole sync runs (unchanged, changed values, new planets, renames, an implausible or broken answer from NASA). Every query also gets hostile input: SQL fragments, wildcards, null bytes, 100,000 characters |
-| `npm run test:e2e` | Browser tests with Playwright ([e2e/](../e2e)): builds the app and clicks through it in Chromium, on a desktop and a phone screen. Start page, header and footer, search with suggestions and keyboard, planet list, planet and star pages with the 3D model, the map, not-found pages, former names. Security: the headers on every kind of answer, hostile input over HTTP, script injection through the address, framing by another site, no CSP violation. Accessibility: axe-core checks every page against WCAG 2.1 A and AA |
+| `npm run test:e2e` | Browser tests with Playwright ([tests/e2e/](../tests/e2e)): builds the app and clicks through it in Chromium, on a desktop and a phone screen. Start page, header and footer, search with suggestions and keyboard, planet list, planet and star pages with the 3D model, the map, not-found pages, former names. Security: the headers on every kind of answer, hostile input over HTTP, script injection through the address, framing by another site, no CSP violation. Accessibility: axe-core checks every page against WCAG 2.1 A and AA |
 | `npm run test:all` | All three |
-| `npm run test:smoke` | The smoke test ([smoke/](../smoke)) against a running deployment: `/health`, the main pages with their security headers, the JSON endpoints, a short walk in the browser. Runs after every Vercel deployment and rolls production back when it fails ([DEPLOYMENT.md](DEPLOYMENT.md)); `test:e2e` runs it against the local build |
+| `npm run test:smoke` | The smoke test ([tests/smoke/](../tests/smoke)) against a running deployment: `/health`, the main pages with their security headers, the JSON endpoints, a short walk in the browser. Runs after every Vercel deployment and rolls production back when it fails ([DEPLOYMENT.md](DEPLOYMENT.md)); `test:e2e` runs it against the local build |
 | `npm run typecheck` | Route types and TypeScript |
 | `npm run lint` | ESLint |
 | `npm run build` | The production build |

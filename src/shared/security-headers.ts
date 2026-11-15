@@ -1,6 +1,6 @@
 /**
  * HTTP headers that every answer carries. next.config.ts sets them, the tests
- * in security-headers.test.ts and e2e/security.spec.ts check them.
+ * in tests/unit/shared/security-headers.test.ts and tests/e2e/security.spec.ts check them.
  *
  * The Content Security Policy only lets the browser load scripts, styles,
  * images, fonts and data from this site, and forbids other sites to show

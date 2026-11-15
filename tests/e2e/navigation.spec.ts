@@ -1,0 +1,95 @@
+import { ACTIVE_EXOPLANETS } from "@tests/support/catalog";
+import { expect, test } from "@tests/e2e/fixtures";
+
+test.describe("start page", () => {
+  test("shows the intro, featured planets and the catalogue in numbers", async ({ page }) => {
+    await page.goto("/");
+    await expect(page).toHaveTitle("ExoAtlas");
+    await expect(page.getByRole("heading", { level: 1, name: "ExoAtlas" })).toBeVisible();
+
+    const featured = page.locator("section", { has: page.getByRole("heading", { name: "Places to start" }) });
+    for (const name of ["Proxima Cen b", "TRAPPIST-1 e", "Kepler-22 b", "Earth", "Jupiter"]) {
+      await expect(featured.getByRole("link", { name: new RegExp(name) }).first()).toBeVisible();
+    }
+
+    const stats = page.getByRole("region", { name: "The catalogue in numbers" });
+    await expect(stats).toContainText(String(ACTIVE_EXOPLANETS));
+    await expect(stats).toContainText("On top come the 8 planets of our solar system.");
+  });
+
+  test("leads from a featured planet to its page", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("link", { name: /TRAPPIST-1 e/ }).first().click();
+    await expect(page).toHaveURL(/\/planets\/trappist-1-e$/);
+    await expect(page.getByRole("heading", { level: 1, name: "TRAPPIST-1 e" })).toBeVisible();
+  });
+});
+
+test.describe("header and footer", () => {
+  test("the header links lead to the planet list, the map and the solar system", async ({ page }) => {
+    await page.goto("/search");
+    const nav = page.getByRole("banner").getByRole("navigation");
+
+    await nav.getByRole("link", { name: "Planets" }).click();
+    await expect(page).toHaveURL(/\/planets$/);
+    await expect(page.getByRole("heading", { level: 1, name: "All planets" })).toBeVisible();
+
+    await nav.getByRole("link", { name: "Solar system" }).click();
+    await expect(page).toHaveURL(/\/stars\/sun$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Sun" })).toBeVisible();
+
+    await page.getByRole("banner").getByRole("link", { name: "ExoAtlas" }).click();
+    await expect(page).toHaveURL(/\/$/);
+
+    // Last, because the map keeps the software renderer of the test browser busy.
+    await nav.getByRole("link", { name: "Map" }).click();
+    await expect(page).toHaveURL(/\/map$/);
+    await expect(page.getByRole("heading", { name: "Map of the Milky Way" })).toBeAttached();
+  });
+
+  test("the footer links to the legal notice and the privacy policy", async ({ page }) => {
+    await page.goto("/planets");
+    const footer = page.getByRole("contentinfo");
+
+    await footer.getByRole("link", { name: /legal notice|impressum/i }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "Legal notice" })).toBeVisible();
+
+    await page.getByRole("contentinfo").getByRole("link", { name: /privacy/i }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "Privacy policy" })).toBeVisible();
+  });
+});
+
+test.describe("missing pages", () => {
+  // The browser logs the 404 answer itself as an error. Planet and star pages
+  // call notFound() inside a streamed <Suspense>; React then reports error
+  // #419 ("switched to client rendering") before it shows the 404 page. That
+  // is how Next.js handles it, the visitor sees the right page.
+  test.use({ allowedErrors: /status of 404|Minified React error #419/ });
+
+  for (const path of ["/does-not-exist", "/planets/no-such-planet", "/stars/no-such-star"]) {
+    test(`${path} answers 404 with a helpful page`, async ({ page }) => {
+      const response = await page.goto(path);
+      // Planet and star pages stream: their status is sent before the database
+      // is asked, so only unknown addresses can answer 404 in the status line.
+      if (path === "/does-not-exist") expect(response?.status()).toBe(404);
+      await expect(page.getByRole("heading", { level: 1, name: "Nothing here" })).toBeVisible();
+      await page.getByRole("link", { name: "Back to the start page" }).click();
+      await expect(page).toHaveURL(/\/$/);
+    });
+  }
+});
+
+test.describe("former names", () => {
+  test("an old planet address leads to the current page", async ({ page }) => {
+    await page.goto("/planets/koi-87-01");
+    await expect(page).toHaveURL(/\/planets\/kepler-22-b$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Kepler-22 b" })).toBeVisible();
+    await expect(page.getByText("Formerly listed as KOI-87.01.")).toBeVisible();
+  });
+
+  test("an old star address leads to the current page", async ({ page }) => {
+    await page.goto("/stars/2mass-j23062928-0502285");
+    await expect(page).toHaveURL(/\/stars\/trappist-1$/);
+    await expect(page.getByRole("heading", { level: 1, name: "TRAPPIST-1" })).toBeVisible();
+  });
+});

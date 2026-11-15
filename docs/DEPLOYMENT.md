@@ -181,7 +181,7 @@ On Vercel there is no server process that could hang and would need a restart: e
 
 ## Smoke test after each deployment
 
-When Vercel has finished a deployment, it reports it to GitHub as a `repository_dispatch` event (`vercel.deployment.success`, with the address, the environment and the commit). [deploy-check.yml](../.github/workflows/deploy-check.yml) then runs `npm run test:smoke` ([smoke/](../smoke)) against the deployment's own address, for previews and production alike. In about a minute it checks:
+When Vercel has finished a deployment, it reports it to GitHub as a `repository_dispatch` event (`vercel.deployment.success`, with the address, the environment and the commit). [deploy-check.yml](../.github/workflows/deploy-check.yml) then runs `npm run test:smoke` ([tests/smoke/](../tests/smoke)) against the deployment's own address, for previews and production alike. In about a minute it checks:
 
 - `/health` answers 200 and the deployment runs the commit it was started for,
 - the start page, the planet list, a planet and a star page, the search, the map and the legal pages answer 200 with the security headers,
