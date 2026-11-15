@@ -12,6 +12,11 @@ describe("readonlyRoleStatements", () => {
     expect(statements).not.toMatch(/GRANT (INSERT|UPDATE|DELETE|ALL)/);
   });
 
+  it("names no attribute that only a superuser may set", () => {
+    // Neon's owner role is no superuser; naming these fails there.
+    expect(statements).not.toMatch(/SUPERUSER|CREATEDB|CREATEROLE/);
+  });
+
   it("limits how long a query may run", () => {
     expect(statements).toContain("statement_timeout = '5s'");
   });

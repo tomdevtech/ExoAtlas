@@ -30,7 +30,10 @@ export function readonlyRoleStatements(database: string, password: string): stri
         CREATE ROLE ${role} LOGIN;
       END IF;
     END $$`,
-    `ALTER ROLE ${role} WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD '${password}'`,
+    // No NOSUPERUSER, NOCREATEDB or NOCREATEROLE: a new role has none of these
+    // anyway, and on hosted databases such as Neon the owner is no superuser
+    // and may not name them ("permission denied to alter role").
+    `ALTER ROLE ${role} WITH LOGIN PASSWORD '${password}'`,
     `ALTER ROLE ${role} SET default_transaction_read_only = on`,
     `ALTER ROLE ${role} SET statement_timeout = '${STATEMENT_TIMEOUT}'`,
     `ALTER ROLE ${role} SET idle_in_transaction_session_timeout = '10s'`,

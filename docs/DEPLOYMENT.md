@@ -87,7 +87,7 @@ Without this step the site works, but nothing notices when a deployment is broke
 2. **Token for the rollback.** In Vercel, *Account Settings → Tokens*: create a token with access to the team of the project. Store it in GitHub as the secret `VERCEL_TOKEN`.
 3. **Project and team.** In GitHub, under *Variables* (not *Secrets*), set `VERCEL_PROJECT_ID` (Vercel: project *Settings → General → Project ID*) and `VERCEL_ORG_ID` (the team ID under *Team Settings → General*, or for a personal account the user ID under *Account Settings*). `npx vercel link` also writes both into `.vercel/project.json`.
 4. **Live address.** In GitHub, set the variable `PRODUCTION_URL` to the address of the site, for example `https://exoatlas.example.org`.
-5. **Uptime service (recommended).** Let a monitoring service such as UptimeRobot or Better Stack ask `https://<your domain>/health` every few minutes and e-mail you when it does not answer 200.
+5. **Uptime service (recommended).** Let a monitoring service such as UptimeRobot or Better Stack ask `https://<your domain>/legal/notice` every few minutes and e-mail you when it does not answer 200. Not `/health`: that asks the database, and a check every few minutes would keep a Neon database from ever going to sleep. On the free plan that alone would use more compute time than included (about 180 of 100 CU-hours a month at 0.25 CU). The legal notice is a prebuilt page without the database, so it shows whether the site is up; the hourly check of `/health` in GitHub Actions covers the database.
 
 Without the secrets the checks still run; the rollback then fails with a message that names the missing value, and the run turns red.
 
@@ -115,7 +115,9 @@ The site has no logins, forms, cookies or uploads, so most of a usual security c
 On Vercel there is no server process that could hang and would need a restart: every request runs in a function that Vercel starts and replaces by itself. The health check therefore serves to *notice* problems, mostly a database that is down or a wrong `DATABASE_URL`:
 
 - [health.yml](../.github/workflows/health.yml) asks it once an hour (needs the variable `PRODUCTION_URL`). After three failed tries a minute apart the run turns red and GitHub sends an e-mail. GitHub may start scheduled runs some minutes late, and it switches them off after 60 days without activity in a public repository.
-- An uptime service (step 6.5) checks more often and more reliably.
+- An uptime service (step 6.5) checks more often and more reliably whether the site answers, using `/legal/notice` so that the database can sleep in between.
+
+`/health` is not rate limited of its own: it costs one `select 1`, and the Vercel Firewall's DDoS protection stops floods. The one rate limit rule of the Hobby plan goes to the search, which asks the database far more.
 
 ## Smoke test after each deployment
 
