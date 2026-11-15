@@ -1,92 +1,222 @@
-# ExoAtlas
+<p align="center">
+  <img src="src/app/icon.svg" width="140" alt="The ExoAtlas logo: a planet passing in front of its star">
+</p>
 
-A reference for every known exoplanet: searchable, with a page, a turning image and a 3D model for each planet, and a map of the Milky Way to fly through.
+<h1 align="center">ExoAtlas</h1>
 
-The data comes from the [NASA Exoplanet Archive](https://exoplanetarchive.ipac.caltech.edu/). Our own solar system is included.
+<p align="center">
+  <strong>Every known exoplanet in one place.</strong><br>
+  Search them, look at each one in 3D, and fly through the Milky Way to visit them.
+</p>
 
-## Status
+<p align="center">
+  <a href="https://www.exoatlas.space"><strong>Open ExoAtlas →</strong></a>
+  &nbsp;·&nbsp;
+  <a href="docs/wiki/Home.md">User guide</a>
+  &nbsp;·&nbsp;
+  <a href="docs/ARCHITECTURE.md">How it works</a>
+</p>
 
-Working today:
+<p align="center">
+  <a href="https://www.exoatlas.space"><img src="https://img.shields.io/badge/live-www.exoatlas.space-4f46e5" alt="Live at www.exoatlas.space"></a>
+  <a href="https://github.com/tomdevtech/ExoAtlas/actions/workflows/ci.yml"><img src="https://github.com/tomdevtech/ExoAtlas/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/tomdevtech/ExoAtlas/actions/workflows/codeql.yml"><img src="https://github.com/tomdevtech/ExoAtlas/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
+  <a href="https://exoplanetarchive.ipac.caltech.edu/"><img src="https://img.shields.io/badge/data-NASA%20Exoplanet%20Archive-0b3d91" alt="Data from the NASA Exoplanet Archive"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-059669" alt="MIT licence"></a>
+</p>
 
-- Postgres database with schema and migrations
-- Sync with NASA: 6,470 planets around 4,862 stars (as of November 14, 2026)
-- The Sun and the eight planets of the solar system
-- Search for planets and stars, with suggestions while typing and tolerance for typos
-- A list of all planets, one per row, sorted by name or by year of discovery, 200 per page, with a field that filters it by name
-- A page for each planet and each star, including the history of changed values and redirects from former names
-- A turning, lit image for each planet in every list, and a 3D model on its page that can be turned by hand and zoomed into
-- Real surface maps for the planets of the solar system, with Earth's clouds and city lights and Saturn's rings
-- A map of the Milky Way to fly through: 4,835 stars at their measured positions, and every system with its planets on their orbits in 3D
-- A legal notice and a privacy policy, which name whoever runs the copy
-- Online on Vercel with a Neon database in Frankfurt: a daily sync with NASA, weekly backups, a read-only database role for the site, a rate limit on the search, a smoke test after each deployment with automatic rollback, and an hourly health check. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+<p align="center">
+  <img src="docs/wiki/images/map-galaxy.png" width="880" alt="The map of the Milky Way in ExoAtlas: the galaxy seen from above, with the Sun marked in one of the spiral arms">
+</p>
 
-## What it does
+| 🪐 about 6,500 planets | ⭐ about 4,900 stars | 🗺️ 4,835 systems on the map | 🔄 updated from NASA every night |
+| :---: | :---: | :---: | :---: |
 
-```mermaid
-mindmap
-  root((ExoAtlas))
-    Search
-      suggestions while typing
-      tolerant of typos
-      former names
-    All planets
-      every known planet
-      filter by name
-      by name or year of discovery
-    Planet pages
-      measured or calculated values
-      history of changes
-      turning image and 3D model
-    Star pages
-      planets of the system
-      position and distance
-    Map of the Milky Way
-      stars at measured positions
-      fly into any system
-      planets on their orbits
-    Solar system
-      real surface maps
-      clouds, city lights, rings
-```
+## What you can do
 
-**Search.** By planet or star, tolerant of typos and spelling (`kepler 22b` finds `Kepler-22 b`).
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>🔍 Find any planet</h3>
+      Type a name and suggestions appear at once. Spelling does not matter: <code>kepler 22b</code> finds <em>Kepler-22 b</em>, and typos still lead somewhere.
+      <br><br>
+      <img src="docs/wiki/images/search-suggestions.png" alt="Search suggestions while typing">
+    </td>
+    <td width="50%" valign="top">
+      <h3>📋 Browse all of them</h3>
+      Every known planet in one long list, sorted by name or by the year it was found, with a field that narrows the list while you type.
+      <br><br>
+      <img src="docs/wiki/images/planet-list.png" alt="The list of all planets">
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>🌍 Look at each planet in 3D</h3>
+      Every planet has its own page: size, mass, temperature, orbit, discovery and what has changed over time. A 3D model shows what it could look like, turned by hand and zoomed into.
+      <br><br>
+      <img src="docs/wiki/images/planet-page.png" alt="The page of the planet TRAPPIST-1 e with its 3D model">
+    </td>
+    <td width="50%" valign="top">
+      <h3>🚀 Fly through the Milky Way</h3>
+      Every star with known planets sits at its real position. Fly to one, enter its system and watch its planets move on their orbits.
+      <br><br>
+      <img src="docs/wiki/images/map-system.png" alt="The TRAPPIST-1 system on the map, with seven planets on their orbits">
+    </td>
+  </tr>
+</table>
 
-**A list of all planets.** Every known planet, one per row, 200 per page, with a field that narrows the list while you type. The list is sorted by name or by year of discovery, newest first. Each row shows a plain image, the name, the star and the year of discovery, so the long list stays light.
+And our own solar system is there too, with real surface maps: Earth with its clouds and city lights, Saturn with its rings.
 
-**A page for each planet.** Measured values, star, discovery and the history of changes. Every value says whether it was measured or only calculated by NASA. For almost half of all planets, for example, the mass is only calculated.
+## Easy to use
 
-**An image and a 3D model for each planet.** Almost no exoplanet has ever been photographed. Image and model are therefore computed from the measured values: size, planet class, temperature and the colour of the star decide the look. The page says clearly that it is an illustration, not a photograph. The planets of the solar system show real surface maps.
+<table>
+  <tr>
+    <td width="66%" valign="top">
 
-**A map of the Milky Way.** You fly through it freely. Near the Sun the background is a real photograph of the whole sky. From far away the galaxy is a computed model, because no photograph of it from outside exists. You can visit every system with known planets and the solar system, but not the remaining stars. That is 4,834 systems with a known distance. 28 more have none and only appear in the search.
+- **Nothing to install, no account.** Open the address and start.
+- **Works on the phone.** Every page fits a small screen; the map follows touch and pinch.
+- **Works with the keyboard.** Search, lists and the map can be used without a mouse.
+- **Accessible.** Every page is checked automatically against the WCAG 2.1 rules for accessibility.
+- **Calm when you want it.** If your device asks for reduced motion, planets and orbits stand still.
+- **Works on older devices too.** Without 3D graphics every planet still has a picture.
+- **Links keep working.** When NASA renames a planet, its old address leads to the new page.
+- **Private.** No cookies, no tracking, no advertising, nothing loaded from other companies.
 
-## How it is built
+New here? The [user guide](docs/wiki/Home.md) walks through every page with pictures.
 
-Three parts:
+</td>
+    <td width="34%" valign="top" align="center">
+      <img src="docs/wiki/images/home-phone.png" width="220" alt="The start page of ExoAtlas on a phone">
+    </td>
+  </tr>
+</table>
+
+## What is real and what is computed
+
+Almost no exoplanet has ever been photographed. ExoAtlas shows the measured values as they are, and says clearly where a picture is computed from them.
+
+| ✅ Measured | 🎨 Computed or modelled |
+| --- | --- |
+| The values of every planet and star, from NASA; each one says whether it was measured or calculated | What an exoplanet looks like: computed from its size, temperature and the colour of its star |
+| Where each star is and how far away | The Milky Way seen from outside: a model, because nobody has ever seen it from there |
+| The colour of each star, from its temperature | Sizes and distances inside a system: squeezed, or the planets would be invisible |
+| The sky around the Sun: a photograph | Where on its orbit a planet is right now |
+| The surfaces of the planets of our solar system | |
+
+## How it works
 
 ```mermaid
 flowchart LR
-    NASA[NASA Exoplanet Archive] --> Sync[Sync<br>daily in GitHub Actions]
-    Sync --> DB[(Postgres<br>Neon)]
-    DB -->|read only| App[Next.js app<br>Vercel]
-    App --> Browser
+    NASA[🛰️ NASA<br>Exoplanet Archive]:::source -->|every night| Sync[🔄 Sync<br>compares and keeps<br>only what changed]:::job
+    Sync --> DB[(🗄️ Database)]:::db
+    DB -->|reads only| Site[🌐 Website]:::site
+    Site -->|pages and data| You([👤 You<br>your device draws the<br>3D planets and the map]):::you
+
+    classDef source fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
+    classDef job fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
+    classDef db fill:#fef3c7,stroke:#d97706,color:#78350f
+    classDef site fill:#d1fae5,stroke:#059669,color:#064e3b
+    classDef you fill:#f3f4f6,stroke:#4b5563,color:#111827
 ```
 
-- **Postgres** holds all data. Online it runs at Neon in Frankfurt, locally in Docker.
-- **The sync** is a script. It fetches the catalogue, compares it with the database and writes only the differences. Online, GitHub Actions starts it every day.
-- **The app** (Next.js) reads straight from the database, online with a role that may only read. It never writes. It runs on Vercel; the planets and the map are drawn in the browser with WebGL.
+1. **Every night** a job fetches the whole catalogue from NASA, compares it with the database and writes only the differences. Changed values are kept as history; renamed planets keep their old names as aliases.
+2. **The website** reads from the database and never writes to it. Pages arrive in two steps: the frame at once, the data a moment later.
+3. **Your device** draws the 3D planets and the map. Nothing about you is sent back.
 
-| Area | Technology |
+Built with
+
+<p>
+  <img src="https://img.shields.io/badge/Next.js_16-000000?logo=nextdotjs&logoColor=white" alt="Next.js 16">
+  <img src="https://img.shields.io/badge/React_19-20232a?logo=react&logoColor=61dafb" alt="React 19">
+  <img src="https://img.shields.io/badge/TypeScript-3178c6?logo=typescript&logoColor=white" alt="TypeScript">
+  <img src="https://img.shields.io/badge/Tailwind_CSS-0f172a?logo=tailwindcss&logoColor=38bdf8" alt="Tailwind CSS">
+  <img src="https://img.shields.io/badge/three.js-000000?logo=threedotjs&logoColor=white" alt="three.js">
+  <img src="https://img.shields.io/badge/WebGL_2-990000?logo=webgl&logoColor=white" alt="WebGL 2">
+  <img src="https://img.shields.io/badge/PostgreSQL_17-4169e1?logo=postgresql&logoColor=white" alt="PostgreSQL 17">
+  <img src="https://img.shields.io/badge/Drizzle_ORM-c5f74f?logo=drizzle&logoColor=black" alt="Drizzle ORM">
+  <img src="https://img.shields.io/badge/Vercel-000000?logo=vercel&logoColor=white" alt="Vercel">
+  <img src="https://img.shields.io/badge/Neon-00e599?logoColor=black" alt="Neon">
+  <img src="https://img.shields.io/badge/Vitest-6e9f18?logo=vitest&logoColor=white" alt="Vitest">
+  <img src="https://img.shields.io/badge/Playwright-2ead33?logoColor=white" alt="Playwright">
+  <img src="https://img.shields.io/badge/GitHub_Actions-2088ff?logo=githubactions&logoColor=white" alt="GitHub Actions">
+</p>
+
+The planets are drawn by our own shaders, one description per planet for the still picture, the turning image, the 3D model and the map. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains every part in detail.
+
+## Reliable and safe
+
+```mermaid
+flowchart LR
+    Change([✏️ A change]):::change --> Checks[✅ Five automatic checks<br>tests, security scan,<br>accessibility, build]:::check
+    Checks -->|only when all pass| Live[🌐 Live]:::site
+    Live --> Smoke[🧪 Tested again<br>right after going live]:::check
+    Smoke -->|if it fails| Back[↩️ The previous version<br>comes back by itself]:::alarm
+    Live --- Watch[👀 Watched around the clock<br>every 5 minutes, hourly, monthly]:::check
+    Live --- Backup[💾 Weekly backup]:::check
+
+    classDef change fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
+    classDef check fill:#d1fae5,stroke:#059669,color:#064e3b
+    classDef site fill:#f3f4f6,stroke:#4b5563,color:#111827
+    classDef alarm fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
+```
+
+- **Tested on every change**: unit, database and browser tests, including security and accessibility.
+- **Secure connection**: rated A+ by SSL Labs; strict security headers; the website may only read the database.
+- **Watched**: an outside monitor every 5 minutes, a health check every hour, a check of the connection every month.
+
+Details: [tests and checks](docs/TESTING.md) · [security](docs/SECURITY.md) · [report a vulnerability](SECURITY.md)
+
+## For developers
+
+<details>
+<summary><strong>Run it on your computer</strong></summary>
+
+You need Node.js 24 and Docker.
+
+```bash
+npm install
+cp .env.example .env.local
+npm run db:up        # start PostgreSQL in Docker
+npm run db:migrate   # create the tables
+npm run seed:sol     # store the solar system
+npm run sync         # fetch the catalogue from NASA, takes a few seconds
+npm run dev          # http://localhost:3000
+```
+
+</details>
+
+<details>
+<summary><strong>All commands</strong></summary>
+
+| Command | Purpose |
 | --- | --- |
-| App | Next.js 16, React 19, TypeScript, Tailwind 4, Node.js 24 |
-| Database | Postgres 17 with `pg_trgm` for the search |
-| Database access | Drizzle ORM, migrations with drizzle-kit |
-| Planet images and 3D models | WebGL 2 with our own shaders |
-| Map | three.js |
-| Tests | Vitest (unit and database), Playwright with axe-core (browser, accessibility, smoke test) |
-| Hosting | Vercel (app, firewall), Neon (database) |
-| Automation | GitHub Actions (checks, sync, backup, health check, TLS check, rollback), CodeQL, Dependabot |
+| `npm run dev` | Development server |
+| `npm test` | Unit tests, no database needed |
+| `npm run test:db` | Tests against PostgreSQL; uses its own database `exoatlas_test` |
+| `npm run test:e2e` | Browser tests: user flows, security, accessibility; uses its own database `exoatlas_e2e`. Once before: `npm run e2e:install` |
+| `npm run test:all` | All tests |
+| `npm run test:smoke` | Smoke test against a running deployment: `SMOKE_BASE_URL=https://… npm run test:smoke` |
+| `npm run typecheck`, `npm run lint`, `npm run build` | Type check, ESLint, production build (works without a database) |
+| `npm run db:generate` | Create a migration from a schema change |
+| `npm run sync -- --force` | Sync even when the answer from NASA looks implausible |
+| `npm run db:readonly-role` | Create the read-only database role, or give it a new password |
+| `npm run db:migrate-on-deploy` | Migrations during a Vercel production build; does nothing elsewhere |
+| `npm run deploy:rollback` | Put the previous production deployment back live |
+| `npm run textures` | Download and scale the surface maps and the sky panorama again |
 
-More in detail:
+</details>
+
+<details>
+<summary><strong>Put your own copy online</strong></summary>
+
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) walks through it step by step: Vercel, the Neon database, the variables, the checks after each deployment, the domain and the legal pages.
+
+The legal notice and the privacy policy must name whoever runs the copy. Set `LEGAL_NAME`, `LEGAL_STREET`, `LEGAL_CITY` and `LEGAL_EMAIL` before building ([.env.example](.env.example) lists the optional ones too); until then both pages say that they are not complete. The privacy policy describes what this code does; what your host adds is yours to check. The two pages are a careful draft, not legal advice.
+
+</details>
+
+<details>
+<summary><strong>Documentation</strong></summary>
 
 | Document | Covers |
 | --- | --- |
@@ -95,99 +225,17 @@ More in detail:
 | [docs/TESTING.md](docs/TESTING.md) | every test and check, when it runs and what it catches |
 | [docs/SECURITY.md](docs/SECURITY.md) | the protective measures layer by layer, what to do when something happens |
 | [SECURITY.md](SECURITY.md) | how to report a vulnerability |
+| [docs/wiki/](docs/wiki/Home.md) | the user guide |
 
-### Code layout
+</details>
 
-Every feature lives in its own folder inside `src/app/`, with its pages, components, queries, logic and tests in one place.
+<details>
+<summary><strong>Left out on purpose</strong></summary>
 
-| Folder | Content |
-| --- | --- |
-| [src/app/planets/](src/app/planets/) | The list of all planets, planet pages, classification, images and 3D models |
-| [src/app/map/](src/app/map/) | The map of the Milky Way and the 3D view of a system |
-| [src/app/stars/](src/app/stars/) | Star pages, sky coordinates |
-| [src/app/search/](src/app/search/) | Search page, suggestions, search field |
-| [src/app/catalog/](src/app/catalog/) | Numbers and featured planets on the start page |
-| [src/app/legal/](src/app/legal/) | Legal notice and privacy policy |
-| [src/app/health/](src/app/health/) | `/health` for the smoke test and the health check |
-| [src/app/sync/](src/app/sync/) | The comparison with NASA |
-| [src/app/solar-system/](src/app/solar-system/) | The Sun and its planets |
-| [src/db/](src/db/) | Schema, database connection, the read-only role |
-| [src/shared/](src/shared/) | Helpers used by several features, the security headers |
-| [scripts/](scripts/) | Command line entry points: sync, seed, migrations on deploy, read-only role, rollback, textures |
-| [e2e/](e2e/), [smoke/](smoke/) | Browser tests and the smoke test after each deployment |
-| [.github/workflows/](.github/workflows/) | CI, CodeQL, deployment check, health check, TLS check, sync, backup |
-| [public/textures/](public/textures/) | Surface maps of the solar system and the panorama of the sky |
+- **Stars without known planets.** A complete star catalogue would multiply the amount of data and would first have to be matched with the NASA data.
+- **The complete NASA record** with more than 700 columns. Each planet page links to the archive instead.
 
-## Run it locally
-
-Requirements: Node.js 24 and Docker.
-
-```bash
-npm install
-cp .env.example .env.local
-npm run db:up        # start Postgres in Docker
-npm run db:migrate   # create the tables
-npm run seed:sol     # store the solar system
-npm run sync         # fetch the catalogue from NASA, takes a few seconds
-npm run dev          # http://localhost:3000
-```
-
-### Before you put a copy online
-
-The legal notice (`/legal/notice`) and the privacy policy (`/legal/privacy`) must name the person who runs the website. Set `LEGAL_NAME`, `LEGAL_STREET`, `LEGAL_CITY` and `LEGAL_EMAIL` in `.env.local` before `npm run build`; [.env.example](.env.example) lists them with the optional ones. As long as one is missing, both pages say that they are not complete.
-
-The privacy policy describes what this code does: no cookies, no statistics, nothing loaded from other servers. What your hosting adds, such as its own log files, is yours to check, and so is the wording itself. The two pages are a careful draft, not legal advice.
-
-[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) describes hosting on Vercel step by step: database, environment variables, migrations, the daily sync and what the legal pages need.
-
-More commands:
-
-| Command | Purpose |
-| --- | --- |
-| `npm test` | Unit tests, no database needed |
-| `npm run test:db` | Tests against PostgreSQL; needs `npm run db:up`, uses its own database `exoatlas_test` |
-| `npm run test:e2e` | Browser tests with Playwright: user flows, security, accessibility; builds the app and uses its own database `exoatlas_e2e`. Once before: `npm run e2e:install` |
-| `npm run test:all` | All tests |
-| `npm run test:smoke` | Smoke test against a running deployment: `SMOKE_BASE_URL=https://… npm run test:smoke`. Runs by itself after every Vercel deployment |
-| `npm run deploy:rollback` | Put the previous production deployment back live; the deployment check runs it when the smoke test of production fails |
-| `npm run typecheck` | Type check |
-| `npm run lint` | ESLint |
-| `npm run build` | Production build, also works without a database |
-| `npm run db:generate` | Create a migration from a schema change |
-| `npm run db:migrate-on-deploy` | Migrate during a Vercel production build; does nothing elsewhere |
-| `npm run db:readonly-role` | Create the read-only database role for the site, or give it a new password ([DEPLOYMENT.md](docs/DEPLOYMENT.md)) |
-| `npm run sync -- --force` | Sync even when the response from NASA looks implausible |
-| `npm run textures` | Download the surface maps and the sky panorama again and scale them down. Only needed when a source or a size changes; the results are in the repository |
-
-## Roadmap
-
-1. **Foundation** (done): database, sync, solar system, start page, tests.
-2. **Search and pages** (done): search with `pg_trgm`, a list of all planets, a page for each planet and star, redirects from former names, history of changes, an SVG image for each planet computed from its values.
-3. **3D models** (done): turning images and a 3D model per planet, computed in a shader from planet class, climate class and the light of the star, with more detail when zooming in and real maps for the solar system.
-4. **Map** (done): the Milky Way, free flight, jumping into a system and from there to a planet.
-5. **Publishing** (done): hosting on Vercel, a daily sync and weekly backups with GitHub Actions, a read-only database role for the site and a rate limit on the search ([docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).
-
-### What is real on the map and what is not
-
-Real:
-
-- The positions of the stars, calculated from their measured direction and distance.
-- The colours of the stars, from their surface temperature.
-- The sky near the Sun: a photograph of the whole Milky Way as seen from Earth.
-- The surfaces of the planets of the solar system.
-- The order of the orbits, their shape (eccentricity) and which planet runs faster.
-
-A model or an illustration:
-
-- The galaxy seen from outside: a bar, a bulge, a disc and four spiral arms, drawn as 110,000 points of light. No photograph of the Milky Way from outside exists.
-- The surfaces of exoplanets. They are computed from planet class, climate class and the colour of the star.
-- Sizes and distances inside a system. At true scale the planets would be invisible next to their orbits, so the distances are squeezed and the planets enlarged.
-- The direction of each orbit and where on it a planet is right now. The catalogue does not say, so both are fixed at random per planet. All orbits lie in one plane.
-
-### Left out on purpose
-
-- Stars without known planets. A complete star catalogue would multiply the amount of data and would first have to be matched with the NASA data.
-- The complete NASA row with more than 700 columns. The planet page links to the archive instead.
+</details>
 
 ## Data sources
 
@@ -195,10 +243,10 @@ A model or an illustration:
 - **Solar system:** NASA Planetary Fact Sheet.
 - **Mass-radius relation:** Chen & Kipping (2017), "Probabilistic Forecasting of the Masses and Radii of Other Worlds".
 - **Surface maps of the solar system:** [Solar System Scope](https://www.solarsystemscope.com/textures/), based on NASA imagery, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
-- **Panorama of the sky:** [ESO/S. Brunier](https://www.eso.org/public/images/eso0932a/), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+- **Panorama of the sky:** [ESO/S. Brunier](https://www.eso.org/public/images/eso0932a/), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). It also appears in the screenshots of the map above.
 
 The images were scaled down and compressed again. Details: [public/textures/README.md](public/textures/README.md).
 
 ## Licence
 
-The code is under the [MIT](LICENSE) licence. The images in `public/textures/` come from third parties and keep their own licence, see above.
+The code is under the [MIT](LICENSE) licence. The images in `public/textures/` come from third parties and keep their own licences, see above.
