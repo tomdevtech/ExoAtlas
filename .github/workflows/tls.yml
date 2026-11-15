@@ -1,0 +1,40 @@
+name: TLS check
+
+# Once a month: protocols, certificates, security headers and redirects of the
+# live site (scripts/check-tls.sh). The TLS setup comes from Vercel, not from
+# the code, so a push does not change it; the headers of every deployment are
+# also checked by the smoke test. A failed run turns red and GitHub sends an
+# e-mail, at the latest three weeks before a certificate would expire.
+#
+# Needs the repository variable PRODUCTION_URL. Without it the workflow does
+# nothing.
+
+on:
+  schedule:
+    - cron: "23 5 1 * *" # on the 1st of every month at 05:23 UTC
+  workflow_dispatch:
+  # Also when the check itself changes, so a broken script shows up before the merge.
+  pull_request:
+    paths:
+      - scripts/check-tls.sh
+      - .github/workflows/tls.yml
+
+permissions:
+  contents: read
+
+jobs:
+  tls:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check
+        run: |
+          if [ -z "$PRODUCTION_URL" ]; then
+            echo "::notice::The repository variable PRODUCTION_URL is not set; nothing to check."
+            exit 0
+          fi
+          host=$(echo "$PRODUCTION_URL" | sed -E 's#^https?://##; s#/.*$##')
+          bash scripts/check-tls.sh "$host"

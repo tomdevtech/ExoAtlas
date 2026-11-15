@@ -209,7 +209,7 @@ Then run `npm run db:readonly-role` again, so that the read-only role can read t
 
 ## Domain
 
-The domain is registered at Namecheap; its DNS points at Vercel. In Namecheap, under *Domain List → Manage*:
+The site lives at `https://www.exoatlas.space`. The domain is registered at Namecheap, whose DNS points it at Vercel: an `A` record for `@` and a `CNAME` for `www`, with the values that Vercel shows under *Settings → Domains*. Vercel redirects `exoatlas.space` to `www.exoatlas.space` and issues the certificates itself. In Namecheap, under *Domain List → Manage*:
 
 - keep **Registrar Lock** on, so that the domain cannot be moved to another registrar without you,
 - switch on **DNSSEC** (*Advanced DNS*), as long as Namecheap serves the DNS records,
@@ -217,6 +217,19 @@ The domain is registered at Namecheap; its DNS points at Vercel. In Namecheap, u
 - if no e-mail is sent from the domain, publish two records so that nobody can send mail in its name: `@  TXT  "v=spf1 -all"` and `_dmarc  TXT  "v=DMARC1; p=reject"`.
 
 HSTS is sent without `preload`. The preload list can hardly be left again and would bind every subdomain to HTTPS; it only makes sense for a domain used for nothing else.
+
+## TLS check
+
+[tls.yml](../.github/workflows/tls.yml) runs [check-tls.sh](../scripts/check-tls.sh) against `PRODUCTION_URL` on the 1st of every month, and on pull requests that change the check. It looks at the site from the outside:
+
+- the security headers of the start page, HSTS for at least a year,
+- `http://`, the domain without `www` and both together all end on `https://www.…/` with status 200,
+- TLS 1.2 and 1.3 are accepted, TLS 1.0 and 1.1 refused,
+- the certificates of both names are trusted, issued for the right name and valid for at least 21 more days.
+
+A failed run turns red and GitHub sends an e-mail, so an expiring certificate is noticed three weeks ahead. The TLS setup comes from Vercel, not from the code, so a push does not change it; the headers of each deployment are also checked by the smoke test. By hand: `bash scripts/check-tls.sh www.exoatlas.space` (needs curl and OpenSSL 3), or *Actions → TLS check → Run workflow*. A test with [SSL Labs](https://www.ssllabs.com/ssltest/) now and then, after changes to the domain, gives a second opinion; it rated the site A+ in November 2026.
+
+**Do not hammer the site while testing.** A few hundred requests in a short time from one address, or a scan that opens many connections, make Vercel's automatic DDoS protection challenge that address for a while: requests then get `403` with `x-vercel-mitigated: challenge`. The check script says so instead of reporting missing headers. The challenge page sets a cookie of Vercel's; it only reaches traffic that Vercel takes for an attack.
 
 ## Legal pages
 

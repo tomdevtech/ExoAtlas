@@ -57,7 +57,7 @@ flowchart LR
 | Map | three.js |
 | Tests | Vitest (unit and database), Playwright with axe-core (browser, accessibility, smoke test) |
 | Hosting | Vercel (app, firewall), Neon (database) |
-| Automation | GitHub Actions (checks, sync, backup, health check, rollback), CodeQL, Dependabot |
+| Automation | GitHub Actions (checks, sync, backup, health check, TLS check, rollback), CodeQL, Dependabot |
 
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains where everything runs, the data flow, the database, the sync, the search, the images, the map and the code layout in detail.
 
@@ -80,7 +80,7 @@ Every feature lives in its own folder inside `src/app/`, with its pages, compone
 | [src/shared/](src/shared/) | Helpers used by several features, the security headers |
 | [scripts/](scripts/) | Command line entry points: sync, seed, migrations on deploy, read-only role, rollback, textures |
 | [e2e/](e2e/), [smoke/](smoke/) | Browser tests and the smoke test after each deployment |
-| [.github/workflows/](.github/workflows/) | CI, CodeQL, deployment check, health check, sync, backup |
+| [.github/workflows/](.github/workflows/) | CI, CodeQL, deployment check, health check, TLS check, sync, backup |
 | [public/textures/](public/textures/) | Surface maps of the solar system and the panorama of the sky |
 
 ## Run it locally

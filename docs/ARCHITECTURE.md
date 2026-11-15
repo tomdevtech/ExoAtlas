@@ -95,6 +95,7 @@ Each part gets only the access it needs.
 | [health.yml](../.github/workflows/health.yml) | hourly | asks `/health` on the live site |
 | [sync.yml](../.github/workflows/sync.yml) | daily, 03:17 UTC | compares the catalogue with NASA and writes the differences |
 | [backup.yml](../.github/workflows/backup.yml) | Sundays, 04:41 UTC | dumps the database and keeps the dump for 90 days |
+| [tls.yml](../.github/workflows/tls.yml) | 1st of every month | protocols, certificates, headers and redirects of the live site |
 | [Dependabot](../.github/dependabot.yml) | Mondays | pull requests for outdated or vulnerable dependencies |
 
 A failed run turns red and GitHub sends an e-mail.
@@ -128,7 +129,7 @@ Every feature lives in its own folder inside `src/app/`. A feature folder holds 
 
 ```
 .github/
-  workflows/              CI, CodeQL, deployment check, health check, sync, backup
+  workflows/              CI, CodeQL, deployment check, health check, TLS check, sync, backup
   dependabot.yml          weekly update pull requests
 scripts/
   sync.ts                 command line entry: calls runSync
@@ -136,6 +137,7 @@ scripts/
   migrate-on-deploy.ts    migrations during a Vercel production build
   create-readonly-role.ts creates the read-only database role of the website
   rollback-production.ts  puts the previous production deployment back live
+  check-tls.sh            checks protocols, certificates, headers and redirects of the live site
   fetch-textures.ts       downloads and scales the images in public/textures
   docs-screenshots.ts     takes the screenshots of the user guide with headless Playwright
 docs/
