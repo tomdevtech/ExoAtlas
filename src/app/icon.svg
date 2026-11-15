@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- The ExoAtlas mark: a planet in transit in front of its star. Keep in step with Logo.tsx. -->
+  <defs>
+    <radialGradient id="star" cx="40%" cy="38%" r="65%">
+      <stop offset="0" stop-color="#fff6e0"/>
+      <stop offset="0.6" stop-color="#f4e6c4"/>
+      <stop offset="1" stop-color="#ffd98a"/>
+    </radialGradient>
+  </defs>
+  <circle cx="32" cy="32" r="28" fill="url(#star)"/>
+  <circle cx="43.5" cy="39.6" r="10.8" fill="#05060b" stroke="#8fb8ff" stroke-width="2"/>
+</svg>

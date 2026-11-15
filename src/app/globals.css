@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+/*
+ * Everything in this file is configuration for Tailwind: colours, fonts, two
+ * variants and two utilities. The styling itself is done with classes in the components.
+ */
+
+/* The colours of the site. Each becomes classes such as bg-surface, text-muted or border-line. */
+@theme {
+  --color-background: #05060b;
+  --color-foreground: #e6e8ef;
+  --color-muted: #8b90a3;
+  --color-line: #1c2030;
+  --color-surface: #0d1019;
+  --color-accent: #8fb8ff;
+  --color-warning: #e3b55c;
+}
+
+/* The fonts come from next/font, which sets these variables on <html> (layout.tsx). */
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/*
+ * Two variants that ask which page is open, for the parts of the layout that
+ * differ there: `on-start-page:invisible`, `on-map-page:hidden`.
+ *
+ * Next.js keeps the last pages a visitor saw in the document, hidden with an
+ * inline `display: none` (React's Activity, see cacheComponents), so a page
+ * counts only if neither it nor anything around it is hidden that way.
+ */
+
+/* The start page has its own large search field (`data-hero-search`). */
+@custom-variant on-start-page {
+  &:where(
+      body:has([data-hero-search]:not([style*="display: none"], [style*="display: none"] *)) *
+    ) {
+    @slot;
+  }
+}
+
+/* The map (`data-map`). The variant also works on <body> itself. */
+@custom-variant on-map-page {
+  &:where(
+      body:has([data-map]:not([style*="display: none"], [style*="display: none"] *)),
+      body:has([data-map]:not([style*="display: none"], [style*="display: none"] *)) *
+    ) {
+    @slot;
+  }
+}
+
+/*
+ * The plain planet image of the long list (planets/PlanetDot.tsx): a ball in
+ * three colours with light from the upper left, like the detailed images.
+ * Gradients only, so 200 of them on one page cost next to nothing. The
+ * component sets the three colours per planet. Five gradients on top of each
+ * other do not fit into a class name, hence a utility of our own.
+ */
+@utility planet-dot {
+  background:
+    radial-gradient(circle at 33% 30%, rgb(255 255 255 / 0.2), transparent 34%),
+    radial-gradient(circle at 34% 32%, transparent 36%, rgb(0 0 0 / 0.55) 74%, rgb(0 0 0 / 0.9)),
+    radial-gradient(circle at 70% 30%, var(--planet-light) 12%, transparent 30%),
+    radial-gradient(circle at 30% 64%, var(--planet-dark) 20%, transparent 42%),
+    radial-gradient(circle at 78% 70%, var(--planet-dark) 8%, transparent 26%),
+    var(--planet-base);
+}
+
+/* The same ball with bands instead of patches, for gas planets and ice giants. */
+@utility planet-dot-banded {
+  background:
+    radial-gradient(circle at 33% 30%, rgb(255 255 255 / 0.2), transparent 34%),
+    radial-gradient(circle at 34% 32%, transparent 36%, rgb(0 0 0 / 0.55) 74%, rgb(0 0 0 / 0.9)),
+    linear-gradient(
+      174deg,
+      var(--planet-base) 14%,
+      var(--planet-dark) 24% 34%,
+      var(--planet-light) 42% 52%,
+      var(--planet-base) 60% 66%,
+      var(--planet-dark) 74% 84%,
+      var(--planet-base) 92%
+    );
+}

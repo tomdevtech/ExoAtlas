@@ -1,0 +1,41 @@
+name: Health check
+
+# Asks the live site once an hour whether it is up and reaches its database
+# (GET /health). A failed run turns red and GitHub sends an e-mail. A simple
+# watch without any extra service; an uptime service checks more often (see
+# docs/DEPLOYMENT.md, "Health check and monitoring").
+#
+# Needs the repository variable PRODUCTION_URL, for example
+# https://exoatlas.example.org. Without it the workflow does nothing.
+
+on:
+  schedule:
+    - cron: "7 * * * *" # every hour at minute 7
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
+    steps:
+      - name: GET /health
+        run: |
+          if [ -z "$PRODUCTION_URL" ]; then
+            echo "::notice::The repository variable PRODUCTION_URL is not set; nothing to check."
+            exit 0
+          fi
+          # Three tries a minute apart, so a single hiccup raises no alarm.
+          for attempt in 1 2 3; do
+            body=$(curl -s --max-time 20 -w '\n%{http_code}' "${PRODUCTION_URL%/}/health" || true)
+            status=$(echo "$body" | tail -n1)
+            echo "Try $attempt: status $status, $(echo "$body" | head -n1)"
+            if [ "$status" = "200" ]; then exit 0; fi
+            [ "$attempt" -lt 3 ] && sleep 60
+          done
+          echo "::error::${PRODUCTION_URL%/}/health did not answer 200. The site or its database is down."
+          exit 1

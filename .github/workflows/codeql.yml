@@ -1,0 +1,28 @@
+name: CodeQL
+
+# GitHub's static code analysis. It looks for security problems in the code
+# itself, such as injection, unsafe redirects or leaked secrets, and lists
+# them under Security → Code scanning. Free for public repositories; a private
+# one needs GitHub Advanced Security.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "41 4 * * 1" # Mondays at 04:41 UTC, for newly added rules
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          queries: security-and-quality
+      - uses: github/codeql-action/analyze@v3
