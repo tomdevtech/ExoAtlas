@@ -10,7 +10,7 @@ export function SiteHeader() {
       <div className="mx-auto flex w-full max-w-4xl flex-wrap items-center gap-x-4 gap-y-2.5 px-6 py-3">
         <Link href="/" className="flex shrink-0 items-center gap-2 text-lg font-semibold tracking-tight">
           <Logo className="size-6" />
-          ExoAtlas
+          ExoFinder
         </Link>
         <div className="order-last min-w-0 basis-full on-start-page:invisible max-sm:on-start-page:hidden sm:order-none sm:max-w-sm sm:flex-1 sm:basis-0">
           <SearchBox />

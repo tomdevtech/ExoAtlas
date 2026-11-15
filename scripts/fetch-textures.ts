@@ -31,7 +31,7 @@ const PLANET_MAPS: [source: string, name: string][] = [
 ];
 
 async function download(url: string, directory: string): Promise<string> {
-  const response = await fetch(url, { headers: { "User-Agent": "exoatlas-textures" } });
+  const response = await fetch(url, { headers: { "User-Agent": "exofinder-textures" } });
   if (!response.ok) throw new Error(`${url} answered with status ${response.status}`);
   const file = path.join(directory, path.basename(new URL(url).pathname));
   await writeFile(file, Buffer.from(await response.arrayBuffer()));
@@ -39,7 +39,7 @@ async function download(url: string, directory: string): Promise<string> {
 }
 
 async function main() {
-  const downloads = await mkdtemp(path.join(tmpdir(), "exoatlas-textures-"));
+  const downloads = await mkdtemp(path.join(tmpdir(), "exofinder-textures-"));
   await mkdir(path.join(OUT, "planets"), { recursive: true });
   await mkdir(path.join(OUT, "sky"), { recursive: true });
 

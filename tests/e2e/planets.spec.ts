@@ -58,7 +58,7 @@ test.describe("list of all planets", () => {
 test.describe("planet page", () => {
   test("shows the planet, its 3D model and the way to its star", async ({ page }) => {
     await page.goto("/planets/trappist-1-e");
-    await expect(page).toHaveTitle("TRAPPIST-1 e · ExoAtlas");
+    await expect(page).toHaveTitle("TRAPPIST-1 e · ExoFinder");
     await expect(page.getByRole("heading", { level: 1, name: "TRAPPIST-1 e" })).toBeVisible();
     for (const section of ["Planet", "Orbit", "Discovery"]) {
       await expect(page.getByRole("heading", { name: section, exact: true })).toBeVisible();

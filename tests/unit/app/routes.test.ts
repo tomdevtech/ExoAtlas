@@ -6,7 +6,7 @@
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const SECRET = "connect ECONNREFUSED postgres://exoatlas:hunter2@db.internal:5432/exoatlas";
+const SECRET = "connect ECONNREFUSED postgres://exofinder:hunter2@db.internal:5432/exofinder";
 
 vi.mock("@/app/search/query", () => ({
   search: vi.fn(async () => {

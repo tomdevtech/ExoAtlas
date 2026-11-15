@@ -14,7 +14,7 @@ describe("checkHealth", () => {
   });
 
   it("reports an error without details when the database fails", async () => {
-    const secret = "password authentication failed for user exoatlas at db.internal";
+    const secret = "password authentication failed for user exofinder at db.internal";
     const report = await checkHealth(
       async () => {
         throw new Error(secret);

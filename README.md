@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="src/app/icon.svg" width="140" alt="The ExoAtlas logo: a planet passing in front of its star">
+  <img src="src/app/icon.svg" width="140" alt="The ExoFinder logo: a planet passing in front of its star">
 </p>
 
-<h1 align="center">ExoAtlas</h1>
+<h1 align="center">ExoFinder</h1>
 
 <p align="center">
   <strong>Every known exoplanet in one place.</strong><br>
@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.exoatlas.space"><strong>Open ExoAtlas →</strong></a>
+  <a href="https://www.exofinder.space"><strong>Open ExoFinder →</strong></a>
   &nbsp;·&nbsp;
   <a href="docs/wiki/Home.md">User guide</a>
   &nbsp;·&nbsp;
@@ -18,15 +18,15 @@
 </p>
 
 <p align="center">
-  <a href="https://www.exoatlas.space"><img src="https://img.shields.io/badge/live-www.exoatlas.space-4f46e5" alt="Live at www.exoatlas.space"></a>
-  <a href="https://github.com/tomdevtech/ExoAtlas/actions/workflows/ci.yml"><img src="https://github.com/tomdevtech/ExoAtlas/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/tomdevtech/ExoAtlas/actions/workflows/codeql.yml"><img src="https://github.com/tomdevtech/ExoAtlas/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
+  <a href="https://www.exofinder.space"><img src="https://img.shields.io/badge/live-www.exofinder.space-4f46e5" alt="Live at www.exofinder.space"></a>
+  <a href="https://github.com/tomdevtech/ExoFinder/actions/workflows/ci.yml"><img src="https://github.com/tomdevtech/ExoFinder/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/tomdevtech/ExoFinder/actions/workflows/codeql.yml"><img src="https://github.com/tomdevtech/ExoFinder/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
   <a href="https://exoplanetarchive.ipac.caltech.edu/"><img src="https://img.shields.io/badge/data-NASA%20Exoplanet%20Archive-0b3d91" alt="Data from the NASA Exoplanet Archive"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-059669" alt="MIT licence"></a>
 </p>
 
 <p align="center">
-  <img src="docs/wiki/images/map-galaxy.png" width="880" alt="The map of the Milky Way in ExoAtlas: the galaxy seen from above, with the Sun marked in one of the spiral arms">
+  <img src="docs/wiki/images/map-galaxy.png" width="880" alt="The map of the Milky Way in ExoFinder: the galaxy seen from above, with the Sun marked in one of the spiral arms">
 </p>
 
 | 🪐 about 6,500 planets | ⭐ about 4,900 stars | 🗺️ 4,835 systems on the map | 🔄 updated from NASA every night |
@@ -86,14 +86,14 @@ New here? The [user guide](docs/wiki/Home.md) walks through every page with pict
 
 </td>
     <td width="34%" valign="top" align="center">
-      <img src="docs/wiki/images/home-phone.png" width="220" alt="The start page of ExoAtlas on a phone">
+      <img src="docs/wiki/images/home-phone.png" width="220" alt="The start page of ExoFinder on a phone">
     </td>
   </tr>
 </table>
 
 ## What is real and what is computed
 
-Almost no exoplanet has ever been photographed. ExoAtlas shows the measured values as they are, and says clearly where a picture is computed from them.
+Almost no exoplanet has ever been photographed. ExoFinder shows the measured values as they are, and says clearly where a picture is computed from them.
 
 | ✅ Measured | 🎨 Computed or modelled |
 | --- | --- |
@@ -182,8 +182,8 @@ npm run dev          # http://localhost:3000
 | --- | --- |
 | `npm run dev` | Development server |
 | `npm test` | Unit tests, no database needed |
-| `npm run test:db` | Tests against PostgreSQL; uses its own database `exoatlas_test` |
-| `npm run test:e2e` | Browser tests: user flows, security, accessibility; uses its own database `exoatlas_e2e`. Once before: `npm run e2e:install` |
+| `npm run test:db` | Tests against PostgreSQL; uses its own database `exofinder_test` |
+| `npm run test:e2e` | Browser tests: user flows, security, accessibility; uses its own database `exofinder_e2e`. Once before: `npm run e2e:install` |
 | `npm run test:all` | All tests |
 | `npm run test:smoke` | Smoke test against a running deployment: `SMOKE_BASE_URL=https://… npm run test:smoke` |
 | `npm run typecheck`, `npm run lint`, `npm run build` | Type check, ESLint, production build (works without a database) |

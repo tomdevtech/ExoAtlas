@@ -1,6 +1,6 @@
 # Our solar system
 
-ExoAtlas also has our own Sun and its eight planets, from Mercury to Neptune. They help you compare: is this exoplanet bigger than Earth? Hotter than Venus?
+ExoFinder also has our own Sun and its eight planets, from Mercury to Neptune. They help you compare: is this exoplanet bigger than Earth? Hotter than Venus?
 
 ## Open the solar system
 

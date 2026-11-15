@@ -49,15 +49,15 @@ jobs:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_USER: exoatlas
-          POSTGRES_PASSWORD: exoatlas
-          POSTGRES_DB: exoatlas_test
+          POSTGRES_USER: exofinder
+          POSTGRES_PASSWORD: exofinder
+          POSTGRES_DB: exofinder_test
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U exoatlas -d exoatlas_test"
+          --health-cmd "pg_isready -U exofinder -d exofinder_test"
           --health-interval 2s --health-timeout 3s --health-retries 30
     env:
-      TEST_DATABASE_URL: postgres://exoatlas:exoatlas@localhost:5432/exoatlas_test
+      TEST_DATABASE_URL: postgres://exofinder:exofinder@localhost:5432/exofinder_test
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -74,15 +74,15 @@ jobs:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_USER: exoatlas
-          POSTGRES_PASSWORD: exoatlas
-          POSTGRES_DB: exoatlas_e2e
+          POSTGRES_USER: exofinder
+          POSTGRES_PASSWORD: exofinder
+          POSTGRES_DB: exofinder_e2e
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U exoatlas -d exoatlas_e2e"
+          --health-cmd "pg_isready -U exofinder -d exofinder_e2e"
           --health-interval 2s --health-timeout 3s --health-retries 30
     env:
-      E2E_DATABASE_URL: postgres://exoatlas:exoatlas@localhost:5432/exoatlas_e2e
+      E2E_DATABASE_URL: postgres://exofinder:exofinder@localhost:5432/exofinder_e2e
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7

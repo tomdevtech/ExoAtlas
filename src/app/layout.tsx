@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: { default: "ExoAtlas", template: "%s · ExoAtlas" },
+  title: { default: "ExoFinder", template: "%s · ExoFinder" },
   description:
     "Every known exoplanet: searchable, with a page for each planet and its star, and our own solar system for comparison.",
 };

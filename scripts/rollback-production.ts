@@ -3,7 +3,7 @@
  * .github/workflows/deploy-check.yml runs it when the smoke test of a new
  * production deployment fails:
  *
- *   FAILED_DEPLOYMENT_URL=https://exoatlas-abc123.vercel.app npm run deploy:rollback
+ *   FAILED_DEPLOYMENT_URL=https://exofinder-abc123.vercel.app npm run deploy:rollback
  *
  * Needs VERCEL_TOKEN, VERCEL_ORG_ID and VERCEL_PROJECT_ID (see
  * docs/DEPLOYMENT.md). The logic lives in src/deploy/rollback.ts.

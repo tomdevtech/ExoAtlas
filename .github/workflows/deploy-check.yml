@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       url:
-        description: "Address to check, for example https://exoatlas.vercel.app"
+        description: "Address to check, for example https://exofinder.vercel.app"
         required: true
       environment:
         description: "production or preview (only for the log; a manual run never rolls back)"

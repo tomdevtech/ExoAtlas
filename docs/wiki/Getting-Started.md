@@ -1,6 +1,6 @@
 # Getting started
 
-This page shows you the parts of ExoAtlas that you see on every page, and what the start page offers.
+This page shows you the parts of ExoFinder that you see on every page, and what the start page offers.
 
 ## The bar at the top
 
@@ -10,7 +10,7 @@ The bar at the top is the same on every page.
 
 | Part | What it does |
 | --- | --- |
-| **ExoAtlas** with the logo | Takes you back to the start page. |
+| **ExoFinder** with the logo | Takes you back to the start page. |
 | **Search field** | Finds planets and stars by name. See [Searching](Searching). On the start page the search field sits in the middle of the page instead. |
 | **Planets** | Opens the list of all planets. See [All planets](All-Planets). |
 | **Map** | Opens the 3D map of the Milky Way. See [The map](The-Map). |
@@ -18,7 +18,7 @@ The bar at the top is the same on every page.
 
 ## The start page
 
-1. Open ExoAtlas. You land on the start page.
+1. Open ExoFinder. You land on the start page.
 2. Type a name into the big search field, for example `Kepler`. Suggestions appear below the field.
 3. Or pick one of the cards under **Places to start**. Each card is a well-known planet. Click it to open its page.
 4. Scroll down to see the catalogue in numbers: how many exoplanets there are, how many stars have planets, and how many planets there are of each kind.

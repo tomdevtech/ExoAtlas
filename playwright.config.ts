@@ -5,7 +5,7 @@ import { e2eDatabaseUrl } from "./tests/support/db";
  * Browser tests: `npm run test:e2e`.
  *
  * Playwright builds the app, starts it on port 3100 against its own database
- * (exoatlas_e2e, filled with the small test catalogue by tests/e2e/global-setup.ts)
+ * (exofinder_e2e, filled with the small test catalogue by tests/e2e/global-setup.ts)
  * and clicks through it like a visitor. The database from docker-compose.yml
  * must be running. The first run needs the browser: `npm run e2e:install`.
  *

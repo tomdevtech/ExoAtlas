@@ -9,7 +9,7 @@ export default function HomePage() {
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-12 px-6 py-14">
       <div className="flex flex-col gap-4">
-        <h1 className="text-5xl font-semibold tracking-tight">ExoAtlas</h1>
+        <h1 className="text-5xl font-semibold tracking-tight">ExoFinder</h1>
         <p className="max-w-2xl text-lg leading-8 text-muted">
           Every known exoplanet in one place. Search by name, or start with one of the planets
           below. Each planet and each star has its own page.

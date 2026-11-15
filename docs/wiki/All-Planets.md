@@ -1,6 +1,6 @@
 # All planets
 
-The list shows every planet in ExoAtlas: all known exoplanets and the eight planets of our solar system.
+The list shows every planet in ExoFinder: all known exoplanets and the eight planets of our solar system.
 
 ## Open the list
 

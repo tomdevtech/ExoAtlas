@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <!-- The ExoAtlas mark: a planet in transit in front of its star. Keep in step with Logo.tsx. -->
+  <!-- The ExoFinder mark: a planet in transit in front of its star. Keep in step with Logo.tsx. -->
   <defs>
     <radialGradient id="star" cx="40%" cy="38%" r="65%">
       <stop offset="0" stop-color="#fff6e0"/>

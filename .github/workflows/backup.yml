@@ -40,15 +40,15 @@ jobs:
           mkdir -p backup
           # pg_dump from the image must be at least as new as the database server.
           docker run --rm -e DATABASE_URL -v "$PWD/backup:/backup" postgres:18 \
-            sh -c 'pg_dump --dbname="$DATABASE_URL" --format=custom --no-owner --no-privileges --file=/backup/exoatlas.dump \
-              && pg_restore --list /backup/exoatlas.dump | grep -c "TABLE DATA"' \
+            sh -c 'pg_dump --dbname="$DATABASE_URL" --format=custom --no-owner --no-privileges --file=/backup/exofinder.dump \
+              && pg_restore --list /backup/exofinder.dump | grep -c "TABLE DATA"' \
             | { read -r tables; echo "Dump holds the data of $tables tables."; [ "$tables" -gt 0 ]; }
           ls -l backup
       - name: Keep the dump
         if: ${{ env.DATABASE_URL != '' }}
         uses: actions/upload-artifact@v7
         with:
-          name: exoatlas-db-${{ github.run_id }}
-          path: backup/exoatlas.dump
+          name: exofinder-db-${{ github.run_id }}
+          path: backup/exofinder.dump
           retention-days: 90
           if-no-files-found: error

@@ -6,7 +6,7 @@
  * time limit stops a single expensive query from tying up the database.
  */
 
-export const READONLY_ROLE = "exoatlas_web";
+export const READONLY_ROLE = "exofinder_web";
 
 /** Longest a single query of the website may run. */
 export const STATEMENT_TIMEOUT = "5s";
