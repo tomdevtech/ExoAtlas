@@ -26,7 +26,13 @@ async function main() {
   try {
     const [{ database }] = await sql<{ database: string }[]>`select current_database() as database`;
     for (const statement of readonlyRoleStatements(database, password)) {
-      await sql.unsafe(statement);
+      try {
+        await sql.unsafe(statement);
+      } catch (error) {
+        // Name the step, without the password.
+        const step = statement.replace(/PASSWORD '[^']*'/, "PASSWORD '…'").split("\n")[0];
+        throw new Error(`${error instanceof Error ? error.message : error}\n  in: ${step}`);
+      }
     }
     console.log(
       `Role ${READONLY_ROLE} is ready: may only read, ${STATEMENT_TIMEOUT} per query.\n\n` +
