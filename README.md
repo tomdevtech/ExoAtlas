@@ -123,46 +123,12 @@ flowchart LR
 2. **The website** reads from the database and never writes to it. Pages arrive in two steps: the frame at once, the data a moment later.
 3. **Your device** draws the 3D planets and the map. Nothing about you is sent back.
 
-### 🛠️ Tech stack
-
-**Website and 3D**
+**Built with**
 
 <p>
-  <img src="https://skillicons.dev/icons?i=nextjs,react,ts,tailwind,threejs,nodejs" alt="Next.js, React, TypeScript, Tailwind CSS, three.js, Node.js">
-</p>
-<p>
-  <img src="https://img.shields.io/badge/WebGL_2_shaders-990000?style=for-the-badge&logo=webgl&logoColor=white" alt="WebGL 2 with our own shaders">
-</p>
-
-**Data**
-
-<p>
-  <img src="https://skillicons.dev/icons?i=postgres" alt="PostgreSQL">
-</p>
-<p>
-  <img src="https://img.shields.io/badge/Drizzle_ORM-1a1a1a?style=for-the-badge&logo=drizzle&logoColor=c5f74f" alt="Drizzle ORM">
-  <img src="https://img.shields.io/badge/Neon-0c0d0d?style=for-the-badge&logoColor=00e599" alt="Neon">
-  <img src="https://img.shields.io/badge/NASA_Exoplanet_Archive-0b3d91?style=for-the-badge" alt="NASA Exoplanet Archive">
-</p>
-
-**Hosting and automation**
-
-<p>
-  <img src="https://skillicons.dev/icons?i=vercel,github,githubactions,docker" alt="Vercel, GitHub, GitHub Actions, Docker">
-</p>
-<p>
-  <img src="https://img.shields.io/badge/CodeQL-2088ff?style=for-the-badge" alt="CodeQL">
-  <img src="https://img.shields.io/badge/Dependabot-025e8c?style=for-the-badge&logo=dependabot&logoColor=white" alt="Dependabot">
-</p>
-
-**Tests**
-
-<p>
-  <img src="https://skillicons.dev/icons?i=vitest" alt="Vitest">
-</p>
-<p>
-  <img src="https://img.shields.io/badge/Playwright-2ead33?style=for-the-badge" alt="Playwright">
-  <img src="https://img.shields.io/badge/axe--core-663399?style=for-the-badge" alt="axe-core">
+  <img src="https://skillicons.dev/icons?i=nextjs,react,ts,tailwind,threejs,nodejs,postgres,vercel,githubactions,docker,vitest&perline=11" height="30" alt="Next.js, React, TypeScript, Tailwind CSS, three.js, Node.js, PostgreSQL, Vercel, GitHub Actions, Docker, Vitest">
+  <br>
+  <sub>and WebGL 2 shaders · Drizzle ORM · Neon · Playwright · axe-core · CodeQL · Dependabot</sub>
 </p>
 
 The planets are drawn by our own shaders, one description per planet for the still picture, the turning image, the 3D model and the map. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains every part in detail.
