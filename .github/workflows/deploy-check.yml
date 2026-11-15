@@ -4,40 +4,68 @@ name: Deployment check
 # deployment's own address (npm run test:smoke). When that fails for a
 # production deployment, it puts the previous production deployment back live.
 #
+# Vercel reports deployments as repository_dispatch events
+# (vercel.deployment.success), with the address, the environment and the commit
+# in client_payload. In Vercel, Project → Settings → Git, "repository_dispatch
+# Events" must be on. Started by hand (Run workflow) it checks any address and
+# never rolls back.
+#
 # Setup: docs/DEPLOYMENT.md, "Smoke test after each deployment" and
 # "Automatic rollback". Secrets: VERCEL_AUTOMATION_BYPASS_SECRET (only with
 # Deployment Protection), VERCEL_TOKEN. Variables: VERCEL_ORG_ID,
 # VERCEL_PROJECT_ID.
 
-on: deployment_status
+on:
+  repository_dispatch:
+    types: [vercel.deployment.success]
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Address to check, for example https://exoatlas.vercel.app"
+        required: true
+      environment:
+        description: "production or preview (only for the log; a manual run never rolls back)"
+        default: production
+      sha:
+        description: "Commit the deployment should run (optional)"
+        required: false
 
 permissions:
   contents: read
 
+env:
+  DEPLOY_URL: ${{ github.event.client_payload.url || inputs.url }}
+  DEPLOY_ENVIRONMENT: ${{ github.event.client_payload.environment || inputs.environment }}
+  DEPLOY_SHA: ${{ github.event.client_payload.git.sha || inputs.sha }}
+
 # One check per environment at a time; a newer deployment waits for the older check.
 concurrency:
-  group: deploy-check-${{ github.event.deployment.environment }}
+  group: deploy-check-${{ github.event.client_payload.environment || inputs.environment }}
   cancel-in-progress: false
 
 jobs:
   smoke:
-    if: ${{ github.event.deployment_status.state == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:
       reachable: ${{ steps.reach.outputs.reachable }}
     env:
-      SMOKE_BASE_URL: ${{ github.event.deployment_status.environment_url || github.event.deployment_status.target_url }}
-      SMOKE_EXPECTED_SHA: ${{ github.event.deployment.sha }}
       VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
     steps:
+      # Vercel may send the address without https://.
+      - name: Address of the deployment
+        run: |
+          url="${DEPLOY_URL%/}"
+          case "$url" in http://*|https://*) ;; *) url="https://$url" ;; esac
+          echo "SMOKE_BASE_URL=$url" >> "$GITHUB_ENV"
+          echo "SMOKE_EXPECTED_SHA=$DEPLOY_SHA" >> "$GITHUB_ENV"
+          echo "Checking $url ($DEPLOY_ENVIRONMENT, commit ${DEPLOY_SHA:-unknown})"
       # A deployment the check cannot even open (Deployment Protection without
       # the bypass secret) is a setup problem, not a broken deployment: then
       # nothing is rolled back.
       - name: Can the check reach the deployment?
         id: reach
         run: |
-          echo "Checking $SMOKE_BASE_URL (${{ github.event.deployment.environment }})"
           status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
             -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" \
             "$SMOKE_BASE_URL/health" || true)
@@ -50,7 +78,7 @@ jobs:
           echo "reachable=true" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.deployment.sha }}
+          ref: ${{ env.DEPLOY_SHA }}
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -70,22 +98,24 @@ jobs:
 
   rollback:
     needs: smoke
-    # Only production, only when the smoke test ran and failed.
+    # Only production, only when Vercel reported it, only when the smoke test
+    # ran and failed. (startsWith ignores case: "production" or "Production".)
     if: >-
       ${{ failure()
+      && github.event_name == 'repository_dispatch'
       && needs.smoke.outputs.reachable == 'true'
-      && startsWith(github.event.deployment.environment, 'Production') }}
+      && startsWith(github.event.client_payload.environment, 'production') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
-      FAILED_DEPLOYMENT_URL: ${{ github.event.deployment_status.environment_url || github.event.deployment_status.target_url }}
+      FAILED_DEPLOYMENT_URL: ${{ github.event.client_payload.url }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.deployment.sha }}
+          ref: ${{ env.DEPLOY_SHA }}
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -98,7 +128,7 @@ jobs:
           {
             echo "## Production deployment failed its smoke test"
             echo ""
-            echo "Failed deployment: $FAILED_DEPLOYMENT_URL (commit ${{ github.event.deployment.sha }})"
+            echo "Failed deployment: $FAILED_DEPLOYMENT_URL (commit $DEPLOY_SHA)"
             if [ "${{ job.status }}" = "success" ]; then
               echo ""
               echo "The previous production deployment is live again."
