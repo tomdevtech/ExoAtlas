@@ -7,9 +7,9 @@ flowchart LR
     subgraph Before["1. Before the merge"]
         direction TB
         T1[Type check and lint]
-        T2[Unit tests]
+        T2[Unit and script tests]
         T3[Database tests]
-        T4[Browser tests<br>flows, security, accessibility]
+        T4[Browser tests<br>flows, drawing, security, accessibility]
         T5[Build, npm audit, CodeQL]
     end
     subgraph After["2. After each deployment"]
@@ -39,8 +39,10 @@ Every test is in `tests/`; `src/` holds only the app. Unit and database tests si
 ```
 tests/
 ├── unit/      unit tests, mirroring src/                 npm test
+├── scripts/   tests that run a script from start to end  npm run test:scripts
 ├── db/        tests against a real PostgreSQL            npm run test:db
 ├── e2e/       browser tests in Chromium                  npm run test:e2e
+│   └── looks/ the kept pictures of planets and galaxy
 ├── smoke/     the check of a running deployment          npm run test:smoke
 └── support/   test catalogue, test databases, sample NASA rows
 ```
@@ -53,9 +55,10 @@ Test code imports the app as `@/…` and the helpers as `@tests/…`, for exampl
 | --- | --- | --- | --- |
 | Type check | TypeScript, `next typegen` | every pull request and push to `main` | wrong types, broken route parameters |
 | Lint | ESLint with the Next.js rules | every pull request and push | mistakes and patterns the rules forbid |
-| Unit tests | Vitest, about 170 tests in 21 files | every pull request and push | errors in the logic, without database or browser |
+| Unit tests | Vitest, about 200 tests in 24 files | every pull request and push | errors in the logic, without database or browser; base maps that do not fit their numbers |
+| Script tests | Vitest, runs `generate-presets.ts` at a small size | every pull request and push | a generator of the base maps that fails, forgets a map or gives another result for the same run |
 | Database tests | Vitest against a real PostgreSQL 17 | every pull request and push | wrong queries, ranking, sync runs, hostile input |
-| Browser tests | Playwright in Chromium, desktop and phone | every pull request and push | broken pages and flows, security, accessibility |
+| Browser tests | Playwright in Chromium, desktop and phone | every pull request and push | broken pages and flows, shaders that do not compile or draw something else than before, security, accessibility |
 | Build | `next build` | every pull request and push | anything that only fails when the production build runs |
 | Dependency audit | `npm audit` | every pull request and push | known vulnerabilities in dependencies |
 | Code scanning | CodeQL, `security-and-quality` | every pull request and push, Mondays | security problems in our own code |
@@ -107,7 +110,13 @@ timeline
 
 `npm test` ([vitest.config.mts](../vitest.config.mts), project `unit`) runs every `*.test.ts` in `tests/unit/`, which mirrors `src/`. They need neither a database nor a browser and take about a second.
 
-They cover the logic: classification, appearance, coordinates, slugs, formatting, the pages of the planet list, the details of the operator, reading the NASA response, planning the sync, the description of a globe and its shader values, the noise of the planet shaders, the model of the galaxy, the orbits, the answers of the map. And the parts that matter for security and operations: the security headers, the proxy, what the JSON endpoints answer when the database fails (no details may leak), the health report, which address the database connection uses, the statements of the read-only role and the choice of the deployment to roll back to.
+They cover the logic: classification, appearance, colours, coordinates, slugs, formatting, the pages of the planet list, the details of the operator, reading the NASA response, planning the sync, the description of a globe and its shader values, where and how large a planet is drawn, the noise of the planet shaders, the scale of the galaxy, the orbits, the answers of the map. They also check the files the drawing relies on: every base map of `presets.json` is there in both sizes and fits its numbers, and the picture of the galaxy is square with its core in the middle, which the scale of the map assumes. And the parts that matter for security and operations: the security headers, the proxy, what the JSON endpoints answer when the database fails (no details may leak), the health report, which address the database connection uses, the statements of the read-only role and the choice of the deployment to roll back to.
+
+`npm run test:coverage` runs them once more and counts which lines of `src/` they reach; the report is in `coverage/`. The number is low on purpose, about a third: the unit tests reach the logic, while pages, routes and everything that draws are tested in the browser, which the count does not see. Use it to find logic without a test, not as a target.
+
+### Script tests
+
+`npm run test:scripts` (project `scripts`, [tests/scripts/](../tests/scripts)) runs [generate-presets.ts](../scripts/generate-presets.ts) from start to end, at a fraction of the real size and into a temporary folder (`PRESET_DIR`), so the maps of the app stay untouched. It takes most of a minute. Every preset is simulated without an error, the files and `presets.json` come out complete, a rocky map carries height, water and craters in its three channels, and the same run gives the same files again. Whether the real maps look right is still for the eye: `npx tsx scripts/preview-presets.ts <name> <output.jpg>` writes the three channels of a map side by side.
 
 ### Database tests
 
@@ -123,12 +132,21 @@ Every query also gets hostile input: SQL fragments, wildcards, null bytes and 10
 | --- | --- |
 | `navigation.spec.ts` | start page, header and footer, links to the legal pages, not-found pages, old addresses of renamed planets and stars |
 | `search.spec.ts` | suggestions while typing, keyboard and Escape, the results page, similar names for typos, empty and unmatched queries |
-| `planets.spec.ts` | the list of all planets with filter and order, planet and star pages, the 3D model and its buttons, withdrawn planets, the solar system |
-| `map.spec.ts` | loading the stars, finding one by name, opening a system from the address and going back to the galaxy |
+| `planets.spec.ts` | the list of all planets with filter and order, planet and star pages, the 3D model and its buttons, a 3D model from each kind of base map and from the photographs of Earth and Mars, how long browsers may keep the maps, withdrawn planets, the solar system |
+| `map.spec.ts` | loading the stars, finding one by name, opening a system from the address and going back to the galaxy, the whole galaxy from outside on a black sky, small maps on the orbits and the large map of the planet the camera follows |
+| `shaders.spec.ts` | what the shaders draw, see below |
+| `scripts.spec.ts` | `planet-sheet.ts` against the running app: the sheet has its size and a lit planet in every tile |
 | `security.spec.ts` | the headers on every kind of answer, hostile input over HTTP, script injection through the address and the search, `GET` only on the JSON endpoints, framing by another site, broken encoding, null bytes, no violation of the Content Security Policy |
 | `accessibility.spec.ts` | axe-core checks every page and the open suggestion list against WCAG 2.1 A and AA; the site can be used with the keyboard alone |
 
 The browser tests fail on every error in the browser console, so a hydration error or a blocked script shows up even when the page looks right. They also run the smoke test against the local build, so a change that would break it shows up before it is merged.
+
+### What the shaders draw
+
+[shaders.spec.ts](../tests/e2e/shaders.spec.ts) draws planets and the galaxy with the real shaders and textures inside a page of the test browser and reads the pixels back ([lab.ts](../tests/e2e/lab.ts)). Chromium draws with SwiftShader there, in software, so the result does not depend on a graphics card. It runs on the desktop screen only; the shaders are the same on a phone. Two kinds of test:
+
+- **Properties** that must hold whatever the colours are: every program compiles; the day side is lit and the night side dark; the same moment gives the same picture; the light reddens only in the narrow seam of the sunset; the clouds of the Earth and the bands of a gas giant move, and stand still when asked to; a moon, rings, flattening, the aurora and lightning on the night side only, the hot day side of a planet held by its star. The galaxy from above matches its picture, from the side it is thin with a bulge, away from it the sky is black, and from inside it is a band across the sky.
+- **Looks.** A small picture of fourteen planets and of two views of the galaxy is compared with the one kept in [tests/e2e/looks/](../tests/e2e/looks). The pictures are 48 pixels wide and may differ by a mean of 5 of 255 levels, so they notice a planet that turned grey, lost its clouds or changed its colours, and not a single pixel. A change that is meant renews them: `UPDATE_LOOKS=1 npm run test:e2e -- shaders`. Look at the new pictures before committing them; the test only says that the look changed, not whether it is better.
 
 ### Smoke test
 
@@ -160,8 +178,11 @@ The database and browser tests need the database from `docker-compose.yml` (`npm
 | --- | --- |
 | `npm test` | unit tests |
 | `npm run test:db` | database tests |
+| `npm run test:scripts` | the generator of the base maps, at a small size |
 | `npm run test:e2e` | browser tests, including the smoke test against the local build |
-| `npm run test:all` | all three |
+| `npm run test:all` | all four |
+| `npm run test:coverage` | unit tests, with a report in `coverage/` of the lines they reach |
+| `UPDATE_LOOKS=1 npm run test:e2e -- shaders` | renews the kept pictures after a change to the look that is meant |
 | `SMOKE_BASE_URL=https://… npm run test:smoke` | the smoke test against any deployment |
 | `bash scripts/check-tls.sh www.exofinder.space` | the TLS check (needs curl and OpenSSL 3) |
 | `npm run typecheck`, `npm run lint`, `npm run build` | type check, lint, production build |
@@ -170,7 +191,9 @@ Do not hammer the live site while testing: a few hundred requests from one addre
 
 ## What is not tested automatically
 
-- **How the planets and the map look.** Shaders and the map are checked by eye in a browser. `npm run docs:screenshots` renews the pictures of the user guide; looking over them after a visible change is the closest thing to a visual test.
+- **Whether the planets and the map look good.** The tests notice that a look changed, not whether it is real: that is checked by eye in a browser. `npm run planets:sheet` ([planet-sheet.ts](../scripts/planet-sheet.ts)) draws a spread of planets from the catalogue onto one picture, always the same ones: whether they look real and differ enough only shows side by side. `npm run docs:screenshots` renews the pictures of the user guide.
+- **How fast it draws on a real graphics card.** The browser tests draw in software. After a change to a shader, watch the frame rate of the map and of a planet on a phone.
+- **The downloads of `fetch-textures.ts`.** The script fetches from NASA, ESO and others and is run by hand, rarely; a test would depend on their servers. What it leaves behind is tested: the files in `public/textures` the app needs.
 - **The settings outside the repository**: the firewall rule, the variables in Vercel, the DNS records. The TLS check and the smoke test notice the most important consequences.
 - **The wording of the legal pages.** The tests check that they exist and are linked, not what they say.
 - **A restore of the backup.** It was tried once in November 2026 and worked; repeat it now and then ([DEPLOYMENT.md](DEPLOYMENT.md), "Backups").
@@ -180,4 +203,6 @@ Do not hammer the live site while testing: a few hundred requests from one addre
 - Logic without database or browser gets unit tests in `tests/unit/`, at the same path as the code.
 - A new query gets a database test, including hostile input.
 - A new page or flow gets a browser test; a new page also joins the list of `accessibility.spec.ts` and of the security header checks.
+- A new effect of a shader gets a property test in `shaders.spec.ts`: where it shows and where it must not. A new kind of planet gets a kept picture.
+- A new base map joins `presets.json` through `npm run presets`; the unit and script tests then check it without a change.
 - A new address that the smoke test should cover joins [tests/smoke/deployment.spec.ts](../tests/smoke/deployment.spec.ts).

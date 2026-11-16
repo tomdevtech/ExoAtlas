@@ -97,8 +97,8 @@ Almost no exoplanet has ever been photographed. ExoFinder shows the measured val
 
 | ✅ Measured | 🎨 Computed or modelled |
 | --- | --- |
-| The values of every planet and star, from NASA; each one says whether it was measured or calculated | What an exoplanet looks like: computed from its size, temperature and the colour of its star |
-| Where each star is and how far away | The Milky Way seen from outside: a model, because nobody has ever seen it from there |
+| The values of every planet and star, from NASA; each one says whether it was measured or calculated | What an exoplanet looks like: computed from its size, temperature, density, orbit and the colour of its star. The lie of its land, its rings, moons and polar lights are invention, the same for a planet every time |
+| Where each star is and how far away | The Milky Way seen from outside: an artist's impression drawn from surveys, because nobody has ever seen it from there |
 | The colour of each star, from its temperature | Sizes and distances inside a system: squeezed, or the planets would be invisible |
 | The sky around the Sun: a photograph | Where on its orbit a planet is right now |
 | The surfaces of the planets of our solar system | |
@@ -234,6 +234,7 @@ The legal notice and the privacy policy must name whoever runs the copy. Set `LE
 - **Mass-radius relation:** Chen & Kipping (2017), "Probabilistic Forecasting of the Masses and Radii of Other Worlds".
 - **Surface maps of the solar system:** [Solar System Scope](https://www.solarsystemscope.com/textures/), based on NASA imagery, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 - **Panorama of the sky:** [ESO/S. Brunier](https://www.eso.org/public/images/eso0932a/), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). It also appears in the screenshots of the map above.
+- **Picture of the galaxy:** "Artist's impression of the Milky Way", [NASA/JPL-Caltech/ESO/R. Hurt](https://www.eso.org/public/images/eso1339g/), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The map gives it a thickness, so the galaxy can be seen from every side.
 
 The images were scaled down and compressed again. Details: [public/textures/README.md](public/textures/README.md).
 

@@ -1,6 +1,7 @@
 import { useId } from "react";
 import type { Appearance, Layer } from "./appearance";
 import { Globe } from "./globe/Globe";
+import { globeRadius } from "./globe/spec";
 
 const SIZE = 200;
 const CENTER = SIZE / 2;
@@ -54,8 +55,9 @@ export function PlanetImage({
   // Ids must be unique per image because several images share one page.
   const id = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const { base, layers, banded, atmosphere, starTint, rings, seed } = appearance;
-  // Ringed planets are drawn smaller so the rings fit into the picture.
-  const radius = rings ? 50 : 84;
+  // Ringed planets are drawn smaller so the rings fit into the picture, and a
+  // planet with a moon as small as its moving image, which has to fit the moon in.
+  const radius = rings ? 50 : 100 * globeRadius(appearance.globe);
   const frequency = banded ? "0.003 0.055" : "0.016";
 
   const still = (

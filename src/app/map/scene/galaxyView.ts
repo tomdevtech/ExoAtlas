@@ -3,7 +3,6 @@ import {
   BufferGeometry,
   CustomBlending,
   GLSL3,
-  HalfFloatType,
   LinearFilter,
   Matrix3,
   Matrix4,
@@ -14,19 +13,19 @@ import {
   Points,
   RawShaderMaterial,
   Scene,
+  TextureLoader,
   Vector3,
   WebGLRenderTarget,
   type Texture,
   type WebGLRenderer,
 } from "three";
 import { isSpecialStar, SPECIAL_STAR_COLOR } from "@/app/stars/my-special-star/star";
-import { buildGalaxy, GALACTIC_CENTRE, starColor } from "../galaxy";
+import { GALACTIC_CENTRE, GALAXY_EDGE, starColor } from "../galaxy";
 import type { MapStar } from "../payload";
 import type { LabelKind, LabelLayer } from "./labels";
 import {
-  EXPOSE_FRAGMENT,
-  GALAXY_FRAGMENT,
-  GALAXY_VERTEX,
+  COPY_FRAGMENT,
+  GALAXY_GLOW_FRAGMENT,
   HOSTS_FRAGMENT,
   HOSTS_VERTEX,
   SCREEN_VERTEX,
@@ -50,7 +49,23 @@ interface Flight {
   duration: number;
 }
 
-const GALAXY_POINTS = 110_000;
+/**
+ * Adding up the light of the galaxy along every line of sight costs time for
+ * each pixel. So it is drawn into a picture of at most this many pixels and
+ * stretched over the screen.
+ */
+const GLOW_PIXELS = 1_300_000;
+/** Seconds the galaxy takes to appear once its picture has arrived. */
+const ARRIVAL_SECONDS = 0.6;
+/**
+ * How far from the Sun the photograph of the sky is still right, and from
+ * where on the model has taken over, in parsecs. The disc of the galaxy is
+ * thin, so leaving it upwards or downwards changes the view four times as
+ * fast as moving along it.
+ */
+const SKY_RANGE: readonly [number, number] = [150, 900];
+const MODEL_RANGE: readonly [number, number] = [100, 700];
+const HEIGHT_COUNTS = 4;
 /** Where the map opens: a few parsecs from the Sun, looking past it at the galactic centre. */
 const HOME = new Vector3(-9, -6.5, 4);
 const OVERVIEW = new Vector3(GALACTIC_CENTRE[0] - 15000, -13000, 21000);
@@ -74,9 +89,10 @@ const additive = { blending: CustomBlending, blendSrc: OneFactor, blendDst: OneF
  * around them, and a camera that flies freely.
  *
  * Lengths are parsecs, the Sun is at the origin and z points to the galactic
- * north. Near the Sun the sky is a photograph of the real Milky Way. Further
- * out the photograph would be wrong, because it shows the view from here, so
- * it fades into the computed model of the galaxy.
+ * north. Near the Sun the sky is a photograph of the real Milky Way. A little
+ * further out the photograph would be wrong, because it shows the view from
+ * here, so it fades into the computed model of the galaxy. From outside the
+ * galaxy there is nothing behind it but black.
  */
 export class GalaxyView {
   readonly scene = new Scene();
@@ -90,17 +106,26 @@ export class GalaxyView {
   private sunIndex = -1;
   private specialIndex = -1;
   private hosts: Points<BufferGeometry, RawShaderMaterial> | null = null;
-  private readonly cloud: Points<BufferGeometry, RawShaderMaterial>;
   private readonly sky: Sky;
   /**
-   * The cloud is first drawn into a picture of its own that can hold any
-   * brightness, and from there onto the screen (see EXPOSE_FRAGMENT).
+   * The galaxy is first drawn into a picture of its own and from there onto
+   * the screen (see GLOW_PIXELS).
    */
-  private readonly cloudScene = new Scene();
-  private readonly exposure: {
+  private readonly glow: {
+    scene: Scene;
+    source: Mesh<PlaneGeometry, RawShaderMaterial>;
     target: WebGLRenderTarget;
     screen: Mesh<PlaneGeometry, RawShaderMaterial>;
-  } | null;
+  };
+  /** What the picture of the glow was last drawn from: while nothing of it changes, the picture stays. */
+  private drawnFrom = "";
+  /**
+   * The artist's impression of the galaxy. It is only fetched when the camera
+   * leaves the neighbourhood of the Sun, where the photograph of the sky is
+   * enough. `arrived` runs from 0 to 1 once it is there, so the galaxy fades in.
+   */
+  private picture: Texture | null = null;
+  private arrived = 0;
 
   private readonly position = HOME.clone();
   private yaw = 0;
@@ -114,52 +139,38 @@ export class GalaxyView {
   private readonly viewProjection = new Matrix4();
   private readonly scratch = new Vector3();
 
-  /**
-   * `wideRange` says whether the graphics card can draw into pictures with
-   * more than 8 bits per colour. Without them the cloud goes straight to the
-   * screen, dimmed so that its centre does not burn out.
-   */
-  constructor(skyTexture: Texture, wideRange: boolean) {
+  /** `pictureUrl` is where the artist's impression of the galaxy can be fetched. */
+  constructor(
+    skyTexture: Texture,
+    private readonly pictureUrl: string,
+  ) {
     this.camera.up.set(0, 0, 1);
     this.lookAt(new Vector3(0, 0, 0));
 
     this.sky = createSky(skyTexture, new Matrix3());
     this.scene.add(this.sky.mesh);
 
-    const model = buildGalaxy(GALAXY_POINTS);
-    const geometry = new BufferGeometry();
-    geometry.setAttribute("position", new BufferAttribute(model.positions, 3));
-    geometry.setAttribute("color", new BufferAttribute(model.colors, 3));
-    geometry.setAttribute("size", new BufferAttribute(model.sizes, 1));
-    geometry.setAttribute("alpha", new BufferAttribute(model.alphas, 1));
-    this.cloud = new Points(
-      geometry,
+    const source = new Mesh(
+      new PlaneGeometry(2, 2),
       new RawShaderMaterial({
         glslVersion: GLSL3,
-        vertexShader: GALAXY_VERTEX,
-        fragmentShader: GALAXY_FRAGMENT,
+        vertexShader: SCREEN_VERTEX,
+        fragmentShader: GALAXY_GLOW_FRAGMENT,
         uniforms: {
-          uPixelsPerUnit: { value: 1 },
+          uMap: { value: null },
+          uEye: { value: new Vector3() },
+          uForward: { value: new Vector3() },
+          uRight: { value: new Vector3() },
+          uUp: { value: new Vector3() },
           uFade: { value: 0 },
-          uGain: { value: wideRange ? 1 : 0.06 },
+          uOutside: { value: 1 },
         },
         depthTest: false,
         depthWrite: false,
-        transparent: true,
-        ...additive,
       }),
     );
-    this.cloud.frustumCulled = false;
-    this.cloud.renderOrder = 1;
-
-    if (!wideRange) {
-      this.exposure = null;
-      this.scene.add(this.cloud);
-      return;
-    }
-    this.cloudScene.add(this.cloud);
+    source.frustumCulled = false;
     const target = new WebGLRenderTarget(1, 1, {
-      type: HalfFloatType,
       depthBuffer: false,
       minFilter: LinearFilter,
       magFilter: LinearFilter,
@@ -170,7 +181,7 @@ export class GalaxyView {
       new RawShaderMaterial({
         glslVersion: GLSL3,
         vertexShader: SCREEN_VERTEX,
-        fragmentShader: EXPOSE_FRAGMENT,
+        fragmentShader: COPY_FRAGMENT,
         uniforms: { uMap: { value: target.texture } },
         depthTest: false,
         depthWrite: false,
@@ -181,21 +192,26 @@ export class GalaxyView {
     screen.frustumCulled = false;
     screen.renderOrder = 1;
     this.scene.add(screen);
-    this.exposure = { target, screen };
+    this.glow = { scene: new Scene().add(source), source, target, screen };
   }
 
   /** Draws the galaxy. Call after `update`. */
   render(renderer: WebGLRenderer, viewport: Viewport): void {
-    if (this.exposure) {
-      const { target, screen } = this.exposure;
-      screen.visible = this.cloud.material.uniforms.uFade.value > 0.001;
-      if (screen.visible) {
-        // The cloud is soft: one pixel of its picture per CSS pixel is enough.
-        if (target.width !== viewport.width || target.height !== viewport.height) {
-          target.setSize(viewport.width, viewport.height);
-        }
+    const { scene, source, target, screen } = this.glow;
+    screen.visible = source.material.uniforms.uFade.value > 0.001;
+    if (screen.visible) {
+      const scale = Math.min(1, Math.sqrt(GLOW_PIXELS / (viewport.width * viewport.height)));
+      const width = Math.max(1, Math.round(viewport.width * scale));
+      const height = Math.max(1, Math.round(viewport.height * scale));
+      if (target.width !== width || target.height !== height) target.setSize(width, height);
+      // The glow is the costly part of the picture. While the camera rests,
+      // the one that is there is shown again.
+      const { uEye, uForward, uRight, uUp, uFade, uOutside } = source.material.uniforms;
+      const from = JSON.stringify([width, height, uEye.value, uForward.value, uRight.value, uUp.value, uFade.value, uOutside.value]);
+      if (from !== this.drawnFrom) {
+        this.drawnFrom = from;
         renderer.setRenderTarget(target);
-        renderer.render(this.cloudScene, this.camera);
+        renderer.render(scene, this.camera);
         renderer.setRenderTarget(null);
       }
     }
@@ -352,10 +368,34 @@ export class GalaxyView {
     // Pixels a parsec covers at a distance of one parsec.
     const cssPixelsPerUnit = viewport.height / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
     const pixelsPerUnit = cssPixelsPerUnit * viewport.pixelRatio;
-    const fromSun = this.position.length();
-    this.sky.setOpacity(1 - smoothstep(1500, 6000, fromSun));
-    this.cloud.material.uniforms.uPixelsPerUnit.value = this.exposure ? cssPixelsPerUnit : pixelsPerUnit;
-    this.cloud.material.uniforms.uFade.value = smoothstep(1200, 5000, fromSun);
+    // How far the view has left the one from the Sun.
+    const away = Math.hypot(this.position.x, this.position.y, this.position.z * HEIGHT_COUNTS);
+    this.sky.setOpacity(1 - smoothstep(SKY_RANGE[0], SKY_RANGE[1], away));
+    const wanted = smoothstep(MODEL_RANGE[0], MODEL_RANGE[1], away);
+    const glow = this.glow.source.material.uniforms;
+    if (wanted > 0 && !this.picture) {
+      this.picture = new TextureLoader().load(this.pictureUrl, (picture) => {
+        glow.uMap.value = picture;
+      });
+    }
+    if (glow.uMap.value) this.arrived = Math.min(1, this.arrived + dt / ARRIVAL_SECONDS);
+    const fade = wanted * this.arrived;
+    // The line of sight of every pixel: forwards, plus so much to the right and upwards.
+    const reach = Math.tan((this.camera.fov * Math.PI) / 360);
+    const view = this.camera.matrixWorld.elements;
+    glow.uFade.value = fade;
+    // Whether the camera is inside the disc, where the galaxy is all around,
+    // or outside, where it is a thing to look at (see GALAXY_GLOW_FRAGMENT).
+    const fromCentre = Math.hypot(this.position.x - CENTRE.x, this.position.y - CENTRE.y);
+    const outside = Math.max(
+      smoothstep(200, 1500, Math.abs(this.position.z)),
+      smoothstep(GALAXY_EDGE * 0.8, GALAXY_EDGE, fromCentre),
+    );
+    glow.uOutside.value = outside;
+    (glow.uEye.value as Vector3).copy(this.position);
+    (glow.uRight.value as Vector3).set(view[0], view[1], view[2]).multiplyScalar(reach * this.camera.aspect);
+    (glow.uUp.value as Vector3).set(view[4], view[5], view[6]).multiplyScalar(reach);
+    (glow.uForward.value as Vector3).set(-view[8], -view[9], -view[10]);
     if (this.hosts) {
       this.hosts.material.uniforms.uPixelsPerUnit.value = pixelsPerUnit;
       this.hosts.material.uniforms.uPixelRatio.value = viewport.pixelRatio;
@@ -499,11 +539,12 @@ export class GalaxyView {
   }
 
   dispose(): void {
-    this.cloud.geometry.dispose();
-    this.cloud.material.dispose();
-    this.exposure?.target.dispose();
-    this.exposure?.screen.geometry.dispose();
-    this.exposure?.screen.material.dispose();
+    this.picture?.dispose();
+    this.glow.source.geometry.dispose();
+    this.glow.source.material.dispose();
+    this.glow.target.dispose();
+    this.glow.screen.geometry.dispose();
+    this.glow.screen.material.dispose();
     this.hosts?.geometry.dispose();
     this.hosts?.material.dispose();
     this.sky.dispose();

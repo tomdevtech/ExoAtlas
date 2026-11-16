@@ -80,6 +80,8 @@ export interface SystemPlanetRow {
   semiMajorAxisAu: number | null;
   eccentricity: number | null;
   radiusEarth: number | null;
+  eqTempK: number | null;
+  densityEarth: number | null;
 }
 
 /** Positions with three decimals are exact to a thousandth of a parsec, far finer than the measurements. */
@@ -122,6 +124,10 @@ export function toMapSystem(star: SystemStarRow, planets: SystemPlanetRow[]): Ma
         planetClass: planet.planetClass,
         climateClass: planet.climateClass,
         starTeffK: star.teffK,
+        radiusEarth: planet.radiusEarth,
+        eqTempK: planet.eqTempK,
+        densityEarth: planet.densityEarth,
+        orbitalPeriodDays: planet.orbitalPeriodDays,
       }).globe,
     })),
   };

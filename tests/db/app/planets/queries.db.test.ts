@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { ACTIVE_EXOPLANETS } from "@tests/support/catalog";
 import { PAGE_SIZE } from "@/app/planets/paging";
@@ -9,10 +10,37 @@ import {
   getPlanetsBySlug,
   getPlanetsOfStar,
   listPlanets,
+  measuredDensity,
 } from "@/app/planets/queries";
+import { getDb } from "@/db/client";
 
 /** Exoplanets of the test catalogue plus the eight planets of the solar system. */
 const ALL_ACTIVE = ACTIVE_EXOPLANETS + 8;
+
+describe("measuredDensity", () => {
+  it("is only given where both mass and radius were measured", async () => {
+    const rows = await getDb().execute<{ density: number | null }>(sql`
+      with t (n, mass_earth, radius_earth, mass_calculated, mass_is_minimum, radius_calculated) as (values
+        (1, 8.0::float8, 2.0::float8, false, false, false),
+        (2, 8.0, 2.0, true, false, false),
+        (3, 8.0, 2.0, false, true, false),
+        (4, 8.0, 2.0, false, false, true),
+        (5, null, 2.0, false, false, false),
+        (6, 8.0, null, false, false, false),
+        (7, 8.0, 0.0, false, false, false))
+      select ${measuredDensity(sql`t`)} as density from t order by n`);
+    // Eight Earth masses in a ball twice as wide are as dense as Earth.
+    expect(rows.map((row) => row.density)).toEqual([1, null, null, null, null, null, null]);
+  });
+
+  it("reaches the list and the page of a planet", async () => {
+    const [cancri] = (await listPlanets("55 cnc", 1)).planets;
+    expect(cancri.densityEarth).toBeCloseTo(7.99 / 1.88 ** 3, 6);
+    expect((await getPlanet("55-cnc-e"))?.densityEarth).toBeCloseTo(7.99 / 1.88 ** 3, 6);
+    // No mass, no density.
+    expect((await getPlanet("kepler-22-b"))?.densityEarth).toBeNull();
+  });
+});
 
 describe("listPlanets", () => {
   it("lists every active planet, but not the withdrawn one", async () => {

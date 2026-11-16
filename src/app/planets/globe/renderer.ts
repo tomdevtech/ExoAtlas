@@ -1,6 +1,13 @@
 import { globeFragment, GLOBE_VERTEX } from "./globe.glsl";
 import { NOISE_SIZE, noiseVolume } from "./noise";
-import { globeRadius, globeRotation, lightDirection, type GlobeSpec } from "./spec";
+import {
+  globeRadius,
+  globeRotation,
+  lightDirection,
+  lockedSway,
+  moonPosition,
+  type GlobeSpec,
+} from "./spec";
 import {
   defineLines,
   surfaceDefines,
@@ -18,6 +25,8 @@ export interface GlobePose {
   pitch?: number;
   /** 1 shows the whole planet. */
   zoom?: number;
+  /** Lets the bands of gas giants drift. Off for the small images in lists. */
+  flow?: boolean;
 }
 
 /** A rectangle of the canvas in pixels, measured from the lower left corner as WebGL does. */
@@ -31,6 +40,36 @@ export interface GlobeRect {
 interface LoadedTexture {
   texture: WebGLTexture;
   ready: boolean;
+}
+
+/**
+ * The values for the uniforms of globe.glsl.ts that depend on how the planet
+ * is seen and where on the canvas it is drawn. Together with surfaceUniforms()
+ * and the textures they are all a picture needs.
+ */
+export function poseUniforms(
+  spec: GlobeSpec,
+  pose: GlobePose,
+  rect: GlobeRect,
+): Record<string, number | number[]> {
+  const zoom = pose.zoom ?? 1;
+  const yaw = (pose.yaw ?? 0) + lockedSway(spec, pose.seconds);
+  const moon = moonPosition(spec, pose.seconds, yaw, pose.pitch) ?? [0, 0, 0];
+  return {
+    uTime: pose.seconds,
+    // Zoomed in, the clouds and the fine grain get more detail.
+    uDetail: Math.min(3, Math.max(0, Math.log2(zoom))),
+    uCenter: [rect.x + rect.width / 2, rect.y + rect.height / 2],
+    uRadius: (Math.min(rect.width, rect.height) / 2) * globeRadius(spec) * zoom,
+    // The rotation is stored row by row and WebGL reads column by column. Read
+    // that way it is the opposite rotation, which is the one the shader needs.
+    uViewToObj: globeRotation(spec, pose.seconds, yaw, pose.pitch),
+    uLightView: lightDirection(yaw, pose.pitch),
+    uFlatten: spec.flattening,
+    uMoon: [moon[0], moon[1], moon[2], spec.moon?.size ?? 0],
+    // The bands of a gas giant only drift where that is asked for.
+    ...(pose.flow ? {} : { uFlow: 0 }),
+  };
 }
 
 /** One program, for one combination of surface parts. */
@@ -144,7 +183,7 @@ export class GlobeRenderer {
     if (!entry || !this.check(entry) || !entry.program) return false;
 
     const urls = textureUrls(spec, this.textureSize);
-    const day = urls.day ? this.texture(urls.day, true) : null;
+    const day = this.texture(urls.day, true);
     const night = urls.night ? this.texture(urls.night, true) : null;
     const clouds = urls.clouds ? this.texture(urls.clouds, true) : null;
     const ring = urls.ring ? this.texture(urls.ring, false) : null;
@@ -158,27 +197,15 @@ export class GlobeRenderer {
 
     gl.useProgram(entry.program);
     const location = (name: string) => this.location(entry, name);
-    for (const [name, value] of Object.entries(surfaceUniforms(spec))) {
+    // A number, a pair, three, four, or the nine of a rotation.
+    const values = { ...surfaceUniforms(spec), ...poseUniforms(spec, pose, rect) };
+    for (const [name, value] of Object.entries(values)) {
       if (typeof value === "number") gl.uniform1f(location(name), value);
+      else if (value.length === 2) gl.uniform2fv(location(name), value);
       else if (value.length === 3) gl.uniform3fv(location(name), value);
-      else gl.uniform4fv(location(name), value);
+      else if (value.length === 4) gl.uniform4fv(location(name), value);
+      else gl.uniformMatrix3fv(location(name), false, value);
     }
-
-    const zoom = pose.zoom ?? 1;
-    const radius = (Math.min(rect.width, rect.height) / 2) * globeRadius(spec) * zoom;
-    gl.uniform1f(location("uTime"), pose.seconds);
-    // Zoomed in, the computed surfaces get finer detail.
-    gl.uniform1f(location("uDetail"), Math.min(3, Math.max(0, Math.log2(zoom))));
-    gl.uniform2f(location("uCenter"), rect.x + rect.width / 2, rect.y + rect.height / 2);
-    gl.uniform1f(location("uRadius"), radius);
-    // The rotation is stored row by row and WebGL reads column by column. Read
-    // that way it is the opposite rotation, which is the one the shader needs.
-    gl.uniformMatrix3fv(
-      location("uViewToObj"),
-      false,
-      globeRotation(spec, pose.seconds, pose.yaw, pose.pitch),
-    );
-    gl.uniform3fv(location("uLightView"), lightDirection(pose.yaw, pose.pitch));
 
     const maps = [day, night, clouds, ring];
     MAP_UNITS.forEach((name, unit) => {
@@ -244,20 +271,20 @@ export class GlobeRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
-    // The noise the surfaces are made of (noise.ts). Half floats are precise
-    // enough and can be filtered on every WebGL 2 device.
+    // The noise of the clouds and the fine grain (noise.ts). Half floats are
+    // precise enough and can be filtered on every WebGL 2 device.
     this.noise = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_3D, this.noise);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     gl.texImage3D(
       gl.TEXTURE_3D,
       0,
-      gl.RGBA16F,
+      gl.R16F,
       NOISE_SIZE,
       NOISE_SIZE,
       NOISE_SIZE,
       0,
-      gl.RGBA,
+      gl.RED,
       gl.FLOAT,
       noiseVolume(),
     );

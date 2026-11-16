@@ -16,6 +16,8 @@ export interface MapEvents {
 
 const SKY_LARGE = "/textures/sky/milky-way-lg.jpg";
 const SKY_SMALL = "/textures/sky/milky-way-sm.jpg";
+const GALAXY_LARGE = "/textures/sky/galaxy-lg.jpg";
+const GALAXY_SMALL = "/textures/sky/galaxy-sm.jpg";
 /** How long the curtain takes to close or open. Its class `duration-320` must say the same. */
 const FADE_MS = 320;
 /** The mouse pointers of the map, as Tailwind classes. */
@@ -120,10 +122,7 @@ export class MapEngine {
     this.skyTexture.wrapS = RepeatWrapping;
 
     this.textures = new TextureStore(Math.min(this.renderer.capabilities.getMaxAnisotropy(), 8));
-    const { extensions } = this.renderer;
-    const wideRange =
-      extensions.has("EXT_color_buffer_float") || extensions.has("EXT_color_buffer_half_float");
-    this.galaxy = new GalaxyView(this.skyTexture, wideRange);
+    this.galaxy = new GalaxyView(this.skyTexture, large ? GALAXY_LARGE : GALAXY_SMALL);
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);

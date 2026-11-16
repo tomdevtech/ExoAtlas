@@ -18,7 +18,7 @@ import {
   PerspectiveCamera,
   PlaneGeometry,
   RawShaderMaterial,
-  RGBAFormat,
+  RedFormat,
   RepeatWrapping,
   RingGeometry,
   Scene,
@@ -29,7 +29,7 @@ import {
   type Texture,
 } from "three";
 import { NOISE_SIZE, noiseVolume } from "@/app/planets/globe/noise";
-import { linearColor, seedOffset } from "@/app/planets/globe/spec";
+import { linearColor, seedOffset, type GlobeSpec } from "@/app/planets/globe/spec";
 import { surfaceDefines, surfaceUniforms, textureUrls } from "@/app/planets/globe/uniforms";
 import { starColor } from "../galaxy";
 import { layoutOrbits, orbitPoint, starSize, type OrbitLayout } from "../orbits";
@@ -41,6 +41,7 @@ import {
   GLOW_FRAGMENT,
   GLOW_VERTEX,
   HAZE_FRAGMENT,
+  MOON_FRAGMENT,
   PLANET_FRAGMENT,
   RING_FRAGMENT,
   RING_VERTEX,
@@ -52,10 +53,10 @@ import { createSky, type Sky } from "./sky";
 export class TextureStore {
   private readonly loader = new TextureLoader();
   private readonly textures = new Map<string, Texture>();
-  private readonly waiting = new Map<string, (() => void)[]>();
+  private readonly waiting = new Map<string, ((texture: Texture | null) => void)[]>();
   /** Stands in where a shader expects a picture and the planet has none. */
   readonly blank: Texture;
-  /** The noise the computed surfaces are made of (planets/globe/noise.ts). */
+  /** The noise of the clouds and the fine grain (planets/globe/noise.ts). */
   readonly noise: Data3DTexture;
 
   constructor(private readonly anisotropy: number) {
@@ -63,10 +64,10 @@ export class TextureStore {
     this.blank.needsUpdate = true;
 
     this.noise = new Data3DTexture(noiseVolume(), NOISE_SIZE, NOISE_SIZE, NOISE_SIZE);
-    this.noise.format = RGBAFormat;
+    this.noise.format = RedFormat;
     this.noise.type = FloatType;
     // Half floats are precise enough and can be filtered on every WebGL 2 device.
-    this.noise.internalFormat = "RGBA16F";
+    this.noise.internalFormat = "R16F";
     this.noise.minFilter = LinearFilter;
     this.noise.magFilter = LinearFilter;
     this.noise.wrapS = RepeatWrapping;
@@ -77,21 +78,35 @@ export class TextureStore {
     this.noise.needsUpdate = true;
   }
 
-  /** `onLoad` is called when the picture is there, at once if it already is. */
-  get(url: string, onLoad: () => void = () => {}): Texture {
+  /**
+   * `onDone` is called with the picture when it is there, at once if it
+   * already is, and with `null` when it could not be loaded.
+   */
+  get(url: string, onDone: (texture: Texture | null) => void = () => {}): Texture {
     const known = this.textures.get(url);
     if (known) {
       const queue = this.waiting.get(url);
-      if (queue) queue.push(onLoad);
-      else onLoad();
+      if (queue) queue.push(onDone);
+      else onDone(known);
       return known;
     }
-    this.waiting.set(url, [onLoad]);
-    const texture = this.loader.load(url, () => {
+    this.waiting.set(url, [onDone]);
+    const settle = (result: Texture | null) => {
       const queue = this.waiting.get(url) ?? [];
       this.waiting.delete(url);
-      for (const callback of queue) callback();
-    });
+      for (const callback of queue) callback(result);
+    };
+    const texture = this.loader.load(
+      url,
+      () => settle(texture),
+      undefined,
+      () => {
+        // Forgotten again, so the next system that needs it tries once more.
+        this.textures.delete(url);
+        texture.dispose();
+        settle(null);
+      },
+    );
     texture.wrapS = RepeatWrapping;
     texture.anisotropy = this.anisotropy;
     this.textures.set(url, texture);
@@ -108,12 +123,16 @@ export class TextureStore {
 interface Body {
   layout: OrbitLayout;
   name: string;
+  spec: GlobeSpec;
+  /** Whether the large maps have been asked for (see `sharpen`). */
+  sharp: boolean;
   /** Moves along the orbit. */
   anchor: Group;
   /** Turns around the tilted axis. */
   ball: Mesh<SphereGeometry, RawShaderMaterial>;
   ring: Mesh<RingGeometry, RawShaderMaterial> | null;
   haze: Mesh<SphereGeometry, RawShaderMaterial> | null;
+  moon: Mesh<SphereGeometry, RawShaderMaterial> | null;
   orbit: Line<BufferGeometry, LineBasicMaterial>;
   spin: number;
   spinStart: number;
@@ -171,7 +190,7 @@ export class SystemView {
 
   constructor(
     private readonly payload: MapSystemPayload,
-    textures: TextureStore,
+    private readonly textures: TextureStore,
     skyTexture: Texture,
   ) {
     const { star, planets } = payload;
@@ -231,7 +250,7 @@ export class SystemView {
     // The planets.
     const layouts = layoutOrbits(planets, star, seed);
     for (const layout of layouts) {
-      this.bodies.push(this.createBody(layout, textures));
+      this.bodies.push(this.createBody(layout));
     }
     this.extent = layouts.reduce(
       (extent, layout) => Math.max(extent, layout.semiMajor * (1 + layout.eccentricity)),
@@ -240,17 +259,21 @@ export class SystemView {
     this.placeBodies(0);
   }
 
-  private createBody(layout: OrbitLayout, textures: TextureStore): Body {
+  private createBody(layout: OrbitLayout): Body {
+    const { textures } = this;
     const planet = this.payload.planets[layout.index];
     const spec = planet.globe;
-    const urls = textureUrls(spec, "lg");
+    // On its orbit a planet is a few dozen pixels wide: the small maps are
+    // enough until the camera follows it (see `sharpen`).
+    const urls = textureUrls(spec, "sm");
 
     const anchor = new Group();
     const axis = new Group();
     axis.rotation.z = (-spec.tiltDeg * Math.PI) / 180;
     anchor.add(axis);
 
-    // The planet stays hidden until its maps have loaded, instead of flashing black.
+    // The planet stays hidden until its maps have loaded, instead of flashing
+    // black. A map that cannot be loaded does not keep it hidden for ever.
     let pending = 1;
     const loaded = () => {
       pending--;
@@ -288,7 +311,8 @@ export class SystemView {
         uniforms,
       }),
     );
-    ball.scale.setScalar(layout.size);
+    // A giant that turns fast is flattened at its poles.
+    ball.scale.set(layout.size, layout.size * (1 - spec.flattening), layout.size);
     axis.add(ball);
 
     let ring: Body["ring"] = null;
@@ -342,8 +366,29 @@ export class SystemView {
           blendDst: OneFactor,
         }),
       );
-      haze.scale.setScalar(layout.size * shell);
+      haze.scale.set(layout.size * shell, layout.size * shell * (1 - spec.flattening), layout.size * shell);
       axis.add(haze);
+    }
+
+    let moon: Body["moon"] = null;
+    if (spec.moon) {
+      moon = new Mesh(
+        this.ballGeometry,
+        new RawShaderMaterial({
+          glslVersion: GLSL3,
+          vertexShader: BALL_VERTEX,
+          fragmentShader: MOON_FRAGMENT,
+          uniforms: {
+            uSeed: uniforms.uSeed,
+            uLight: uniforms.uLight,
+            uNoise: uniforms.uNoise,
+            uLightObject: { value: new Vector3() },
+          },
+        }),
+      );
+      moon.scale.setScalar(layout.size * spec.moon.size);
+      // Its orbit lies above the equator of the planet.
+      axis.add(moon);
     }
 
     // The orbit as a closed line.
@@ -369,14 +414,38 @@ export class SystemView {
     return {
       layout,
       name: planet.name,
+      spec,
+      sharp: false,
       anchor,
       ball,
       ring,
       haze,
+      moon,
       orbit,
       spin: spec.spin,
       spinStart: ((spec.seed * 0.618) % 1) * Math.PI * 2,
     };
+  }
+
+  /**
+   * Replaces the small maps of a planet by the large ones, each as soon as it
+   * has loaded. Happens once, when the camera first follows the planet.
+   */
+  private sharpen(body: Body): void {
+    if (body.sharp) return;
+    body.sharp = true;
+    const urls = textureUrls(body.spec, "lg");
+    // The rings share these uniforms with the ball, so they change with it.
+    const { uniforms } = body.ball.material;
+    const swap = (name: string, url: string | null) => {
+      if (!url) return;
+      this.textures.get(url, (texture) => {
+        if (texture) uniforms[name].value = texture;
+      });
+    };
+    swap("uMapDay", urls.day);
+    swap("uMapNight", urls.night);
+    swap("uMapClouds", urls.clouds);
   }
 
   // ---- Moving the camera -----------------------------------------------------
@@ -402,6 +471,7 @@ export class SystemView {
     // Keep looking at the old place and glide over, instead of jumping.
     this.lag.add(before).sub(this.focusPoint(this.scratch));
     if (body) {
+      this.sharpen(body);
       // Look from the side of the star, a little off the line to it: most of
       // the planet is in daylight and the star does not block the view.
       const turned = this.azimuth + this.swing;
@@ -439,7 +509,19 @@ export class SystemView {
         layout.phase + (this.clock / layout.period) * 2 * Math.PI,
       );
       body.anchor.position.set(x, 0, -y);
-      body.ball.rotation.y = body.spinStart + seconds * SPIN_RATE * body.spin;
+      // A rocky planet that always shows its star the same side turns once per
+      // orbit. The others spin at their own pace, and so do the clouds of a
+      // gas planet that is held: its winds carry them around.
+      body.ball.rotation.y =
+        body.spec.locked > 0.5 && body.spec.kind === "terrain"
+          ? Math.atan2(-x, y)
+          : body.spinStart + seconds * SPIN_RATE * body.spin;
+      const moon = body.spec.moon;
+      if (body.moon && moon) {
+        const angle = moon.phase + (seconds / moon.period) * 2 * Math.PI;
+        const reach = layout.size * moon.distance;
+        body.moon.position.set(Math.cos(angle) * reach, 0, Math.sin(angle) * reach);
+      }
       const focused = layout.index === this.focused;
       body.orbit.material.opacity = focused ? 0.7 : 0.3;
       body.ball.material.uniforms.uTime.value = seconds;
@@ -502,6 +584,7 @@ export class SystemView {
       place(body.ball);
       if (body.ring) place(body.ring);
       if (body.haze) place(body.haze);
+      if (body.moon) place(body.moon);
     }
     place(this.star);
     this.star.material.uniforms.uTime.value = seconds;
@@ -559,6 +642,7 @@ export class SystemView {
       body.ring?.geometry.dispose();
       body.ring?.material.dispose();
       body.haze?.material.dispose();
+      body.moon?.material.dispose();
       body.orbit.geometry.dispose();
       body.orbit.material.dispose();
     }

@@ -50,9 +50,12 @@ export default function LegalNoticePage() {
           The maps of the planets of the solar system are by{" "}
           <a href="https://www.solarsystemscope.com/textures/">Solar System Scope</a>, based on
           NASA imagery. The panorama of the sky is “The Milky Way panorama” by{" "}
-          <a href="https://www.eso.org/public/images/eso0932a/">ESO/S. Brunier</a>. Both are
-          licensed under <a href={CC_BY}>CC BY 4.0</a>. They were scaled down and compressed for
-          this website; the map of Venus shows the cloud tops, not the surface.
+          <a href="https://www.eso.org/public/images/eso0932a/">ESO/S. Brunier</a>. The galaxy on
+          the map is drawn from the “Artist’s impression of the Milky Way” by{" "}
+          <a href="https://www.eso.org/public/images/eso1339g/">NASA/JPL-Caltech/ESO/R. Hurt</a>.
+          All are licensed under <a href={CC_BY}>CC BY 4.0</a>. They were scaled down and compressed
+          for this website; the map of Venus shows the cloud tops, not the surface, and the picture
+          of the galaxy was given a thickness so that it can be seen from every side.
         </p>
       </LegalSection>
 

@@ -1,6 +1,7 @@
 /**
- * Downloads the surface maps of the solar system and the panorama of the Milky
- * Way and stores them, scaled down, in public/textures.
+ * Downloads the surface maps of the solar system, the panorama of the Milky
+ * Way and the picture of the galaxy from outside, and stores them, scaled
+ * down, in public/textures.
  *
  *   npm run textures
  *
@@ -14,6 +15,7 @@ import sharp from "sharp";
 
 const SOLAR_SYSTEM_SCOPE = "https://www.solarsystemscope.com/textures/download/";
 const ESO_PANORAMA = "https://cdn.eso.org/images/large/eso0932a.jpg";
+const ESO_GALAXY = "https://cdn.eso.org/images/large/eso1339g.jpg";
 const OUT = path.resolve("public/textures");
 
 /** Surface maps: file at the source and the name we store it under. */
@@ -84,6 +86,19 @@ async function main() {
     .jpeg({ quality: 80, mozjpeg: true })
     .toFile(path.join(OUT, "sky", "milky-way-sm.jpg"));
   console.log("sky/milky-way");
+
+  // The galaxy from above, as an artist drew it: the galactic centre in the
+  // middle, the Sun below it (src/app/map/galaxy.ts).
+  const galaxy = await download(ESO_GALAXY, downloads);
+  await sharp(galaxy)
+    .resize(4096, 4096)
+    .jpeg({ quality: 82, mozjpeg: true })
+    .toFile(path.join(OUT, "sky", "galaxy-lg.jpg"));
+  await sharp(galaxy)
+    .resize(2048, 2048)
+    .jpeg({ quality: 80, mozjpeg: true })
+    .toFile(path.join(OUT, "sky", "galaxy-sm.jpg"));
+  console.log("sky/galaxy");
 
   console.log(`Done. The downloads are in ${downloads} and can be deleted.`);
 }

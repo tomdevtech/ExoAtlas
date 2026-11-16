@@ -1,9 +1,23 @@
-import { and, asc, desc, eq, inArray, like, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, like, or, sql, type SQL } from "drizzle-orm";
 import { cache } from "react";
 import { getDb } from "@/db/client";
 import { planetAliases, planetChanges, planets, stars } from "@/db/schema";
 import { isSlug, searchKey } from "@/shared/slug";
 import { PAGE_SIZE, clampPage, type ListSort } from "./paging";
+
+/**
+ * The density of a planet compared with Earth, as part of a query, only
+ * where NASA measured both its mass and its radius. A density that was merely
+ * calculated from the size says nothing about what the planet is made of.
+ * `table` is the name the planets table has in the query.
+ */
+export function measuredDensity(table: SQL = sql`${planets}`): SQL<number | null> {
+  return sql<number | null>`case
+    when ${table}.mass_earth > 0 and ${table}.radius_earth > 0
+      and not ${table}.mass_calculated and not ${table}.mass_is_minimum and not ${table}.radius_calculated
+    then ${table}.mass_earth / power(${table}.radius_earth, 3)
+  end`;
+}
 
 /** What a list entry and its small image need to know about a planet. */
 export const planetSummaryColumns = {
@@ -14,6 +28,8 @@ export const planetSummaryColumns = {
   planetClass: planets.planetClass,
   climateClass: planets.climateClass,
   radiusEarth: planets.radiusEarth,
+  eqTempK: planets.eqTempK,
+  densityEarth: measuredDensity(),
   orbitalPeriodDays: planets.orbitalPeriodDays,
   starName: stars.name,
   starTeffK: stars.teffK,
@@ -27,6 +43,9 @@ export interface PlanetSummary {
   planetClass: "rocky" | "super_earth" | "neptune_like" | "gas_giant" | null;
   climateClass: "frozen" | "cold" | "temperate" | "hot" | "scorching" | null;
   radiusEarth: number | null;
+  eqTempK: number | null;
+  /** Compared with Earth, and only if mass and radius were measured. */
+  densityEarth: number | null;
   orbitalPeriodDays: number | null;
   starName: string;
   starTeffK: number | null;
@@ -39,7 +58,7 @@ export interface PlanetSummary {
 export const getPlanet = cache(async (slug: string) => {
   if (!isSlug(slug)) return null;
   const [row] = await getDb()
-    .select({ planet: planets, star: stars })
+    .select({ planet: planets, star: stars, densityEarth: measuredDensity() })
     .from(planets)
     .innerJoin(stars, eq(stars.id, planets.starId))
     .where(eq(planets.slug, slug))

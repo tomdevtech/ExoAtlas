@@ -55,7 +55,14 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             >
               ESO/S. Brunier
             </a>
-            . Both under{" "}
+            . Picture of the galaxy:{" "}
+            <a
+              className="text-accent underline-offset-4 underline decoration-current/40 hover:decoration-current"
+              href="https://www.eso.org/public/images/eso1339g/"
+            >
+              NASA/JPL-Caltech/ESO/R. Hurt
+            </a>
+            . All under{" "}
             <a
               className="text-accent underline-offset-4 underline decoration-current/40 hover:decoration-current"
               href="https://creativecommons.org/licenses/by/4.0/"

@@ -2,6 +2,7 @@ import { and, asc, eq, isNotNull } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { planets, stars } from "@/db/schema";
 import { isSlug } from "@/shared/slug";
+import { measuredDensity } from "@/app/planets/queries";
 import type { StarRow, SystemPlanetRow, SystemStarRow } from "./payload";
 
 /** All stars that can be placed on the map: those with a known position. */
@@ -59,6 +60,8 @@ export async function getMapSystem(
       semiMajorAxisAu: planets.semiMajorAxisAu,
       eccentricity: planets.eccentricity,
       radiusEarth: planets.radiusEarth,
+      eqTempK: planets.eqTempK,
+      densityEarth: measuredDensity(),
     })
     .from(planets)
     .where(and(eq(planets.starId, star.id), eq(planets.status, "active")))

@@ -72,6 +72,10 @@ async function PlanetContent({ params }: { params: Props["params"] }) {
     planetClass: planet.planetClass,
     climateClass: planet.climateClass,
     starTeffK: star.teffK,
+    radiusEarth: planet.radiusEarth,
+    eqTempK: planet.eqTempK,
+    densityEarth: found.densityEarth,
+    orbitalPeriodDays: planet.orbitalPeriodDays,
   });
 
   return (

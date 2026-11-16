@@ -1,5 +1,5 @@
 import { sql, type SQL } from "drizzle-orm";
-import type { PlanetSummary } from "@/app/planets/queries";
+import { measuredDensity, type PlanetSummary } from "@/app/planets/queries";
 import type { StarSummary } from "@/app/stars/StarCard";
 import { getDb } from "@/db/client";
 import { searchKey } from "@/shared/slug";
@@ -32,6 +32,8 @@ type Row = {
   planet_class: PlanetSummary["planetClass"];
   climate_class: PlanetSummary["climateClass"];
   radius_earth: number | null;
+  eq_temp_k: number | null;
+  density_earth: number | null;
   orbital_period_days: number | null;
   star_name: string;
   star_teff_k: number | null;
@@ -52,7 +54,8 @@ function hitsQuery(
   return sql`
     select * from (
       select 'planet' as kind, p.slug, p.name, p.source, p.status,
-             p.planet_class, p.climate_class, p.radius_earth, p.orbital_period_days,
+             p.planet_class, p.climate_class, p.radius_earth, p.eq_temp_k,
+             ${measuredDensity(sql`p`)} as density_earth, p.orbital_period_days,
              s.name as star_name, s.teff_k as star_teff_k, null::int as planet_count,
              ${rank(planetKey)} as rank, length(p.search_name) as name_length
       from planets p
@@ -60,7 +63,7 @@ function hitsQuery(
       where ${matches(planetKey)}
       union all
       select 'star', s.slug, s.name, s.source, 'active',
-             null, null, null, null,
+             null, null, null, null, null, null,
              s.name, s.teff_k, s.planet_count,
              ${rank(starKey)}, length(s.search_name)
       from stars s
@@ -93,6 +96,8 @@ function toHit(row: Row): SearchHit {
       planetClass: row.planet_class,
       climateClass: row.climate_class,
       radiusEarth: row.radius_earth,
+      eqTempK: row.eq_temp_k,
+      densityEarth: row.density_earth,
       orbitalPeriodDays: row.orbital_period_days,
       starName: row.star_name,
       starTeffK: row.star_teff_k,

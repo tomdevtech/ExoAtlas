@@ -32,7 +32,7 @@ The buttons in the top right corner bring you to two fixed places:
 
 ![The whole Milky Way from above](images/map-galaxy.png)
 
-The shape of the galaxy is a model, because we cannot look at the Milky Way from outside. The positions of the stars are measured.
+The galaxy is an artist's impression, because we cannot look at the Milky Way from outside: Robert Hurt drew it for NASA from what the surveys of its stars and gas show. The positions of the stars are measured.
 
 ## Find a star
 
