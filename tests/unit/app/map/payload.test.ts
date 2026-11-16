@@ -22,6 +22,8 @@ function planet(overrides: Partial<SystemPlanetRow> = {}): SystemPlanetRow {
     semiMajorAxisAu: 0.029,
     eccentricity: 0.005,
     radiusEarth: 0.92,
+    eqTempK: 251,
+    densityEarth: null,
     ...overrides,
   };
 }
@@ -57,7 +59,7 @@ describe("toMapSystem", () => {
     const { planets } = toMapSystem(STAR, [planet(), planet({ slug: "trappist-1-b", name: "TRAPPIST-1 b" })]);
     expect(planets.map((item) => item.slug)).toEqual(["trappist-1-e", "trappist-1-b"]);
     expect(planets[0].description).toBe("Rocky planet, temperate");
-    expect(planets[0].globe.kind).toBe("solid");
+    expect(planets[0].globe.kind).toBe("terrain");
     expect(planets[0].globe.seed).not.toBe(planets[1].globe.seed);
   });
 

@@ -33,6 +33,8 @@ uniform vec2 uCenter;      // centre of the planet in pixels
 uniform float uRadius;     // radius of the planet in pixels
 uniform mat3 uViewToObj;   // turns the viewer's coordinates into the planet's
 uniform vec3 uLightView;   // direction to the star as the viewer sees it
+uniform float uFlatten;    // how much shorter the planet is from pole to pole than across
+uniform vec4 uMoon;        // centre of the moon as the viewer sees it, in planet radii, and its radius (0: no moon)
 
 out vec4 outColor;
 
@@ -44,9 +46,16 @@ void over(inout vec4 below, vec3 color, float opacity) {
 void main() {
   // The pixel in planet radii: x to the right, y up, the viewer looks along -z.
   vec2 d = (gl_FragCoord.xy - uCenter) / uRadius;
-  float r = length(d);
   float pixel = 1.0 / uRadius;
   vec4 result = vec4(0.0);
+
+  // A giant that turns fast is flattened at its poles. Seen from the side it
+  // is an ellipse, shorter along its axis; r is 1 on its edge.
+  vec3 axis = vec3(uViewToObj[0][1], uViewToObj[1][1], uViewToObj[2][1]);
+  float squeeze = 1.0 / ((1.0 - uFlatten) * (1.0 - uFlatten)) - 1.0;
+  float depthTerm = 1.0 + squeeze * axis.z * axis.z;
+  float alongAxis = dot(d, axis.xy);
+  float r = sqrt(dot(d, d) + squeeze * alongAxis * alongAxis / depthTerm);
 
   // The atmosphere glows a little beyond the edge, on the side facing the star.
   if (uAtmo.a > 0.0 && r > 1.0 - pixel) {
@@ -57,7 +66,6 @@ void main() {
   }
 
   // The rings lie in the plane through the centre, at right angles to the axis.
-  vec3 axis = vec3(uViewToObj[0][1], uViewToObj[1][1], uViewToObj[2][1]);
   vec4 ring = vec4(0.0);
   float ringZ = 0.0;
   if (uRing.z > 0.5 && abs(axis.z) > 0.02) {
@@ -83,17 +91,49 @@ void main() {
   vec3 ball = vec3(0.0);
   if (r < 1.0 + 2.5 * pixel) {
     vec2 dc = d * min(1.0, 0.9995 / max(r, 1e-6));
-    ballZ = sqrt(1.0 - dot(dc, dc));
+    // Where the line of sight meets the flattened ball.
+    float along = dot(dc, axis.xy);
+    float halfway = squeeze * along * axis.z;
+    float rest = dot(dc, dc) + squeeze * along * along - 1.0;
+    ballZ = (-halfway + sqrt(max(halfway * halfway - depthTerm * rest, 0.0))) / depthTerm;
+    // The surface is computed on a ball, so the point is stretched back to one.
+    vec3 onBall = uViewToObj * vec3(dc, ballZ);
+    onBall.y /= 1.0 - uFlatten;
     ball = shadePlanet(
-      uViewToObj * vec3(dc, ballZ),
+      normalize(onBall),
       uViewToObj * uLightView,
       uViewToObj * vec3(0.0, 0.0, 1.0));
   }
 
+  // The moon: a small ball of grey rock.
+  vec4 moon = vec4(0.0);
+  float moonZ = 0.0;
+  if (uMoon.w > 0.0) {
+    vec2 md = (d - uMoon.xy) / uMoon.w;
+    float mr = length(md);
+    float moonPixel = pixel / uMoon.w;
+    if (mr < 1.0 + moonPixel) {
+      vec2 mc = md * min(1.0, 0.9995 / max(mr, 1e-6));
+      vec3 n = vec3(mc, sqrt(1.0 - dot(mc, mc)));
+      moonZ = uMoon.z + n.z * uMoon.w;
+      // Behind the planet, as seen from the star, the moon is in its shadow.
+      float towards = dot(uMoon.xyz, uLightView);
+      float miss = length(uMoon.xyz - towards * uLightView);
+      float lit = towards < 0.0 ? smoothstep(0.92, 1.06, miss) : 1.0;
+      float rock = 0.36 + 0.3 * fbm(n * 2.6 + uSeed.zyx + 40.0, 3);
+      moon = vec4(
+        vec3(rock, rock * 0.97, rock * 0.93) * uLight * max(dot(n, uLightView), 0.0) * lit,
+        clamp((1.0 - mr) / moonPixel + 0.5, 0.0, 1.0));
+    }
+  }
+
   bool ringInFront = cover <= 0.0 || ringZ > ballZ;
+  bool moonInFront = cover <= 0.0 || moonZ > ballZ;
   if (!ringInFront) over(result, ring.rgb, ring.a);
+  if (!moonInFront) over(result, moon.rgb, moon.a);
   over(result, ball, cover);
   if (ringInFront) over(result, ring.rgb, ring.a);
+  if (moonInFront) over(result, moon.rgb, moon.a);
 
   outColor = vec4(toDisplay(result.rgb / max(result.a, 1e-4)) * result.a, result.a);
 }

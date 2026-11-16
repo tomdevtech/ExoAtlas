@@ -70,6 +70,42 @@ test.describe("planet page", () => {
     await expect(page.getByText("with 7 known planets")).toBeVisible();
   });
 
+  // A lava world, a planet like Neptune and a gas giant: one of each kind of base map.
+  for (const slug of ["55-cnc-e", "k2-18-b", "51-peg-b"]) {
+    test(`draws the 3D model of ${slug} from its base map`, async ({ page }) => {
+      const baseMap = page.waitForResponse((response) =>
+        /\/textures\/presets\/[a-z-]+-lg\.webp$/.test(response.url()),
+      );
+      await page.goto(`/planets/${slug}`);
+      expect((await baseMap).status()).toBe(200);
+      await waitForGlobe(page);
+    });
+  }
+
+  // The planets of the solar system with ground that catches the light, which is a shader program of its own.
+  for (const slug of ["earth", "mars"]) {
+    test(`draws the 3D model of ${slug} from its real map`, async ({ page }) => {
+      const realMap = page.waitForResponse((response) => response.url().endsWith(`/textures/planets/${slug}-lg.jpg`));
+      await page.goto(`/planets/${slug}`);
+      expect((await realMap).status()).toBe(200);
+      await waitForGlobe(page);
+    });
+  }
+
+  test("lets the browser keep the maps of the planets for a day", async ({ request }) => {
+    for (const path of [
+      "/textures/presets/continents-sm.webp",
+      "/textures/planets/earth-lg.jpg",
+      "/textures/sky/galaxy-sm.jpg",
+    ]) {
+      const response = await request.get(path);
+      expect(response.status(), path).toBe(200);
+      expect(response.headers()["cache-control"], path).toBe(
+        "public, max-age=86400, stale-while-revalidate=604800",
+      );
+    }
+  });
+
   test("the 3D model reacts to its buttons", async ({ page }) => {
     await page.goto("/planets/jupiter");
     await waitForGlobe(page);

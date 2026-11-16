@@ -1,72 +1,50 @@
+import path from "node:path";
+import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import { armAngle, buildGalaxy, GALACTIC_CENTRE, mulberry32, starColor } from "@/app/map/galaxy";
+import { GALACTIC_CENTRE, GALAXY_EDGE, GALAXY_PICTURE_WIDTH, starColor } from "@/app/map/galaxy";
 
-describe("mulberry32", () => {
-  it("returns the same numbers for the same seed", () => {
-    const a = mulberry32(5);
-    const b = mulberry32(5);
-    expect([a(), a(), a()]).toEqual([b(), b(), b()]);
+describe("the picture of the galaxy", () => {
+  it("has the galactic centre in its middle and the Sun where the artist drew it", () => {
+    // The shader reads the picture at 0.5 + x / width, counted from the centre (see GALAXY_GLOW_FRAGMENT).
+    const sun = 0.5 + (0 - GALACTIC_CENTRE[0]) / GALAXY_PICTURE_WIDTH;
+    expect(sun).toBeCloseTo(0.5 - 0.191, 6);
+    // 43,000 parsecs across: the disc of stars is some 30,000 wide, and the picture leaves room around it.
+    expect(GALAXY_PICTURE_WIDTH).toBeGreaterThan(40_000);
+    expect(GALAXY_PICTURE_WIDTH).toBeLessThan(46_000);
   });
 
-  it("returns numbers from 0 up to, but not including, 1", () => {
-    const random = mulberry32(1);
-    for (let i = 0; i < 1000; i++) {
-      const value = random();
-      expect(value).toBeGreaterThanOrEqual(0);
-      expect(value).toBeLessThan(1);
-    }
-  });
-});
-
-describe("buildGalaxy", () => {
-  const galaxy = buildGalaxy(4000);
-
-  it("fills every point", () => {
-    expect(galaxy.count).toBe(4000);
-    expect(galaxy.positions).toHaveLength(12000);
-    expect(galaxy.colors).toHaveLength(12000);
-    expect(galaxy.sizes).toHaveLength(4000);
-    expect(galaxy.alphas).toHaveLength(4000);
-    expect(galaxy.positions.every(Number.isFinite)).toBe(true);
-    expect(galaxy.colors.every((value) => value >= 0 && value <= 1)).toBe(true);
-    expect(galaxy.sizes.every((value) => value > 0)).toBe(true);
-    expect(galaxy.alphas.every((value) => value > 0 && value <= 1)).toBe(true);
+  it("ends inside the picture", () => {
+    expect(GALAXY_EDGE).toBeLessThan(GALAXY_PICTURE_WIDTH / 2);
+    // The Sun is well inside.
+    expect(GALACTIC_CENTRE[0]).toBeLessThan(GALAXY_EDGE / 2);
   });
 
-  it("builds the same galaxy for the same seed", () => {
-    expect(buildGalaxy(500, 3).positions).toEqual(buildGalaxy(500, 3).positions);
-    expect(buildGalaxy(500, 3).positions).not.toEqual(buildGalaxy(500, 4).positions);
-  });
+  // The scale above only holds for the picture it was measured on. These
+  // notice when the file is swapped for another view of the galaxy.
+  for (const [name, size] of [["galaxy-sm", 2048], ["galaxy-lg", 4096]] as const) {
+    it(`${name}.jpg is square, with the bright core in its middle and nothing at its edges`, async () => {
+      const file = path.resolve("public/textures/sky", `${name}.jpg`);
+      const picture = await sharp(file).metadata();
+      expect([picture.width, picture.height]).toEqual([size, size]);
 
-  it("is a flat disc around the galactic centre, not around the Sun", () => {
-    let sumX = 0;
-    let sumY = 0;
-    let flat = 0;
-    let far = 0;
-    for (let i = 0; i < galaxy.count; i++) {
-      const x = galaxy.positions[i * 3];
-      const y = galaxy.positions[i * 3 + 1];
-      const z = galaxy.positions[i * 3 + 2];
-      sumX += x;
-      sumY += y;
-      if (Math.abs(z) < 2500) flat++;
-      if (Math.hypot(x - GALACTIC_CENTRE[0], y - GALACTIC_CENTRE[1]) > 30000) far++;
-    }
-    expect(Math.abs(sumX / galaxy.count - GALACTIC_CENTRE[0])).toBeLessThan(1500);
-    expect(Math.abs(sumY / galaxy.count)).toBeLessThan(1500);
-    expect(flat / galaxy.count).toBeGreaterThan(0.9);
-    expect(far).toBe(0);
-  });
-});
+      // Shrunk and blurred, the brightest place is the core of the galaxy.
+      const small = 128;
+      const { data } = await sharp(file).resize(small, small).blur(2).greyscale().raw().toBuffer({ resolveWithObject: true });
+      let brightest = 0;
+      for (let i = 1; i < data.length; i++) if (data[i] > data[brightest]) brightest = i;
+      expect(Math.abs((brightest % small) - small / 2)).toBeLessThanOrEqual(3);
+      expect(Math.abs(Math.floor(brightest / small) - small / 2)).toBeLessThanOrEqual(3);
 
-describe("armAngle", () => {
-  it("spaces the four arms a quarter turn apart", () => {
-    expect(armAngle(1, 6000) - armAngle(0, 6000)).toBeCloseTo(Math.PI / 2, 9);
-  });
-
-  it("winds the arms on as they run outwards", () => {
-    expect(armAngle(0, 12000)).toBeGreaterThan(armAngle(0, 6000));
-  });
+      // The corners and the middle of each edge are black: the galaxy does not run out of the picture.
+      const at = (x: number, y: number) => data[y * small + x];
+      const last = small - 1;
+      for (const [x, y] of [[0, 0], [last, 0], [0, last], [last, last], [64, 0], [64, last], [0, 64], [last, 64]]) {
+        expect(at(x, y), `at ${x}, ${y}`).toBeLessThan(12);
+      }
+      // Where the Sun is, 19.1 % below the middle, the disc of the galaxy shines.
+      expect(at(64, Math.round(small * (0.5 + 0.191)))).toBeGreaterThan(40);
+    });
+  }
 });
 
 describe("starColor", () => {

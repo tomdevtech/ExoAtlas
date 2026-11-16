@@ -29,34 +29,24 @@ const points: [number, number, number][] = [
 describe("noiseAt", () => {
   it("is the noise the shader used to calculate, inside one period", () => {
     for (const [x, y, z] of points) {
-      expect(noiseAt(x, y, z)[0]).toBeCloseTo(shaderNoise(x, y, z), 12);
-    }
-  });
-
-  it("gives the exact slope", () => {
-    const step = 1e-6;
-    for (const [x, y, z] of points) {
-      const [value, sx, sy, sz] = noiseAt(x, y, z);
-      expect(sx).toBeCloseTo((noiseAt(x + step, y, z)[0] - value) / step, 4);
-      expect(sy).toBeCloseTo((noiseAt(x, y + step, z)[0] - value) / step, 4);
-      expect(sz).toBeCloseTo((noiseAt(x, y, z + step)[0] - value) / step, 4);
+      expect(noiseAt(x, y, z)).toBeCloseTo(shaderNoise(x, y, z), 12);
     }
   });
 
   it("repeats without a seam", () => {
     for (const [x, y, z] of points) {
       const shifted = noiseAt(x + NOISE_PERIOD, y - NOISE_PERIOD, z + 2 * NOISE_PERIOD);
-      noiseAt(x, y, z).forEach((value, i) => expect(shifted[i]).toBeCloseTo(value, 9));
+      expect(shifted).toBeCloseTo(noiseAt(x, y, z), 9);
     }
   });
 });
 
 describe("noiseVolume", () => {
-  it("holds noise and slope for every texel", () => {
+  it("holds the noise for every texel", () => {
     const volume = noiseVolume();
-    expect(volume).toHaveLength(NOISE_SIZE ** 3 * 4);
+    expect(volume).toHaveLength(NOISE_SIZE ** 3);
     // Texel (8, 0, 0) lies on the lattice point (1, 0, 0), where the noise is 0.
-    expect(volume[8 * 4]).toBeCloseTo(0, 6);
+    expect(volume[8]).toBeCloseTo(0, 6);
     const steps = NOISE_SIZE / NOISE_PERIOD;
     for (const [x, y, z] of [
       [5, 2, 3],
@@ -64,9 +54,8 @@ describe("noiseVolume", () => {
       [63, 63, 63],
       [8, 33, 56],
     ]) {
-      const texel = ((z * NOISE_SIZE + y) * NOISE_SIZE + x) * 4;
-      const expected = noiseAt(x / steps, y / steps, z / steps);
-      expected.forEach((value, i) => expect(volume[texel + i]).toBeCloseTo(value, 5));
+      const texel = (z * NOISE_SIZE + y) * NOISE_SIZE + x;
+      expect(volume[texel]).toBeCloseTo(noiseAt(x / steps, y / steps, z / steps), 5);
     }
   });
 });

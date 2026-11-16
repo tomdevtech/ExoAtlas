@@ -1,7 +1,17 @@
 import { expect, test } from "@tests/e2e/fixtures";
 
 /** Answers of every kind: pages, JSON, a static file and an unknown address. */
-const PATHS = ["/", "/planets", "/planets/earth", "/search/suggest?q=ke", "/map/stars", "/health", "/icon.svg", "/does-not-exist"];
+const PATHS = [
+  "/",
+  "/planets",
+  "/planets/earth",
+  "/search/suggest?q=ke",
+  "/map/stars",
+  "/health",
+  "/icon.svg",
+  "/textures/planets/earth-sm.jpg",
+  "/does-not-exist",
+];
 
 test.describe("security headers", () => {
   for (const path of PATHS) {

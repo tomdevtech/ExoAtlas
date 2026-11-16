@@ -139,7 +139,7 @@ export function PlanetViewer({
 
       const drawn = renderer.draw(
         globe,
-        { seconds: state.seconds, yaw: state.yaw, pitch: state.pitch, zoom: state.zoom },
+        { seconds: state.seconds, yaw: state.yaw, pitch: state.pitch, zoom: state.zoom, flow: true },
         { x: 0, y: 0, width, height },
       );
       state.dirty = !drawn;

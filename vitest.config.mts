@@ -11,6 +11,13 @@ const resolve = {
 
 export default defineConfig({
   test: {
+    // `npm run test:coverage`: which lines of the app the unit tests run.
+    coverage: {
+      provider: "v8",
+      include: ["src/**/*.{ts,tsx}"],
+      reporter: ["text-summary", "html"],
+      reportsDirectory: "coverage",
+    },
     projects: [
       {
         // tests/unit mirrors src/. These tests need neither a database nor a
@@ -34,6 +41,17 @@ export default defineConfig({
           fileParallelism: false,
           testTimeout: 30_000,
           hookTimeout: 60_000,
+        },
+      },
+      {
+        // Tests that run a script of scripts/ from start to end, which takes
+        // its time: `npm run test:scripts`.
+        resolve,
+        test: {
+          name: "scripts",
+          include: ["tests/scripts/**/*.test.ts"],
+          testTimeout: 60_000,
+          hookTimeout: 300_000,
         },
       },
     ],

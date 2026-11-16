@@ -301,6 +301,14 @@ export default function MilkyWayMap() {
             <a className="hover:text-foreground" href="https://www.eso.org/public/images/eso0932a/">
               ESO/S. Brunier
             </a>
+            {!system && (
+              <>
+                {" · "}Galaxy:{" "}
+                <a className="hover:text-foreground" href="https://www.eso.org/public/images/eso1339g/">
+                  NASA/JPL-Caltech/ESO/R. Hurt
+                </a>
+              </>
+            )}
             {system?.star.isSun && (
               <>
                 {" · "}Maps:{" "}
@@ -318,7 +326,7 @@ export default function MilkyWayMap() {
               ? system.star.isSun
                 ? "The planets show real maps of their surfaces."
                 : "The surfaces are illustrations computed from the data."
-              : "Star positions are measured, the galaxy’s shape is a model."}
+              : "Star positions are measured, the galaxy is an artist’s impression."}
             <br />
             {/* The footer of the other pages is hidden on the map, so its legal links stand here. */}
             <Link className="hover:text-foreground" href="/legal/notice">

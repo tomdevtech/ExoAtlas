@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { planetAppearance } from "@/app/planets/appearance";
-import { globeRadius, globeRotation, lightDirection, linearColor, seedOffset, type GlobeSpec } from "@/app/planets/globe/spec";
+import {
+  globeRadius,
+  globeRotation,
+  lightDirection,
+  linearColor,
+  lockedSway,
+  moonPosition,
+  seedOffset,
+  type GlobeSpec,
+} from "@/app/planets/globe/spec";
 import {
   ALL_SURFACE_DEFINES,
   defineLines,
@@ -16,6 +25,10 @@ function globe(slug: string, source: "nasa" | "sol" = "sol"): GlobeSpec {
     planetClass: "rocky",
     climateClass: "temperate",
     starTeffK: 5772,
+    radiusEarth: null,
+    eqTempK: null,
+    densityEarth: null,
+    orbitalPeriodDays: null,
   }).globe;
 }
 
@@ -56,6 +69,53 @@ describe("globeRadius", () => {
     expect(globeRadius(earth)).toBe(0.84);
     expect(saturn.rings).not.toBeNull();
     expect(globeRadius(saturn) * saturn.rings!.outer).toBeCloseTo(0.84, 9);
+  });
+
+  it("leaves room for a moon", () => {
+    const moon = { size: 0.1, distance: 1.3, period: 20, phase: 0 };
+    expect(globeRadius({ ...globe("earth"), moon }) * 1.4).toBeCloseTo(0.84, 9);
+  });
+});
+
+describe("moonPosition", () => {
+  const moon = { size: 0.1, distance: 1.3, period: 20, phase: 0.4 };
+
+  it("keeps the moon on its orbit and brings it back after one round", () => {
+    const spec = { ...globe("earth"), moon };
+    for (const seconds of [0, 3, 11.5]) {
+      expect(Math.hypot(...moonPosition(spec, seconds)!)).toBeCloseTo(1.3, 9);
+    }
+    const start = moonPosition(spec, 0)!;
+    moonPosition(spec, 20)!.forEach((value, i) => expect(value).toBeCloseTo(start[i], 9));
+    expect(moonPosition(spec, 5)![0]).not.toBeCloseTo(start[0], 3);
+  });
+
+  it("lays the orbit above the equator of the planet", () => {
+    const spec = { ...globe("earth"), moon };
+    // The axis as the viewer sees it is the middle column of the rotation.
+    const rotation = globeRotation(spec, 0);
+    const axis = [rotation[1], rotation[4], rotation[7]];
+    const position = moonPosition(spec, 7)!;
+    expect(axis[0] * position[0] + axis[1] * position[1] + axis[2] * position[2]).toBeCloseTo(0, 9);
+  });
+
+  it("is nothing without a moon", () => {
+    expect(moonPosition(globe("earth"), 3)).toBeNull();
+  });
+});
+
+describe("lockedSway", () => {
+  it("swings the view around a planet that cannot turn, and leaves the others alone", () => {
+    const free = globe("some-b", "nasa");
+    const held = { ...free, locked: 1 };
+    expect(lockedSway(free, 13)).toBe(0);
+    // The clouds of a gas planet circle it whether it is held or not: nothing to swing around.
+    expect(lockedSway({ ...held, kind: "bands" }, 13)).toBe(0);
+    const angles = Array.from({ length: 200 }, (_, second) => lockedSway(held, second));
+    expect(Math.max(...angles)).toBeGreaterThan(0.6);
+    expect(Math.min(...angles)).toBeLessThan(-0.6);
+    // Never so far that the viewer looks at the night side only.
+    for (const angle of angles) expect(Math.abs(angle)).toBeLessThan(1);
   });
 });
 
@@ -119,42 +179,35 @@ describe("surfaceDefines", () => {
       planetClass: "gas_giant",
       climateClass: "hot",
       starTeffK: 6000,
+      radiusEarth: null,
+      eqTempK: null,
+      densityEarth: null,
+      orbitalPeriodDays: null,
     }).globe;
 
   it("tells the shader which kind of surface to draw", () => {
-    expect(surfaceDefines(globe("earth")).KIND).toBe(2);
-    expect(surfaceDefines(globe("some-b", "nasa")).KIND).toBe(0);
-    expect(surfaceDefines(gas()).KIND).toBe(1);
+    expect(surfaceDefines(globe("earth")).KIND).toBe(0);
+    expect(surfaceDefines(globe("some-b", "nasa")).KIND).toBe(1);
+    expect(surfaceDefines(gas()).KIND).toBe(2);
   });
 
-  it("leaves out relief and craters where a planet has none", () => {
-    const solid = globe("some-b", "nasa");
-    expect(surfaceDefines({ ...solid, relief: 1, craters: 0.5 })).toMatchObject({
-      RELIEF: 1,
-      CRATERS: 1,
-    });
-    expect(surfaceDefines({ ...solid, relief: 0, craters: 0 })).toMatchObject({
-      RELIEF: 0,
-      CRATERS: 0,
-    });
-    // Gas has no ground, a map has no computed craters.
-    expect(surfaceDefines({ ...gas(), relief: 1, craters: 1 })).toMatchObject({
-      RELIEF: 0,
-      CRATERS: 0,
-    });
-    expect(surfaceDefines({ ...globe("earth"), craters: 1 }).CRATERS).toBe(0);
+  it("leaves out relief where a planet has no heights", () => {
+    // A map takes its heights from the picture, where it shows ground.
+    expect(surfaceDefines({ ...globe("earth"), relief: 0.8 }).RELIEF).toBe(1);
+    expect(surfaceDefines(globe("jupiter")).RELIEF).toBe(0);
+    // A terrain preset is nothing but heights, gas has no ground.
+    expect(surfaceDefines({ ...globe("some-b", "nasa"), relief: 0 }).RELIEF).toBe(1);
+    expect(surfaceDefines({ ...gas(), relief: 1 }).RELIEF).toBe(0);
   });
 
-  it("only returns combinations the warm-up knows", () => {
-    const keys = new Set(ALL_SURFACE_DEFINES.map(defineLines));
-    for (const kind of ["solid", "gas", "map"] as const) {
-      for (const relief of [0, 1]) {
-        for (const craters of [0, 1]) {
-          const spec = { ...globe("some-b", "nasa"), kind, relief, craters };
-          expect(keys.has(defineLines(surfaceDefines(spec)))).toBe(true);
-        }
-      }
+  it("returns exactly the combinations the warm-up builds", () => {
+    const built = ALL_SURFACE_DEFINES.map(defineLines);
+    expect(new Set(built).size).toBe(built.length);
+    const returned = new Set<string>();
+    for (const spec of [globe("earth"), globe("some-b", "nasa"), gas()]) {
+      for (const relief of [0, 1]) returned.add(defineLines(surfaceDefines({ ...spec, relief })));
     }
+    expect(returned).toEqual(new Set(built));
   });
 });
 
@@ -167,6 +220,8 @@ describe("surfaceUniforms", () => {
       glow: null,
       atmosphere: null,
       rings: null,
+      second: null,
+      aurora: null,
     };
     const uniforms = surfaceUniforms(bare);
     expect(uniforms.uOcean[3]).toBeLessThan(-1);
@@ -174,7 +229,40 @@ describe("surfaceUniforms", () => {
     expect(uniforms.uGlow[3]).toBe(0);
     expect(uniforms.uAtmo[3]).toBe(0);
     expect(uniforms.uRing[2]).toBe(0);
+    expect(uniforms.uAurora[3]).toBe(0);
     expect(uniforms.uMapFlags).toEqual([0, 0, 0, 0]);
+    // Nothing to turn: the second preset keeps the place of the first.
+    expect(uniforms.uMapTurn2).toEqual([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+  });
+
+  it("hands every part of the description to the shader unchanged", () => {
+    const giant = planetAppearance({
+      slug: "hot-b",
+      source: "nasa",
+      planetClass: "gas_giant",
+      climateClass: "hot",
+      starTeffK: 6000,
+      radiusEarth: null,
+      eqTempK: null,
+      densityEarth: null,
+      orbitalPeriodDays: null,
+    }).globe;
+    const uniforms = surfaceUniforms(giant);
+    expect(uniforms.uFlow).toBe(giant.flow);
+    expect(uniforms.uJets).toEqual(giant.jets);
+    expect(uniforms.uBelts).toEqual(giant.belts);
+    expect(uniforms.uBands).toEqual([giant.bands.contrast, giant.bands.turbulence, giant.bands.storms]);
+    const rocky = globe("some-b", "nasa");
+    expect(surfaceUniforms(rocky).uTerrain).toEqual(rocky.terrain);
+    expect(surfaceUniforms(rocky).uMapTurn).toEqual(rocky.turn);
+    expect(surfaceUniforms(rocky).uMapTurn2).toEqual(rocky.second?.turn);
+    // The second preset takes the place of the map of the night.
+    expect(surfaceUniforms(rocky).uMapFlags[0]).toBe(1);
+    expect(surfaceUniforms(rocky).uZones).toBe(rocky.zones);
+    expect(surfaceUniforms({ ...rocky, locked: 1 }).uLocked).toBe(1);
+    expect(surfaceUniforms({ ...giant, lightning: 0.7 }).uLightning).toBe(0.7);
+    const lights = surfaceUniforms({ ...rocky, aurora: { color: "#ffffff", strength: 0.5 } }).uAurora;
+    expect(lights).toEqual([1, 1, 1, 0.5]);
   });
 
   it("announces the extra maps of Earth and the ring map of Saturn", () => {
@@ -199,12 +287,25 @@ describe("textureUrls", () => {
     });
   });
 
-  it("names no files for a computed planet", () => {
-    expect(textureUrls(globe("some-b", "nasa"), "sm")).toEqual({
-      day: null,
-      night: null,
+  it("names the preset of an exoplanet", () => {
+    const rocky = globe("some-b", "nasa");
+    expect(textureUrls(rocky, "sm")).toEqual({
+      day: `/textures/presets/${rocky.maps.day}-sm.webp`,
+      night: `/textures/presets/${rocky.second?.map}-sm.webp`,
       clouds: null,
       ring: null,
     });
+    const giant = planetAppearance({
+      slug: "hot-b",
+      source: "nasa",
+      planetClass: "gas_giant",
+      climateClass: "hot",
+      starTeffK: 6000,
+      radiusEarth: null,
+      eqTempK: null,
+      densityEarth: null,
+      orbitalPeriodDays: null,
+    }).globe;
+    expect(textureUrls(giant, "lg").day).toMatch(/^\/textures\/presets\/bands-[a-z]+-lg\.webp$/);
   });
 });
