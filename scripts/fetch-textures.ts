@@ -1,12 +1,10 @@
 /**
- * Downloads the surface maps of the solar system, the panorama of the Milky
- * Way and the picture of the galaxy from outside, and stores them, scaled
- * down, in public/textures.
+ * Downloads planet, Milky Way and galaxy textures and stores scaled copies in public/textures.
  *
  *   npm run textures
  *
- * The results are checked in, so this only has to run again when a size or a
- * source changes. Credits and licences: public/textures/README.md.
+ * The output is checked in, so this only needs to run when a size or source changes.
+ * Credits and licences are listed in public/textures/README.md.
  */
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -18,7 +16,7 @@ const ESO_PANORAMA = "https://cdn.eso.org/images/large/eso0932a.jpg";
 const ESO_GALAXY = "https://cdn.eso.org/images/large/eso1339g.jpg";
 const OUT = path.resolve("public/textures");
 
-/** Surface maps: file at the source and the name we store it under. */
+/** Source file name and local name of each surface map. */
 const PLANET_MAPS: [source: string, name: string][] = [
   ["2k_mercury.jpg", "mercury"],
   ["2k_venus_atmosphere.jpg", "venus"],
@@ -47,7 +45,7 @@ async function main() {
 
   for (const [source, name] of PLANET_MAPS) {
     const file = await download(SOLAR_SYSTEM_SCOPE + source, downloads);
-    // Large for the 3D model, small for the images in lists.
+    // Large for the 3D model, small for list thumbnails.
     await sharp(file)
       .resize(2048, 1024)
       .jpeg({ quality: 80, mozjpeg: true })
@@ -59,7 +57,7 @@ async function main() {
     console.log(`planets/${name}`);
   }
 
-  // The rings of Saturn: colour and transparency from the inner to the outer edge.
+  // The ring texture holds colour and alpha from the inner to the outer edge, so a thin strip is enough.
   const ring = await download(SOLAR_SYSTEM_SCOPE + "2k_saturn_ring_alpha.png", downloads);
   await sharp(ring)
     .resize(1024, 4, { fit: "fill" })
@@ -74,8 +72,7 @@ async function main() {
     .toFile(path.join(OUT, "planets", "sun-lg.jpg"));
   console.log("planets/sun");
 
-  // The sky as seen from the Sun, in galactic coordinates with the galactic
-  // centre in the middle.
+  // The sky panorama is in galactic coordinates with the galactic centre in the middle.
   const panorama = await download(ESO_PANORAMA, downloads);
   await sharp(panorama)
     .resize(4096, 2048)
@@ -87,10 +84,8 @@ async function main() {
     .toFile(path.join(OUT, "sky", "milky-way-sm.jpg"));
   console.log("sky/milky-way");
 
-  // The galaxy from above, as an artist drew it: the galactic centre in the
-  // middle, the Sun below it (src/app/map/galaxy.ts). The map reads it at
-  // 512 pixels (scene/galaxyView.ts); twice that leaves room for the
-  // shrinking, and more would only be downloaded for nothing.
+  // The map samples this top-down galaxy view at 512 px (scene/galaxyView.ts).
+  // 1024 px leaves headroom for downscaling, and more would only waste bandwidth.
   const galaxy = await download(ESO_GALAXY, downloads);
   await sharp(galaxy)
     .resize(1024, 1024, { kernel: "lanczos3" })

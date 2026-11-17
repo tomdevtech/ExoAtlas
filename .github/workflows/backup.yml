@@ -1,20 +1,13 @@
 name: Database backup
 
-# Dumps the production database once a week and keeps the dump for 90 days as
-# an artifact of the run (Actions → Database backup → a run → Artifacts).
-# Restoring is described in docs/DEPLOYMENT.md, "Backups".
-#
-# Most of the data can be fetched from NASA again at any time; the dump keeps
-# what cannot: the change history, former names and the sync runs. The database
-# holds no personal data. In a public repository every signed-in GitHub user
-# can download artifacts, which is fine for this public catalogue.
-#
-# Needs the repository secret PRODUCTION_DATABASE_URL (direct address, as for
-# the sync). Without it the workflow does nothing.
+# Dumps the production database weekly and keeps the dump for 90 days as a run artifact.
+# Restoring is described in docs/DEPLOYMENT.md, "Backups". Any signed-in GitHub user
+# can download artifacts, which is acceptable because the database holds no personal data.
+# It needs the secret PRODUCTION_DATABASE_URL (direct address) and does nothing without it.
 
 on:
   schedule:
-    - cron: "41 4 * * 0" # Sundays at 04:41 UTC, after the daily sync
+    - cron: "41 4 * * 0" # Runs after the daily sync, so the dump includes its changes.
   workflow_dispatch:
 
 permissions:

@@ -13,7 +13,7 @@ describe("readonlyRoleStatements", () => {
   });
 
   it("names no attribute that only a superuser may set", () => {
-    // Neon's owner role is no superuser; naming these fails there.
+    // Neon's owner role is not a superuser, so naming these attributes would fail there.
     expect(statements).not.toMatch(/SUPERUSER|CREATEDB|CREATEROLE/);
   });
 

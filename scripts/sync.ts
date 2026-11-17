@@ -1,10 +1,10 @@
 /**
- * Sync with the NASA Exoplanet Archive.
+ * Syncs the catalogue with the NASA Exoplanet Archive.
  *
  *   npm run sync             normal run
  *   npm run sync -- --force  write even when the response looks implausible
  *
- * The logic lives in src/app/sync. This file only starts it.
+ * It writes to the database given by DATABASE_URL.
  */
 import { runSync } from "@/app/sync/run";
 import { closeDb } from "@/db/client";

@@ -1,13 +1,7 @@
 /**
- * A few famous sights of the Milky Way that the stars alone do not show:
- * clouds of glowing gas where stars are born, the shells of gas that dying
- * stars blow off or blast away, young clusters, the old globular clusters
- * that circle the galaxy, and the two small galaxies that circle ours, the
- * Magellanic Clouds. Positions from their galactic
- * longitude and latitude and their distance (rounded published values).
- *
- * Coordinates as everywhere on the map: parsecs, the Sun at the origin, x
- * towards the galactic centre, y in the direction the galaxy turns, z north.
+ * Famous nebulae, clusters and the Magellanic Clouds, placed from rounded published
+ * galactic longitudes, latitudes and distances. Map coordinates are parsecs with the
+ * Sun at the origin, x towards the galactic centre, y along the rotation and z north.
  */
 
 export type LandmarkKind = "nebula" | "planetary" | "remnant" | "cluster" | "globular" | "galaxy";
@@ -16,15 +10,15 @@ export interface Landmark {
   name: string;
   kind: LandmarkKind;
   position: [number, number, number];
-  /** Radius of what is drawn, in parsecs. */
+  /** The drawn radius in parsecs. */
   radius: number;
-  /** Main colour as red, green and blue from 0 to 1. */
+  /** The main colour as RGB from 0 to 1. */
   color: [number, number, number];
-  /** Members drawn as stars of their own; 0 for a cloud of gas. */
+  /** The number of member stars drawn, which is 0 for gas clouds. */
   members: number;
 }
 
-/** From galactic longitude and latitude in degrees and a distance in parsecs to the coordinates of the map. */
+/** Converts galactic longitude and latitude in degrees plus a distance in parsecs to map coordinates. */
 export function fromGalactic(longitudeDeg: number, latitudeDeg: number, distance: number): [number, number, number] {
   const l = (longitudeDeg * Math.PI) / 180;
   const b = (latitudeDeg * Math.PI) / 180;
@@ -52,7 +46,7 @@ export const LANDMARKS: readonly Landmark[] = [
   { name: "Trifid Nebula", kind: "nebula", position: fromGalactic(7.0, -0.3, 1300), radius: 8, color: PINK, members: 0 },
   { name: "Omega Nebula", kind: "nebula", position: fromGalactic(15.1, -0.7, 1700), radius: 9, color: PINK, members: 0 },
   { name: "Heart Nebula", kind: "nebula", position: fromGalactic(134.7, 0.9, 2000), radius: 30, color: PINK, members: 0 },
-  // The Crab is the young remnant of a supernova: still a filled, glowing cloud.
+  // The Crab is a young supernova remnant that still looks like a filled nebula.
   { name: "Crab Nebula", kind: "nebula", position: fromGalactic(184.6, -5.8, 2000), radius: 2, color: [0.75, 0.82, 1], members: 0 },
   { name: "Veil Nebula", kind: "remnant", position: fromGalactic(74.0, -8.5, 735), radius: 20, color: [0.6, 0.75, 1], members: 0 },
   { name: "Ring Nebula", kind: "planetary", position: fromGalactic(63.2, 14.0, 790), radius: 0.8, color: TEAL, members: 0 },
@@ -69,18 +63,15 @@ export const LANDMARKS: readonly Landmark[] = [
 ];
 
 /**
- * The Milky Way has some 150 globular clusters: old balls of stars on long
- * orbits round its centre, most of them within 20 kiloparsecs, and denser
- * towards the middle. Three of them are landmarks of their own; the others
- * are shown as single points of light. Their places here are made up, after
- * how they are spread, so that from outside the galaxy shows its round halo
- * around the flat disc. Seven numbers each, as in starfield.ts.
+ * Returns made-up positions for the Milky Way's roughly 150 globular clusters as
+ * point stars, seven floats each as in starfield.ts. They follow the real spread,
+ * mostly within 20 kpc and denser towards the centre, so the halo shows from outside.
  */
 export function globularSystem(count = 150): Float32Array {
   const rand = random(4242);
   const data = new Float32Array(count * 7);
   for (let n = 0; n < count; n++) {
-    // Denser towards the middle: the distance from a steep power of a uniform number.
+    // A steep power of a uniform number concentrates the clusters towards the centre.
     const r = 500 + 22000 * rand() ** 2.2;
     const cos = 2 * rand() - 1;
     const sin = Math.sqrt(1 - cos * cos);
@@ -93,9 +84,8 @@ export function globularSystem(count = 150): Float32Array {
         1,
         0.86 + 0.08 * rand(),
         0.62 + 0.12 * rand(),
-        // A whole cluster gives the light of tens of thousands to a million
-        // suns; brightened a little more, so they show from outside as the
-        // halo they trace.
+        // Real globular clusters shine like tens of thousands to a million suns. These
+        // are drawn somewhat brighter so that the halo stays visible from outside.
         100000 + 1500000 * rand() ** 3,
       ],
       n * 7,
@@ -104,7 +94,7 @@ export function globularSystem(count = 150): Float32Array {
   return data;
 }
 
-/** Mulberry32: small, fast, and the same on every machine. */
+/** Mulberry32, a small seeded generator that gives the same sequence on every machine. */
 function random(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
@@ -117,17 +107,15 @@ function random(seed: number): () => number {
 }
 
 /**
- * The member stars of a cluster: position, colour and light, seven numbers
- * each, in the layout of starfield.ts. A young open cluster is a loose group
- * of bright blue stars; a globular one an old ball of yellow stars, packed
- * most densely in its middle (Plummer's sphere).
+ * Returns the member stars of a landmark, seven floats each as in starfield.ts.
+ * Open clusters are loose groups, globular clusters are Plummer spheres and the
+ * Magellanic Clouds are lopsided discs with a bar.
  */
 export function clusterStars(landmark: Landmark, index: number): Float32Array {
   const rand = random(9001 + index * 7919);
   const data = new Float32Array(landmark.members * 7);
   const globular = landmark.kind === "globular";
   const galaxy = landmark.kind === "galaxy";
-  // A small galaxy is a lopsided disc with a bar of stars across its middle.
   const tilt = rand() * Math.PI;
   for (let n = 0; n < landmark.members; n++) {
     let x: number;
@@ -142,7 +130,8 @@ export function clusterStars(landmark: Landmark, index: number): Float32Array {
       y = along * Math.sin(tilt) + across * Math.cos(tilt);
       z = bell() * landmark.radius * 0.15;
     } else if (globular) {
-      // Plummer's sphere: distance from the middle from a uniform number.
+      // The radius is drawn by inverting the Plummer profile. Its long tail is cut
+      // at twice the landmark radius so that no stray stars end up far away.
       const r = (landmark.radius * 0.25) / Math.sqrt(Math.max(rand(), 1e-6) ** (-2 / 3) - 1);
       const cos = 2 * rand() - 1;
       const sin = Math.sqrt(1 - cos * cos);
@@ -152,7 +141,6 @@ export function clusterStars(landmark: Landmark, index: number): Float32Array {
       y = far * sin * Math.sin(angle);
       z = far * cos;
     } else {
-      // A loose group: each coordinate spread like a bell.
       const bell = () => (rand() + rand() + rand() - 1.5) * landmark.radius * 0.8;
       x = bell();
       y = bell();
@@ -161,7 +149,8 @@ export function clusterStars(landmark: Landmark, index: number): Float32Array {
     const [red, green, blue] = globular
       ? [1, 0.82 + 0.1 * rand(), 0.55 + 0.15 * rand()]
       : landmark.color.map((value) => Math.min(1, value * (0.9 + 0.2 * rand())));
-    // Few bright members, many faint ones. Of a galaxy only its giants show.
+    // Steep powers give few bright members and many faint ones. In the galaxies
+    // only the giants are bright enough to show.
     const light = galaxy
       ? 500 + 80000 * rand() ** 4
       : globular

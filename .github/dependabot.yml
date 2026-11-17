@@ -1,5 +1,4 @@
-# Dependabot opens pull requests for outdated dependencies and, at once, for
-# dependencies with a known vulnerability. CI checks each pull request.
+# Weekly grouped update pull requests; CI checks each of them before merge.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -9,13 +8,21 @@ updates:
       day: monday
     open-pull-requests-limit: 10
     groups:
-      # Small updates in one pull request instead of one each.
+      # Minor and patch updates are bundled to keep the number of pull requests low.
       minor-and-patch:
         update-types: [minor, patch]
-      # Next.js, React and their ESLint config belong together.
+      # Next.js, React and their ESLint config must be upgraded together.
       next-react:
-        patterns: ["next", "eslint-config-next", "react", "react-dom", "@types/react", "@types/react-dom"]
-      # The test runner and the browser library must have the same version.
+        patterns:
+          [
+            "next",
+            "eslint-config-next",
+            "react",
+            "react-dom",
+            "@types/react",
+            "@types/react-dom",
+          ]
+      # The test runner and the browser library must stay on the same version.
       playwright:
         patterns: ["playwright", "@playwright/test"]
 

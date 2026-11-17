@@ -20,7 +20,7 @@ function globe(kind: "rocky" | "gas_giant", storms: Partial<GlobeSpec["storms"]>
   return { ...spec, storms: { ...CALM, ...storms } };
 }
 
-/** The cyclones of a moment as objects, the living ones only. */
+/** Returns the living cyclones at a moment as objects. */
 function cyclonesAt(spec: GlobeSpec, seconds: number) {
   const { uCyclones, uCycloneCount } = stormUniforms(spec, seconds);
   return Array.from({ length: uCycloneCount }, (_, index) => {
@@ -29,7 +29,7 @@ function cyclonesAt(spec: GlobeSpec, seconds: number) {
   });
 }
 
-/** Moments spread over half an hour, not in step with the life of any storm. */
+/** These moments span half an hour at a step that is not in sync with the lifetime of any storm. */
 const MOMENTS = Array.from({ length: 240 }, (_, index) => index * 7.3);
 
 describe("stormUniforms", () => {
@@ -46,7 +46,6 @@ describe("stormUniforms", () => {
   it("gives the same weather for the same planet at the same moment", () => {
     const spec = globe("rocky", { cyclones: 0.9, dust: 0.8 });
     expect(stormUniforms(spec, 431.5)).toEqual(stormUniforms(spec, 431.5));
-    // Another planet has other weather.
     const other = globe("rocky", { cyclones: 0.9, dust: 0.8 }, "other-c");
     expect(MOMENTS.some((t) => JSON.stringify(stormUniforms(other, t)) !== JSON.stringify(stormUniforms(spec, t)))).toBe(true);
   });
@@ -62,7 +61,6 @@ describe("stormUniforms", () => {
       expect(uCyclones).toHaveLength(CYCLONE_SLOTS * 12);
       expect(uCyclones.slice(uCycloneCount * 12).every((value) => value === 0)).toBe(true);
     }
-    // Storms come and go: their number changes.
     expect(counts.size).toBeGreaterThan(1);
     expect(Math.max(...counts)).toBeGreaterThanOrEqual(2);
   });
@@ -79,16 +77,16 @@ describe("stormUniforms", () => {
       expect(storm.strength).toBeLessThanOrEqual(1);
       expect(storm.turn).toBeGreaterThan(1);
       expect(Math.abs(storm.stretch - 1)).toBeLessThanOrEqual(0.15);
-      // It lies in the hemisphere it turns for.
+      // A storm's sense of rotation must match its hemisphere.
       expect(storm.centre[1] > 0).toBe(storm.north);
-      // Only tropical ones clear an eye.
+      // Only tropical storms clear an eye.
       if (!storm.tropical) expect(storm.mature).toBe(0);
     }
     const tropical = all.filter((storm) => storm.tropical);
     const temperate = all.filter((storm) => !storm.tropical);
     expect(tropical.length).toBeGreaterThan(0);
     expect(temperate.length).toBeGreaterThan(0);
-    // The sine of the latitude: tropical ones start near 0.12 and end below 0.65, the others stay between 0.48 and 0.73.
+    // The values are sines of the latitude: tropical storms start near 0.12 and end below 0.65, and the others stay between 0.48 and 0.73.
     for (const storm of tropical) expect(Math.abs(storm.centre[1])).toBeLessThan(0.65);
     for (const storm of temperate) {
       expect(Math.abs(storm.centre[1])).toBeGreaterThanOrEqual(0.48 - 1e-9);
@@ -100,7 +98,7 @@ describe("stormUniforms", () => {
 
   it("lets a storm grow and fade instead of popping up", () => {
     const spec = globe("rocky", { cyclones: 0.95 });
-    // From one tenth of a second to the next, no storm appears at more than a little of its strength.
+    // Whenever a new storm appears between two steps of 0.1 s, it must start at almost no strength.
     let before = cyclonesAt(spec, 0).length;
     for (let t = 0.1; t < 400; t += 0.1) {
       const now = cyclonesAt(spec, t);
@@ -119,7 +117,7 @@ describe("stormUniforms", () => {
     const spec = globe("rocky", { dust: 1 });
     let widest = 0;
     let alive = 0;
-    // Long enough for dozens of storms.
+    // This span is long enough for dozens of storms.
     for (let t = 0; t < 6000; t += 9.7) {
       const { uDusts, uDustLives } = stormUniforms(spec, t);
       uDustLives.forEach((life, slot) => {
@@ -135,12 +133,12 @@ describe("stormUniforms", () => {
       });
     }
     expect(alive).toBeGreaterThan(100);
-    // Half the way round the planet is a radius of pi: one that reaches 3 covers nearly all of it.
+    // Half the way round the planet is a radius of pi, so a storm that reaches 3 covers nearly all of it.
     expect(widest).toBeGreaterThan(3);
   });
 
   it("breaks a plume out on a gas planet now and then, with a tail against the wind", () => {
-    // At half strength about every second turn of the slot stays empty.
+    // At half strength, about every second cycle of the outbreak slot stays empty.
     const spec = globe("gas_giant", { outbreaks: 0.5 });
     const live = MOMENTS.map((t) => stormUniforms(spec, t)).filter((storms) => storms.uOutbreak[3] > 0);
     expect(live.length).toBeGreaterThan(10);

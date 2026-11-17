@@ -41,7 +41,7 @@ test.describe("header and footer", () => {
     await page.getByRole("banner").getByRole("link", { name: "ExoFinder" }).click();
     await expect(page).toHaveURL(/\/$/);
 
-    // Last, because the map keeps the software renderer of the test browser busy.
+    // The map comes last, because it keeps the software renderer of the test browser busy.
     await nav.getByRole("link", { name: "Map" }).click();
     await expect(page).toHaveURL(/\/map$/);
     await expect(page.getByRole("heading", { name: "Map of the Milky Way" })).toBeAttached();
@@ -60,17 +60,17 @@ test.describe("header and footer", () => {
 });
 
 test.describe("missing pages", () => {
-  // The browser logs the 404 answer itself as an error. Planet and star pages
-  // call notFound() inside a streamed <Suspense>; React then reports error
-  // #419 ("switched to client rendering") before it shows the 404 page. That
-  // is how Next.js handles it, the visitor sees the right page.
+  // The browser logs the 404 response as an error. Planet and star pages call
+  // notFound() inside a streamed <Suspense>, so React reports error #419
+  // ("switched to client rendering") before it shows the 404 page. That is how
+  // Next.js handles it, and the visitor still sees the right page.
   test.use({ allowedErrors: /status of 404|Minified React error #419/ });
 
   for (const path of ["/does-not-exist", "/planets/no-such-planet", "/stars/no-such-star"]) {
     test(`${path} answers 404 with a helpful page`, async ({ page }) => {
       const response = await page.goto(path);
-      // Planet and star pages stream: their status is sent before the database
-      // is asked, so only unknown addresses can answer 404 in the status line.
+      // Planet and star pages stream, so their status is sent before the database
+      // is queried, and only unknown routes can return 404 in the status line.
       if (path === "/does-not-exist") expect(response?.status()).toBe(404);
       await expect(page.getByRole("heading", { level: 1, name: "Nothing here" })).toBeVisible();
       await page.getByRole("link", { name: "Back to the start page" }).click();

@@ -16,27 +16,14 @@ import { GALAXY_PICTURE_WIDTH } from "../galaxy";
 import type { CloudsRequest } from "./galaxyClouds.worker";
 import { CLOUDS_FRAGMENT, CLOUDS_VERTEX, DUST_FRAGMENT } from "./shaders";
 
-/**
- * How much of the light of the sheet of GALAXY_GLOW_FRAGMENT the clouds
- * carry: all of it, so that the picture itself is not seen, only the clouds
- * and clusters made after it.
- */
+/** The share of the GALAXY_GLOW_FRAGMENT light that the clouds carry, from 0 to 1. At 1 the flat picture itself is not visible. */
 export const CLOUD_SHARE = 1;
-/**
- * The clouds add up their light in the brightness of the screen, the glow of
- * the galaxy in linear light that is then brightened for the screen. This
- * brings the clouds to about the same brightness.
- */
+/** The clouds add up in display brightness while the glow adds up in linear light, so this factor roughly matches the two. */
 const SCREEN_BOOST = 2.2;
-/** How dark a cloud of dust is at its middle. */
+/** The darkening of a dust cloud at its centre. */
 const DUST_DEPTH = 0.06;
 
-/**
- * Draws the galaxy as a body (galaxyClouds.ts) once the picture is there:
- * the clouds of light first, then the dust, which darkens what was drawn
- * before it: the glow of the galaxy and the clouds, most visibly in front of
- * the bulge.
- */
+/** Draws the galaxy as a volume: first additive light clouds, then dust that darkens everything drawn before it. */
 export class GalaxyCloudsView {
   readonly group = new Group();
   private light: Points<BufferGeometry, RawShaderMaterial> | null = null;
@@ -44,21 +31,19 @@ export class GalaxyCloudsView {
   private worker: Worker | null = null;
   private disposed = false;
 
-  /** Whether the clouds are there to be drawn. */
   get ready(): boolean {
     return this.light !== null;
   }
 
   /**
-   * `picture` is the picture of the galaxy from above as linear red, green
-   * and blue, `size` × `size` (picture.ts). `onClusters` gets the clusters of
-   * stars made after it, to draw among the stars.
+   * `picture` is the top-down galaxy image as linear RGB, `size` × `size`.
+   * `onClusters` receives the generated star clusters so they can be drawn among the stars.
    */
   constructor(picture: Promise<Float32Array>, size: number, onClusters: (data: Float32Array) => void) {
     picture.then(
       (rgb) => {
         if (this.disposed) return;
-        // The whole light of the picture, as brightness times area.
+        // This is the total light of the picture, summed as brightness times pixel area.
         const pixel = GALAXY_PICTURE_WIDTH / size;
         let total = 0;
         for (let i = 0; i < size * size; i++) {
@@ -78,25 +63,24 @@ export class GalaxyCloudsView {
             this.group.add(points);
           }
         };
-        // Placing the clouds takes a few hundred milliseconds. A worker does
-        // it beside the map, which would stand still for that long otherwise.
+        // Generation takes a few hundred milliseconds, so it runs in a worker to keep the map responsive.
+        // If the browser cannot start the worker, the clouds are generated on the main thread instead.
         const request: CloudsRequest = { rgb, size };
         try {
           this.worker = new Worker(new URL("./galaxyClouds.worker.ts", import.meta.url));
           this.worker.onmessage = (event: MessageEvent<GalaxyClouds>) => show(event.data);
-          // A browser that cannot start the worker makes the clouds here.
           this.worker.onerror = () => show(galaxyClouds(rgb, size));
           this.worker.postMessage(request);
         } catch {
           show(galaxyClouds(rgb, size));
         }
       },
-      // Without the picture the galaxy stays as flat as the picture would have been.
+      // If the picture fails to load, no clouds are drawn and the galaxy keeps its flat glow.
       () => {},
     );
   }
 
-  /** `fade` is 0 inside the disc, where the clouds would only blur the view, and 1 outside. */
+  /** `fade` goes from 0 inside the disc, where the clouds would only blur the view, to 1 outside. */
   update(pixelsPerUnit: number, pixelRatio: number, fade: number, eye: Vector3): void {
     for (const points of [this.light, this.dust]) {
       if (!points) continue;
@@ -158,7 +142,7 @@ function material(fragmentShader: string, gain: number, dust: boolean): RawShade
     depthWrite: false,
     transparent: true,
     blending: CustomBlending,
-    // Light adds up; dust keeps only a share of what is behind it.
+    // Light clouds add up, while dust keeps only part of what is behind it.
     blendSrc: dust ? ZeroFactor : OneFactor,
     blendDst: dust ? OneMinusSrcAlphaFactor : OneFactor,
   });

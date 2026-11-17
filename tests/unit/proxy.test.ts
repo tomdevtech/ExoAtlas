@@ -15,7 +15,7 @@ describe("proxy", () => {
 
   it("lets every correct address through", () => {
     for (const path of ["/planets/kepler-22-b", "/stars/sun", "/map/systems/trappist-1", "/planets/caf%C3%A9"]) {
-      // NextResponse.next() marks the response so Next.js carries on.
+      // NextResponse.next() sets this header, which tells Next.js to carry on with the request.
       expect(call(path).headers.get("x-middleware-next"), path).toBe("1");
     }
   });

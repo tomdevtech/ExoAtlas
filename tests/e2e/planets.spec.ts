@@ -25,7 +25,7 @@ test.describe("list of all planets", () => {
     await expect(page.getByText("7 planets match “trappist”")).toBeVisible();
     await expect(page.getByRole("main").getByRole("listitem")).toHaveCount(7);
 
-    // The filtered list can be reloaded and shared.
+    // The filter lives in the URL, so the filtered list can be reloaded and shared.
     await page.reload();
     await expect(page.getByRole("searchbox", { name: "Filter planets by name" })).toHaveValue("trappist");
     await expect(page.getByRole("main").getByRole("listitem")).toHaveCount(7);
@@ -42,7 +42,7 @@ test.describe("list of all planets", () => {
 
     await expect(page).toHaveURL(/\/planets\?q=kepler&sort=discovery$/);
     const rows = page.getByRole("main").getByRole("listitem");
-    // Kepler-129 b (2016) is the newest of the four.
+    // Kepler-129 b (2016) is the newest of the four matching planets.
     await expect(rows.first()).toContainText("Kepler-129 b");
     await expect(rows.first()).toContainText("2016");
   });
@@ -70,7 +70,7 @@ test.describe("planet page", () => {
     await expect(page.getByText("with 7 known planets")).toBeVisible();
   });
 
-  // A lava world, a planet like Neptune and a gas giant: one of each kind of base map.
+  // A lava world, a Neptune-like planet and a gas giant cover each kind of base map.
   for (const slug of ["55-cnc-e", "k2-18-b", "51-peg-b"]) {
     test(`draws the 3D model of ${slug} from its base map`, async ({ page }) => {
       const baseMap = page.waitForResponse((response) =>
@@ -82,7 +82,7 @@ test.describe("planet page", () => {
     });
   }
 
-  // The planets of the solar system with ground that catches the light, which is a shader program of its own.
+  // Earth and Mars have lit relief, which uses a shader program of its own.
   for (const slug of ["earth", "mars"]) {
     test(`draws the 3D model of ${slug} from its real map`, async ({ page }) => {
       const realMap = page.waitForResponse((response) => response.url().endsWith(`/textures/planets/${slug}-lg.jpg`));

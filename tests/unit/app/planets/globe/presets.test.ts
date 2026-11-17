@@ -5,10 +5,9 @@ import { describe, expect, it } from "vitest";
 import PRESETS from "@/app/planets/globe/presets.json";
 
 /**
- * The base maps in public/textures/presets and what presets.json says about
- * them are made by the same run of `npm run presets` and have to stay
- * together. These tests notice a map that is missing, has the wrong size, or
- * was renewed without its numbers.
+ * The maps in public/textures/presets and presets.json come from the same
+ * `npm run presets` run. These tests catch a map that is missing, has the
+ * wrong size or was regenerated without updating its numbers.
  */
 
 const file = (name: string, size: "sm" | "lg") =>
@@ -40,7 +39,7 @@ describe("the base maps of the planets", () => {
 
   it("have the heights the levels were counted from", async () => {
     // The level at one half is the height below which half of the surface lies.
-    // Counted again from the small map, where a pixel near the poles stands for less ground.
+    // It is recounted from the small map, weighting pixels near the poles less because they cover less ground.
     for (const [name, { levels }] of terrain) {
       const { data, info } = await sharp(file(name, "sm")).extractChannel(0).raw().toBuffer({ resolveWithObject: true });
       let below = 0;
@@ -52,7 +51,7 @@ describe("the base maps of the planets", () => {
           if (data[y * info.width + x] / 255 < levels[10]) below += ground;
         }
       }
-      // The small map is a shrunk copy, so the share is not exact to the pixel.
+      // The small map is a downscaled copy, so the share is only approximately one half.
       expect(below / all, name).toBeGreaterThan(0.4);
       expect(below / all, name).toBeLessThan(0.6);
     }
@@ -64,7 +63,7 @@ describe("the base maps of the planets", () => {
       expect(winds.count, name).toBeGreaterThan(0);
       expect(winds.narrowness, name).toBeGreaterThan(0);
       expect(winds.strength, name).toBeGreaterThan(0);
-      // The fastest latitude has about the speed 1, forwards or backwards.
+      // The winds are normalised so that the fastest latitude moves at about speed 1 in either direction.
       expect(winds.strength + Math.abs(winds.equator), name).toBeCloseTo(1, 2);
       expect(winds.phase, name).toBeGreaterThanOrEqual(0);
       expect(winds.phase, name).toBeLessThan(2 * Math.PI);
@@ -79,7 +78,7 @@ describe("the base maps of the planets", () => {
       for (const [lon, lat, size, spin] of winds.storms) {
         expect(Math.abs(spin), name).toBe(1);
         expect(size, name).toBeGreaterThan(0);
-        // The blue channel marks the storm at its centre.
+        // The blue channel marks storms, so the listed centre must be blue on the map.
         const column = Math.min(info.width - 1, Math.floor((lon / (2 * Math.PI) + 0.5) * info.width));
         const row = Math.min(info.height - 1, Math.floor((0.5 - lat / Math.PI) * info.height));
         let strongest = 0;
@@ -96,7 +95,7 @@ describe("the base maps of the planets", () => {
   });
 
   it("keep the storms of the gas giants apart from their belts", async () => {
-    // Blue marks the storms: most of a map has none, some of it has.
+    // The blue channel marks storms, so most of a map has none and some of it does.
     for (const [name] of bands) {
       if (name === "bands-hazy") continue;
       const { data } = await sharp(file(name, "sm")).extractChannel(2).raw().toBuffer({ resolveWithObject: true });

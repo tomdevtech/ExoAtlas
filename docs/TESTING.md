@@ -162,7 +162,7 @@ The browser tests fail on every error in the browser console, so a hydration err
 
 ### Supply chain
 
-- **`npm audit`** in CI: what ships to visitors must have no known vulnerability at all (`--omit=dev --audit-level=low`); tools that only run during development may have moderate ones, never high or critical.
+- **`npm audit`** in CI: what ships to visitors must have no known vulnerability at all (`--omit=dev --audit-level=low`); tools that only run during development may have moderate ones, never high or critical (`npm run audit:tools`). When an advisory rated high is published before any fixed version exists, no update can help: [src/deploy/audit.ts](../src/deploy/audit.ts) can accept it by its id, with the reason and a date a few weeks ahead, after which CI fails again. The runs show each accepted advisory as a warning, and say when an exception is no longer needed.
 - **CodeQL** ([codeql.yml](../.github/workflows/codeql.yml)) scans JavaScript and TypeScript with the `security-and-quality` queries. Findings appear under *Security → Code scanning*; one rated high or above fails the check.
 - **Dependabot** ([dependabot.yml](../.github/dependabot.yml)) opens pull requests every Monday for npm packages, GitHub Actions and the Docker image of the local database, and at once for a known vulnerability. They go through the same checks as every other change.
 

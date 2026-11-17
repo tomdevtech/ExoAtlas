@@ -31,7 +31,7 @@ describe("shade", () => {
   it("makes a colour greyer or stronger", () => {
     expect(shade("#ff0000", { saturation: 0 })).toBe("#808080");
     const [red, green] = [1, 3].map((at) => Number.parseInt(shade("#c08040", { saturation: 0.5 }).slice(at, at + 2), 16));
-    // Still a brown, but closer to grey: the channels lie nearer together.
+    // Lower saturation keeps the colour brown but moves the channels closer together, towards grey.
     expect(red - green).toBeLessThan(0xc0 - 0x80);
     expect(red).toBeGreaterThan(green);
   });

@@ -11,19 +11,13 @@ import { globeRadius, lightDirection, lockedSway, type GlobeSpec } from "@/app/p
 import { surfaceDefines, surfaceUniforms, textureUrls } from "@/app/planets/globe/uniforms";
 
 /**
- * A laboratory for the shaders: draws a planet or the galaxy in the browser
- * of a test, with the real shader code and the real maps, and hands the
- * pixels to the test.
- *
- * The 3D model of the planet pages (PlanetViewer) can only be steered through
- * its buttons, and the map only by flying. Here a test chooses the planet,
- * the moment and the point of view itself, so it can look at one thing at a
- * time: the night side, the same planet a few seconds later, the galaxy from
- * the side. What is drawn is put together exactly as renderer.ts does it
- * (surfaceUniforms, poseUniforms, textureUrls).
+ * Draws a planet or the galaxy in the test browser with the real shaders and
+ * texture maps, set up exactly as renderer.ts does, and returns the pixels.
+ * Tests use it to choose the planet, the moment and the camera directly,
+ * which the planet pages and the map do not allow.
  */
 
-/** A picture as red, green, blue and opacity per pixel, 0 to 255, rows from the top. */
+/** A picture stores RGBA values from 0 to 255 per pixel, with rows from the top. */
 export interface Picture {
   width: number;
   height: number;
@@ -33,22 +27,22 @@ export interface Picture {
 interface Job {
   vertex: string;
   fragment: string;
-  /** One triangle over everything without any buffer, or a square with positions and picture coordinates. */
+  /** The planet shader draws one full-screen triangle without buffers; the galaxy shader needs a square with position and uv attributes. */
   shape: "triangle" | "square";
   uniforms: Record<string, number | number[]>;
   /**
-   * The pictures the shader reads, in the order of its texture units. `null`
-   * is an empty one. With `size` the picture is shrunk to that many pixels
-   * square while it is decoded, as the map does with the galaxy.
+   * The textures in texture-unit order. A `null` url binds a blank texture.
+   * With `size`, the image is resized to that square while it is decoded,
+   * because the map loads the galaxy picture that way.
    */
   maps: { name: string; url: string | null; wraps: boolean; size?: number }[];
-  /** Whether the shader reads the noise of the planets, and from which texture unit. */
+  /** Whether the shader samples the planet noise volume, which is bound to the unit after `maps`. */
   noise: boolean;
   width: number;
   height: number;
 }
 
-/** Runs in the page: sets up WebGL once and then draws job after job. */
+/** Runs in the page. It sets up WebGL once and caches programs and textures across jobs. */
 async function drawInPage({ job, noise, noiseSize }: { job: Job; noise: string | null; noiseSize: number }) {
   interface Lab {
     canvas: HTMLCanvasElement;
@@ -121,7 +115,7 @@ async function drawInPage({ job, noise, noiseSize }: { job: Job; noise: string |
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
     if (size) {
-      // Turned upside down while it is decoded: WebGL does not turn an ImageBitmap.
+      // The bitmap is flipped while it is decoded, because UNPACK_FLIP_Y_WEBGL does not apply to an ImageBitmap.
       const blob = await (await fetch(url)).blob();
       const bitmap = await createImageBitmap(blob, {
         resizeWidth: size,
@@ -153,7 +147,7 @@ async function drawInPage({ job, noise, noiseSize }: { job: Job; noise: string |
     else if (value.length === 2) gl.uniform2fv(location, value);
     else if (value.length === 3) gl.uniform3fv(location, value);
     else if (value.length === 9) gl.uniformMatrix3fv(location, false, value);
-    // Four numbers, or a list of several groups of four.
+    // Everything else is a vec4 or an array of vec4, which uniform4fv handles in one call.
     else gl.uniform4fv(location, value);
   }
   job.maps.forEach(({ name, url }, unit) => {
@@ -197,11 +191,11 @@ async function drawInPage({ job, noise, noiseSize }: { job: Job; noise: string |
 let noiseAsText: string | undefined;
 
 async function draw(page: Page, job: Job): Promise<Picture> {
-  // The noise is computed here, as the app computes it in the browser, and sent along once.
+  // The noise is computed in Node, as the app computes it in the browser, and sent to the page only once.
   if (job.noise) noiseAsText ??= Buffer.from(noiseVolume().buffer).toString("base64");
   const text = await page.evaluate(drawInPage, { job, noise: job.noise ? (noiseAsText ?? null) : null, noiseSize: NOISE_SIZE });
   const upsideDown = Buffer.from(text, "base64");
-  // WebGL counts rows from the bottom.
+  // WebGL counts rows from the bottom, so the rows are reversed into picture order.
   const data = new Uint8Array(upsideDown.length);
   const row = job.width * 4;
   for (let y = 0; y < job.height; y++) {
@@ -210,12 +204,12 @@ async function draw(page: Page, job: Job): Promise<Picture> {
   return { width: job.width, height: job.height, data };
 }
 
-/** Opens a page of the site, so the maps can be fetched from it. Call once per test. */
+/** Opens a simple page of the site so that textures can be fetched from its origin. Call it once per test. */
 export async function openLab(page: Page): Promise<void> {
   await page.goto("/legal/notice");
 }
 
-/** A planet as renderer.ts draws it, in a square of `size` pixels. */
+/** Draws a planet as renderer.ts does, in a square of `size` pixels. */
 export function drawPlanet(page: Page, spec: GlobeSpec, pose: GlobePose, size = 160): Promise<Picture> {
   const urls = textureUrls(spec, "sm");
   return draw(page, {
@@ -238,20 +232,20 @@ export function drawPlanet(page: Page, spec: GlobeSpec, pose: GlobePose, size = 
   });
 }
 
-/** From where the galaxy is looked at: the place of the camera, counted from the galactic centre, and its directions. */
+/** The camera for `drawGalaxy`, positioned relative to the galactic centre. */
 export interface GalaxyView {
-  /** Parsecs from the galactic centre. */
+  /** The camera position in parsecs from the galactic centre. */
   eye: [number, number, number];
   forward: [number, number, number];
-  /** The direction that is up in the picture. Has to stand at right angles to `forward`. */
+  /** This direction must be perpendicular to `forward`. */
   up: [number, number, number];
-  /** Half the height of the picture at the distance 1: 0.52 is the field of view of the map. */
+  /** Half the picture height at distance 1. The default of 0.52 matches the field of view of the map. */
   reach?: number;
-  /** 1 for a camera outside the disc, 0 for one inside (see GalaxyView.update). */
+  /** Use 1 for a camera outside the disc and 0 for one inside it (see GalaxyView.update). */
   outside?: number;
 }
 
-/** The galaxy as the map draws it, in a square of `size` pixels. */
+/** Draws the galaxy as the map does, in a square of `size` pixels. */
 export function drawGalaxy(page: Page, view: GalaxyView, size = 160): Promise<Picture> {
   const reach = view.reach ?? 0.52;
   const [fx, fy, fz] = view.forward;
@@ -269,7 +263,7 @@ export function drawGalaxy(page: Page, view: GalaxyView, size = 160): Promise<Pi
       uFade: 1,
       uOutside: view.outside ?? 1,
     },
-    // Read as the map reads it (scene/galaxyView.ts, PICTURE_SIZE).
+    // The picture is loaded at the same size as on the map (scene/galaxyView.ts, PICTURE_SIZE).
     maps: [{ name: "uMap", url: "/textures/sky/galaxy.jpg", wraps: false, size: 512 }],
     noise: false,
     width: size,
@@ -277,26 +271,24 @@ export function drawGalaxy(page: Page, view: GalaxyView, size = 160): Promise<Pi
   });
 }
 
-// ---- Looking at a picture -----------------------------------------------------
-
-/** Brightness of the pixel at `index`, 0 to 255. */
+/** Returns the brightness of the pixel at `index`, from 0 to 255. */
 export function brightness(picture: Picture, index: number): number {
   const at = index * 4;
   return 0.3 * picture.data[at] + 0.6 * picture.data[at + 1] + 0.1 * picture.data[at + 2];
 }
 
-/** A pixel of a planet picture, with what a test wants to know about its place. */
 export interface PlanetPixel {
   index: number;
-  /** Distance from the centre of the planet in planet radii: below 1 on the planet. */
+  /** The distance from the planet centre in planet radii. Values below 1 lie on the planet. */
   fromCentre: number;
-  /** How directly the star shines on the place: 1 with the star overhead, 0 at the edge of the night, negative on the night side. */
+  /** The cosine of the star's angle: 1 with the star overhead, 0 at the terminator and negative at night. */
   sunward: number;
 }
 
 /**
- * The pixels of a planet picture drawn by `drawPlanet` with the same planet
- * and pose, with the place of each on the ball. Flattened planets count as balls.
+ * Returns the pixels of a `drawPlanet` picture with their position on the
+ * sphere. Pass the same spec and pose that drew the picture. Flattened
+ * planets are treated as spheres.
  */
 export function planetPixels(picture: Picture, spec: GlobeSpec, pose: GlobePose): PlanetPixel[] {
   const size = picture.width;
@@ -319,13 +311,12 @@ export function planetPixels(picture: Picture, spec: GlobeSpec, pose: GlobePose)
   return pixels;
 }
 
-/** The mean of `value` over the pixels. */
 export function mean(pixels: readonly PlanetPixel[], value: (pixel: PlanetPixel) => number): number {
   if (pixels.length === 0) throw new Error("No pixel to look at.");
   return pixels.reduce((sum, pixel) => sum + value(pixel), 0) / pixels.length;
 }
 
-/** How much two pictures differ: the mean difference per colour value, 0 to 255. */
+/** Returns the mean absolute difference per colour channel, from 0 to 255, optionally over some pixels only. */
 export function difference(a: Picture, b: Picture, among?: readonly PlanetPixel[]): number {
   const indices = among ? among.map((pixel) => pixel.index) : Array.from({ length: a.width * a.height }, (_, i) => i);
   let sum = 0;
@@ -337,28 +328,22 @@ export function difference(a: Picture, b: Picture, among?: readonly PlanetPixel[
   return sum / (indices.length * 3);
 }
 
-// ---- The look, kept as small pictures -----------------------------------------
-
 const LOOKS = path.resolve("tests/e2e/looks");
-/** The small pictures have this many pixels along each side. */
 const LOOK_SIZE = 48;
-/** How far a picture may be from its kept one, as the mean difference per colour value of 255. */
+/** This is the allowed mean difference per colour channel, out of 255. */
 const LOOK_TOLERANCE = 5;
 
 /**
- * Compares a picture with the one kept under `name` in tests/e2e/looks.
- *
- * Both are shrunk to a few dozen pixels first: that is blind to a pixel more
- * or less at an edge, which differs between machines, and sees what counts,
- * a planet that has changed its colours, lost its clouds or turned black.
- *
- * After a change to the look that is meant, the kept pictures are renewed
- * with `UPDATE_LOOKS=1 npm run test:e2e -- shaders`, and the new ones are
- * looked over before they are checked in.
+ * Compares a picture with the reference `name` in tests/e2e/looks. Both are
+ * downscaled first, so that edge pixels, which differ between machines, do
+ * not count, while changed colours or missing clouds still do. After an
+ * intended change, renew the references with
+ * `UPDATE_LOOKS=1 npm run test:e2e -- shaders` and review them before
+ * committing them.
  */
 export async function expectLook(picture: Picture, name: string): Promise<void> {
   const file = path.join(LOOKS, `${name}.png`);
-  // The colours of a planet picture are already multiplied by its opacity: on black, that is the picture.
+  // The colours are already premultiplied by alpha, so dropping alpha gives the picture on black.
   const small = sharp(Buffer.from(picture.data), { raw: { width: picture.width, height: picture.height, channels: 4 } })
     .removeAlpha()
     .resize(LOOK_SIZE, LOOK_SIZE, { kernel: "cubic" });

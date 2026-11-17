@@ -27,7 +27,7 @@ function subscribeToReducedMotion(onChange: () => void): () => void {
   return () => query.removeEventListener("change", onChange);
 }
 
-/** What the drawing loop reads. It changes many times per second, so it is not React state. */
+/** The state the draw loop reads. It changes many times per second, so it is not React state. */
 interface View {
   yaw: number;
   pitch: number;
@@ -36,26 +36,21 @@ interface View {
   targetZoom: number;
   seconds: number;
   paused: boolean;
-  /** Something changed, so a paused picture has to be drawn again. */
+  /** Set when something changed, so a paused image has to be drawn again. */
   dirty: boolean;
 }
 
 /**
- * The 3D model of a planet: it turns by itself, can be turned by hand to see
- * every side including the night side, and can be zoomed into.
- *
- * `children` is the still image. It shows until the first picture is drawn and
- * stays where WebGL is not available.
- *
- * The model is 280 pixels wide and high (`w-70`, `h-70`). The still image
- * must have the same size.
+ * The interactive 3D model of a planet. It turns by itself, can be turned by hand to see every side
+ * including the night side, and can be zoomed. `children` is the still image, which shows until the
+ * first frame is drawn and stays where WebGL is not available. It must have the same 280 px size.
  */
 export function PlanetViewer({
   spec,
   name,
   children,
 }: {
-  /** The planet as JSON (a GlobeSpec), so the effect only restarts when it changes. */
+  /** The planet as a JSON GlobeSpec, so the effect only restarts when it changes. */
   spec: string;
   name: string;
   children: ReactNode;
@@ -76,7 +71,7 @@ export function PlanetViewer({
 
   const [live, setLive] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
-  /** The visitor's own choice. Until they make one, the system setting decides. */
+  /** The visitor's own choice. Until they make one, the reduced-motion setting decides. */
   const [pauseChoice, setPauseChoice] = useState<boolean | null>(null);
   const reducedMotion = useSyncExternalStore(
     subscribeToReducedMotion,
@@ -101,8 +96,8 @@ export function PlanetViewer({
         height: Math.round(element.clientHeight * ratio),
       };
     };
-    // Sized before the context exists: a resize while the shader is still
-    // being built would wait for it and freeze the page.
+    // The canvas is sized before the context exists, because a resize while the shader is being
+    // built would wait for it and freeze the page.
     const initial = pixelSize();
     element.width = initial.width;
     element.height = initial.height;
@@ -110,7 +105,7 @@ export function PlanetViewer({
       state.dirty = true;
     });
     if (!renderer) return;
-    // Starts building the shader now, not only once the model is on screen.
+    // Building the shader starts now rather than once the model is on screen.
     renderer.prepare(surfaceDefines(globe));
 
     let request = 0;
@@ -149,7 +144,6 @@ export function PlanetViewer({
       }
     };
 
-    // Draw only while the model is on screen.
     const observer = new IntersectionObserver(([entry]) => {
       cancelAnimationFrame(request);
       request = 0;
@@ -161,13 +155,13 @@ export function PlanetViewer({
     });
     observer.observe(element);
 
-    // A changed size empties the canvas, so a paused picture is drawn again.
+    // A resize clears the canvas, so a paused image has to be drawn again.
     const resizes = new ResizeObserver(() => {
       state.dirty = true;
     });
     resizes.observe(element);
 
-    // The wheel zooms in full screen, or with Ctrl. Otherwise it scrolls the page as usual.
+    // The wheel zooms in full screen or with Ctrl; otherwise it scrolls the page as usual.
     const onWheel = (event: WheelEvent) => {
       if (!event.ctrlKey && document.fullscreenElement !== frame.current) return;
       event.preventDefault();
@@ -191,7 +185,7 @@ export function PlanetViewer({
     };
   }, [spec]);
 
-  /** Turning by one planet radius on screen turns the view by one radian. */
+  /** Dragging by one planet radius on screen turns the view by one radian. */
   function radiansPerPixel(): number {
     const element = canvas.current;
     if (!element) return 0.01;
@@ -236,7 +230,7 @@ export function PlanetViewer({
       const scale = radiansPerPixel();
       turn((now.x - before.x) * scale, (now.y - before.y) * scale);
     } else if (pointers.current.size === 2) {
-      // Two fingers: the change of their distance zooms.
+      // With two fingers, the change in their distance zooms.
       const other = [...pointers.current.entries()].find(([id]) => id !== event.pointerId);
       if (other) {
         const distanceBefore = Math.hypot(before.x - other[1].x, before.y - other[1].y);
@@ -302,12 +296,12 @@ export function PlanetViewer({
           onPointerMove={onPointerMove}
           onPointerUp={onPointerEnd}
           onPointerCancel={onPointerEnd}
-          // Outside full screen a vertical swipe still scrolls the page (touch-pan-y).
+          // Outside full screen, touch-pan-y lets a vertical swipe still scroll the page.
           className={`absolute inset-0 h-full w-full cursor-grab transition-opacity duration-500 active:cursor-grabbing ${live ? "opacity-100" : "opacity-0"} ${fullscreen ? "touch-none" : "touch-pan-y"}`}
         />
       </div>
 
-      {/* Always there, so the page does not jump when the model appears. */}
+      {/* Always rendered so the layout does not jump when the model appears. */}
       <div className={`flex flex-wrap justify-center gap-1.5 ${live ? "" : "invisible"}`}>
           <button type="button" className={button} aria-label="Zoom out" onClick={() => zoomBy(1 / 1.5)}>
             −

@@ -9,17 +9,14 @@ export const metadata: Metadata = {
   robots: { index: false },
 };
 
-/** "Example Ltd." inside a sentence that ends with its own period. */
+/** Drops a trailing period so a name like "Example Ltd." can sit inside a sentence that ends with its own period. */
 function withoutFinalPeriod(text: string): string {
   return text.replace(/\.$/, "");
 }
 
 /**
- * The privacy policy ("Datenschutzerklärung") that the GDPR asks for.
- *
- * It describes what the code in this repository does. Whoever changes that,
- * for example by adding statistics or a contact form, must change this page
- * with it.
+ * The privacy policy ("Datenschutzerklärung") the GDPR requires. It describes what the code in this repository
+ * does, so whoever changes that, for example by adding statistics or a contact form, must update this page too.
  */
 export default function PrivacyPage() {
   const { operator, missing } = getOperator();

@@ -1,26 +1,18 @@
 import type { Camera, Material, Object3D, Scene, WebGLRenderer } from "three";
 
 /**
- * Lets the map go on drawing while the graphics driver builds its shaders.
- *
- * three.js builds the program of a material the first time something is
- * drawn with it, and then waits for the driver. On Windows the driver takes
- * up to a second for the planets of a system, and the page stands still
- * meanwhile. Through this gate a program is built in the background first
- * (`compileAsync`, which uses KHR_parallel_shader_compile where the browser
- * has it), and what still waits for its program is left out of the picture
- * until it is ready, a few frames later.
- *
- * Things that are hidden are built too, so a planet that waits for its maps
- * has its program ready when they arrive.
+ * Compiles shader programs in the background and skips objects whose program is not ready yet.
+ * three.js otherwise compiles on first draw and waits for the driver, which on Windows can block the
+ * page for up to a second. `compileAsync` uses KHR_parallel_shader_compile where the browser supports it.
+ * Hidden objects are compiled too, so a planet waiting for its textures is ready when they arrive.
  */
 export class ShaderGate {
   private readonly ready = new WeakSet<Material>();
   private readonly building = new WeakSet<Material>();
 
   /**
-   * Draws `scene` into the current render target with what is ready, and
-   * starts building the rest. Returns whether everything could be drawn.
+   * Renders the objects that are ready into the current render target and starts compiling the rest.
+   * Returns true if nothing had to be skipped.
    */
   render(renderer: WebGLRenderer, scene: Scene, camera: Camera): boolean {
     const waiting: Object3D[] = [];
@@ -38,10 +30,7 @@ export class ShaderGate {
     return waiting.length === 0;
   }
 
-  /**
-   * Starts building what `scene` needs without drawing it, for something
-   * that is to appear soon. Uses the current render target, as `render` does.
-   */
+  /** Starts compiling the programs that `scene` needs for the current render target, without drawing it. */
   prepare(renderer: WebGLRenderer, scene: Scene, camera: Camera): void {
     let unbuilt = false;
     scene.traverse((object) => {
@@ -50,7 +39,6 @@ export class ShaderGate {
     if (unbuilt) this.build(renderer, scene, camera);
   }
 
-  /** Whether the program of a material is built. */
   isReady(material: Material): boolean {
     return this.ready.has(material);
   }
@@ -59,7 +47,7 @@ export class ShaderGate {
     const materials: Material[] = [];
     const hidden: Object3D[] = [];
     scene.traverse((object) => {
-      // three.js only builds what is visible.
+      // three.js only compiles visible objects, so hidden ones are shown for the duration of the call.
       if (!object.visible) {
         hidden.push(object);
         object.visible = true;
@@ -72,8 +60,7 @@ export class ShaderGate {
     });
     let built: Promise<unknown>;
     try {
-      // Starts the builds at once, in the render target that is current, whose
-      // kind is part of the program; the promise ends when they are done.
+      // The type of the current render target is part of the program, so the caller must set it first.
       built = renderer.compileAsync(scene, camera);
     } finally {
       for (const object of hidden) object.visible = false;
@@ -84,8 +71,7 @@ export class ShaderGate {
         this.ready.add(material);
       }
     };
-    // A program that fails to build is let through as well: three.js then
-    // reports its error on first use, as it did without the gate.
+    // Failed builds are marked as ready too, so that three.js reports the error on first use as usual.
     built.then(finish, finish);
   }
 }

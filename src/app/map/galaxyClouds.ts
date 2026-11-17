@@ -1,61 +1,41 @@
 import { BULGE_WIDTH, GALACTIC_CENTRE, GALAXY_EDGE, GALAXY_PICTURE_WIDTH } from "./galaxy";
 
 /**
- * The galaxy as a body, for the view from afar.
- *
- * The artist's impression is flat: seen from above it is right, but from an
- * angle all its light lies in one plane, and when the camera moves nothing
- * moves against anything else. A real galaxy has depth. Its young stars and
- * glowing gas lie in a thin layer, its old stars in a thicker one, its bulge
- * swells far above and below the plane, dust lanes lie across it, and a
- * faint halo of old stars surrounds it all.
- *
- * So the picture is only the plan, and is not drawn itself: it is turned
- * into clouds of light at different heights, and into clusters of stars. Where
- * it is bright there are many, in its colours. Bluish and pink places are
- * young and keep close to the plane; yellowish ones are old and spread
- * further; near the centre they swell into the bulge. Where the picture is
- * darker than its surroundings, dark clouds of dust lie in the plane.
- *
- * The real Milky Way is about a hundred times as wide as it is thick; drawn
- * like that it looks like a sheet of paper from the side. The heights here
- * are therefore drawn larger than they are (THICKER), as pictures of
- * galaxies usually do, and the bulge gets a body of its own.
- *
- * Lengths are parsecs in the coordinates of the map (galaxy.ts).
+ * Gives the galaxy depth for the distant view. The flat artist's impression is
+ * turned into light clouds, dust clouds and star clusters at plausible heights.
+ * Lengths are parsecs in map coordinates (galaxy.ts).
  */
 
-/** How much higher than in nature the disc and the bulge are drawn, so that the eye sees a body. */
-export const THICKER = 4.5;
-/** How much higher than in nature the thin layer of the arms, their gas, young stars and dust is drawn. */
+/**
+ * The vertical exaggeration of the thin layer of arms, gas, young stars and dust. At its
+ * true ratio of about 100:1 the galaxy would look as thin as paper from the side.
+ */
 export const THIN = 1.6;
 
-/** A cloud: position, colour as linear light, radius in parsecs, strength; eight numbers. */
+/** Each cloud is eight floats: x, y, z, linear red, green, blue, radius in parsecs and strength. */
 export const CLOUD_STRIDE = 8;
 
 export interface GalaxyClouds {
-  /** Clouds of light. */
   light: Float32Array;
-  /** Clouds of dust: their colour is unused, their strength is how much they hide. */
+  /** The colour of dust clouds is unused, and their strength is their opacity. */
   dust: Float32Array;
-  /** Clusters of stars as points of light, seven numbers each as in starfield.ts. */
+  /** Clusters are drawn as point stars, seven floats each as in starfield.ts. */
   clusters: Float32Array;
 }
 
-/** How many clouds of each kind. Enough for depth, few enough to cost little. */
 export const LIGHT_CLOUDS = 45_000;
 export const DUST_CLOUDS = 16_000;
 export const CLUSTERS = 16_000;
-/** How much more than in proportion to its brightness a place brighter than its surroundings gets clouds, at most. */
+/** Caps how much extra weight a pixel brighter than its surroundings gets, which favours the arms. */
 const ARM_CONTRAST = 3;
 export const HALO_CLOUDS = 450;
 export const BULGE_CLOUDS = 3_000;
-/** The light of the bulge of its own, as a share of the light of the picture. */
+/** The extra light of the bulge as a fraction of the picture's total light. */
 const BULGE_LIGHT = 0.3;
-/** Half the width and half the height of the bulge, in parsecs: an oval. */
+/** The bulge's radial and vertical semi-axes in parsecs. */
 const BULGE_SIZE: [number, number] = [4500, 3700];
 
-/** Mulberry32: small, fast, and the same on every machine. */
+/** Mulberry32, a small seeded generator that gives the same sequence on every machine. */
 function random(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
@@ -67,23 +47,22 @@ function random(seed: number): () => number {
   };
 }
 
-/** A number spread like a bell around 0 with spread 1 (Box and Muller). */
+/** Draws a standard normal sample with the Box-Muller method. */
 function bell(rand: () => number): number {
   return Math.sqrt(-2 * Math.log(Math.max(rand(), 1e-9))) * Math.cos(2 * Math.PI * rand());
 }
 
-/** The place of the galaxy at the middle of a pixel of the picture (row from the top). */
+/** Returns the map position of a pixel centre, with rows counted from the top. */
 function place(column: number, row: number, size: number): [number, number] {
-  // Towards the centre is up in the picture, the longitude of 90 degrees left.
+  // In the picture the galactic centre is up and galactic longitude 90 degrees is to the left.
   const x = GALACTIC_CENTRE[0] + (0.5 - (row + 0.5) / size) * GALAXY_PICTURE_WIDTH;
   const y = GALACTIC_CENTRE[1] + (0.5 - (column + 0.5) / size) * GALAXY_PICTURE_WIDTH;
   return [x, y];
 }
 
 /**
- * Clouds from a picture of the galaxy given as linear red, green and blue per
- * pixel, `size` × `size`, rows from the top. Always the same clouds for the
- * same picture.
+ * Builds the clouds from a `size` × `size` picture in linear RGB, stored row by row
+ * from the top. The same picture always gives the same clouds.
  */
 export function galaxyClouds(rgb: Float32Array, size: number): GalaxyClouds {
   const rand = random(271828);
@@ -93,12 +72,9 @@ export function galaxyClouds(rgb: Float32Array, size: number): GalaxyClouds {
     brightness[i] = 0.3 * rgb[i * 3] + 0.6 * rgb[i * 3 + 1] + 0.1 * rgb[i * 3 + 2];
   }
 
-  // Clouds of light where the picture is bright: pixels drawn in proportion
-  // to their brightness, so a bright arm gets many clouds and a gap few.
-  // The picture is bright between the arms too, with the smooth light of the
-  // old disc, which the glow of the galaxy draws softly. So the clouds go
-  // more than in proportion where the picture is brighter than its wider
-  // surroundings: into the arms.
+  // Pixels are picked in proportion to their brightness, with extra weight where
+  // they are brighter than their surroundings. This puts the clouds into the arms,
+  // while the glow shader already draws the smooth light between them.
   const wider = blur(brightness, size, Math.max(2, Math.round(size / 28)));
   const cumulative = new Float64Array(brightness.length);
   let total = 0;
@@ -120,7 +96,8 @@ export function galaxyClouds(rgb: Float32Array, size: number): GalaxyClouds {
   };
 
   const light = new Float32Array((LIGHT_CLOUDS + HALO_CLOUDS + BULGE_CLOUDS) * CLOUD_STRIDE);
-  // Each cloud carries an equal share of the light of the picture.
+  // Brightness is already expressed by how often a pixel is picked, so every cloud
+  // carries an equal share of the light and only the pixel's colour.
   const share = 1 / LIGHT_CLOUDS;
   for (let n = 0; n < LIGHT_CLOUDS; n++) {
     const index = pick();
@@ -129,34 +106,27 @@ export function galaxyClouds(rgb: Float32Array, size: number): GalaxyClouds {
     const [px, py] = place(column, row, size);
     const [red, green, blue] = [rgb[index * 3], rgb[index * 3 + 1], rgb[index * 3 + 2]];
     const sum = Math.max(red + green + blue, 1e-6);
-    // Blue and pink light comes from young stars and their gas, which keep
-    // close to the plane; yellow light from old stars, which spread further.
+    // Blue and pink light comes from young stars and gas, which stay close to the
+    // plane. Yellow light comes from old stars, which spread further out.
     const young = Math.min(1, Math.max(0, (blue - red) / sum * 4 + 0.5 + (red - green) / sum * 1.5));
     const x = px + (rand() - 0.5) * pixel;
     const y = py + (rand() - 0.5) * pixel;
     const fromCentre = Math.hypot(x - GALACTIC_CENTRE[0], y - GALACTIC_CENTRE[1]);
-    // The bar in the middle is a little thicker than the disc around it.
     const bulge = Math.exp(-((fromCentre / (BULGE_WIDTH * 1.2)) ** 2));
-    // The arms, their gas and young stars stay in a thin layer, a little
-    // higher than in nature (THIN). The height of the galaxy is carried by
-    // what has no arms: the smooth thick disc of old stars, drawn by the glow
-    // of GALAXY_GLOW_FRAGMENT, the bulge and the halo (THICKER). Were the
-    // arms as high, they would be smeared into streaks up and down when seen
-    // at a slant.
+    // The arms stay in the thin layer, because thicker arms smear into vertical
+    // streaks when seen at an angle. The galaxy's thickness comes from the glow
+    // shader, the bulge and the halo instead.
     const disc = (60 + 220 * (1 - young)) * THIN;
-    // Towards its edge the disc flares out a little.
+    // The disc flares out slightly towards its edge.
     const height = disc * (1 + 0.8 * smoothstep(9000, GALAXY_EDGE, fromCentre)) + 400 * bulge * THIN;
     const z = bell(rand) * height;
-    // Soft clouds: small ones would make the galaxy look grainy from afar.
+    // The radii are large because small clouds make the galaxy look grainy from afar.
     const radius = (young > 0.5 ? 90 : 200) + 200 * rand() + 500 * bulge;
-    // The clouds of light are drawn without the brightness of their pixel,
-    // as each already stands for an equal share: colour only.
     light.set([x, y, z, red / sum, green / sum, blue / sum, radius, share], n * CLOUD_STRIDE);
   }
 
-  // A faint halo of old stars around everything, densest in the middle. Few
-  // but wide clouds: they are drawn into the small picture of the glow, so
-  // their size costs little.
+  // The stellar halo uses few but wide clouds. They are drawn into the
+  // low-resolution glow target, so their size costs little.
   for (let n = 0; n < HALO_CLOUDS; n++) {
     const r = 1200 + 16000 * rand() ** 1.8;
     const cos = 2 * rand() - 1;
@@ -166,7 +136,7 @@ export function galaxyClouds(rgb: Float32Array, size: number): GalaxyClouds {
       [
         GALACTIC_CENTRE[0] + r * sin * Math.cos(angle),
         GALACTIC_CENTRE[1] + r * sin * Math.sin(angle),
-        // A little flattened, as the halo is.
+        // The halo is slightly oblate.
         r * cos * 0.65,
         0.38,
         0.34,
@@ -178,10 +148,10 @@ export function galaxyClouds(rgb: Float32Array, size: number): GalaxyClouds {
     );
   }
 
-  // The bulge: an oval swarm of old yellowish stars in the middle, packed
-  // densest at its heart, which swells far above and below the disc.
+  // The bulge is a flattened ellipsoid of old stars that is densest at its centre.
   for (let n = 0; n < BULGE_CLOUDS; n++) {
-    // Distance from the middle in units of the size of the bulge, densest inside.
+    // The radius follows a Plummer profile in units of BULGE_SIZE and is capped
+    // at 1.6, because the profile's long tail would scatter clouds far outside.
     const r = Math.min(1.6, 0.5 / Math.sqrt(Math.max(rand(), 1e-6) ** (-2 / 3) - 1));
     const cos = 2 * rand() - 1;
     const sin = Math.sqrt(1 - cos * cos);
@@ -194,7 +164,7 @@ export function galaxyClouds(rgb: Float32Array, size: number): GalaxyClouds {
         0.42,
         0.34,
         0.24,
-        // Wide, so that they melt into one body instead of single puffs.
+        // The clouds are wide so that they merge into one body instead of separate puffs.
         700 + 900 * rand(),
         BULGE_LIGHT / BULGE_CLOUDS,
       ],
@@ -202,7 +172,7 @@ export function galaxyClouds(rgb: Float32Array, size: number): GalaxyClouds {
     );
   }
 
-  // Clouds of dust where the picture is darker than its surroundings.
+  // Dust clouds go where the picture is darker than its surroundings.
   const blurred = blur(brightness, size, Math.max(2, Math.round(size / 64)));
   const darkness = new Float32Array(brightness.length);
   let dark = 0;
@@ -210,14 +180,13 @@ export function galaxyClouds(rgb: Float32Array, size: number): GalaxyClouds {
     const row = Math.floor(i / size);
     const [px, py] = place(i - row * size, row, size);
     const fromCentre = Math.hypot(px - GALACTIC_CENTRE[0], py - GALACTIC_CENTRE[1]);
-    // None in and around the bulge, where the bright bar would make every
-    // place beside it look dark, and none beyond the edge of the disc.
+    // There is no dust near the bulge, where the bright bar makes everything beside
+    // it look dark, and none beyond the edge of the disc.
     const inDisc = smoothstep(2600, 4500, fromCentre) * (1 - smoothstep(GALAXY_EDGE * 0.8, GALAXY_EDGE, fromCentre));
-    // A lane of dust still lets some light through; beyond the edge of the
-    // disc there is none, and that is empty space, not dust.
+    // Real dust lanes still let some light through, so almost black pixels are
+    // treated as empty space rather than dust.
     const lit = smoothstep(0.03, 0.12, brightness[i] / Math.max(blurred[i], 1e-6));
-    // Squared, so the dust gathers in the clear dark lanes rather than
-    // spreading thinly over every slight shadow of the picture.
+    // Squaring concentrates the dust in clear lanes instead of every faint shadow.
     darkness[i] = Math.max(0, blurred[i] - brightness[i]) ** 2 * inDisc * lit;
     dark += darkness[i];
   }
@@ -247,8 +216,7 @@ export function galaxyClouds(rgb: Float32Array, size: number): GalaxyClouds {
         0,
         0,
         0,
-        // Wide and faint, so that many overlap into smooth lanes instead of
-        // standing out one by one.
+        // The clouds are wide and faint so that many overlap into smooth lanes.
         100 + 140 * rand(),
         0.5 + 0.5 * rand(),
       ],
@@ -256,9 +224,9 @@ export function galaxyClouds(rgb: Float32Array, size: number): GalaxyClouds {
     );
   }
 
-  // Clusters of stars where the picture is bright: young bright ones close
-  // to the plane where it is blue, older and fainter ones above and below.
-  // From afar they make the arms a field of points rather than a painting.
+  // Star clusters are picked like the light clouds, so from afar the arms look like
+  // fields of points rather than paint. Young, blue clusters are brighter and stay
+  // closer to the plane.
   const clusters = new Float32Array(CLUSTERS * 7);
   for (let n = 0; n < CLUSTERS; n++) {
     const index = pick();
@@ -274,11 +242,11 @@ export function galaxyClouds(rgb: Float32Array, size: number): GalaxyClouds {
         px + (rand() - 0.5) * pixel,
         py + (rand() - 0.5) * pixel,
         bell(rand) * (60 + 400 * (1 - young)) * THIN,
-        // Whiter than the picture: the colour of single stars, not of a haze.
+        // The colour is pushed towards white, because single stars look less saturated than a haze.
         0.55 + 0.45 * (red / top),
         0.55 + 0.45 * (green / top),
         0.55 + 0.45 * (blue / top),
-        // Tens of thousands of suns, and a few far more.
+        // Most clusters shine like tens of thousands of suns, and a few far brighter.
         (20_000 + 400_000 * rand() ** 4) * (0.4 + 0.6 * young),
       ],
       n * 7,
@@ -287,7 +255,7 @@ export function galaxyClouds(rgb: Float32Array, size: number): GalaxyClouds {
   return { light, dust, clusters };
 }
 
-/** A square blur of `reach` pixels each way. */
+/** Applies a separable box blur with a radius of `reach` pixels. */
 function blur(values: Float32Array, size: number, reach: number): Float32Array {
   const across = new Float32Array(values.length);
   const out = new Float32Array(values.length);

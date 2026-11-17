@@ -2,10 +2,7 @@
 
 import { useEffect } from "react";
 
-/**
- * Builds the planet shaders in the background once the page has nothing else
- * to do (warmup.ts). Renders nothing.
- */
+/** Builds the planet shaders in the background once the page is idle (see warmup.ts). Renders nothing. */
 export function GlobeWarmup() {
   useEffect(() => {
     const start = () => {

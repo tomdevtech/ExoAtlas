@@ -1,11 +1,8 @@
 /**
- * Prepares a database for the tests: creates it when it is missing, applies
- * the migrations, empties it and fills it with the small test catalogue from
- * ./catalog.ts.
- *
- * The tests never touch the database from DATABASE_URL. They use their own
- * databases, whose names must end in `_test` or `_e2e`, so that a mistake in
- * the configuration cannot empty the development database.
+ * Prepares a test database: creates it if needed, migrates it, empties it and
+ * seeds the test catalogue from ./catalog.ts. Test database names must end in
+ * `_test` or `_e2e`, so that a configuration mistake cannot wipe the
+ * development database from DATABASE_URL.
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -19,10 +16,10 @@ import { closeDb, getDb } from "@/db/client";
 import { planetAliases, planets, starAliases, stars } from "@/db/schema";
 import { FIXTURE_ROWS, FIXTURE_ROWS_AFTER_RETRACTION } from "@tests/support/catalog";
 
-/** The database from docker-compose.yml, with the name the tests may use. */
+/** This is the server from docker-compose.yml; the database name is appended. */
 const LOCAL = "postgres://exofinder:exofinder@localhost:5432/";
 
-/** Vitest and Playwright do not read .env.local themselves. Variables set before win. */
+/** Vitest and Playwright do not read .env.local themselves. Variables that are already set take precedence. */
 function localEnv(name: "TEST_DATABASE_URL" | "E2E_DATABASE_URL"): string | undefined {
   if (process.env[name] === undefined && existsSync(".env.local")) {
     process.loadEnvFile(".env.local");
@@ -30,17 +27,16 @@ function localEnv(name: "TEST_DATABASE_URL" | "E2E_DATABASE_URL"): string | unde
   return process.env[name] || undefined;
 }
 
-/** Database of the Vitest database tests (`npm run test:db`). */
+/** Returns the database for the Vitest database tests (`npm run test:db`). */
 export function testDatabaseUrl(): string {
   return localEnv("TEST_DATABASE_URL") ?? `${LOCAL}exofinder_test`;
 }
 
-/** Database of the browser tests (`npm run test:e2e`). */
+/** Returns the database for the browser tests (`npm run test:e2e`). */
 export function e2eDatabaseUrl(): string {
   return localEnv("E2E_DATABASE_URL") ?? `${LOCAL}exofinder_e2e`;
 }
 
-/** The name of the database in a connection URL. */
 function databaseName(url: string): string {
   return decodeURIComponent(new URL(url).pathname.replace(/^\//, ""));
 }
@@ -55,7 +51,6 @@ export function assertTestDatabase(url: string): void {
   }
 }
 
-/** Creates the database when it does not exist yet. */
 async function ensureDatabase(url: string): Promise<void> {
   const name = databaseName(url);
   const server = new URL(url);
@@ -63,7 +58,7 @@ async function ensureDatabase(url: string): Promise<void> {
   const sql = postgres(server.toString(), { max: 1, onnotice: () => {} });
   try {
     const existing = await sql`select 1 from pg_database where datname = ${name}`;
-    // The name was checked by assertTestDatabase: only a-z, 0-9 and _.
+    // Interpolating the name is safe because assertTestDatabase allows only a-z, 0-9 and _.
     if (existing.length === 0) await sql.unsafe(`create database "${name}"`);
   } finally {
     await sql.end();
@@ -83,13 +78,12 @@ async function migrateAndEmpty(url: string): Promise<void> {
   }
 }
 
-/** Runs one sync, with NASA's answer replaced by `rows`. */
+/** Runs one sync with NASA's response replaced by `rows`. */
 export async function syncWith(rows: unknown[]): Promise<void> {
   const realFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response(JSON.stringify(rows));
   try {
-    // The test catalogue is far smaller than the real one, which the sync
-    // would otherwise refuse as implausible.
+    // The sync would otherwise reject the small test catalogue as implausibly short.
     await runSync({ force: true });
   } finally {
     globalThis.fetch = realFetch;
@@ -97,9 +91,9 @@ export async function syncWith(rows: unknown[]): Promise<void> {
 }
 
 /**
- * Fills an empty database: the solar system, two sync runs (in the second one
- * NASA withdraws Retracted-1 b) and two former names, so the redirects from
- * old addresses can be tested.
+ * Seeds the solar system, two sync runs (NASA withdraws Retracted-1 b in the
+ * second one) and two former names, so that redirects from old addresses can
+ * be tested.
  */
 async function seed(): Promise<void> {
   await seedSolarSystem();
@@ -121,10 +115,7 @@ async function seed(): Promise<void> {
     .values({ starId: trappist.id, slug: "2mass-j23062928-0502285", name: "2MASS J23062928-0502285" });
 }
 
-/**
- * Brings the test database at `url` into its known state. Afterwards
- * `getDb()` points to it.
- */
+/** Brings the test database at `url` into its known state and points `getDb()` to it. */
 export async function prepareTestDatabase(url: string): Promise<void> {
   assertTestDatabase(url);
   await ensureDatabase(url);

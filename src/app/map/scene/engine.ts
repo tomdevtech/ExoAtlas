@@ -6,34 +6,30 @@ import { loadTexture } from "./picture";
 import { ShaderGate } from "./shaderGate";
 import { SystemView, TextureStore } from "./systemView";
 
-/** What the map tells the page around it. */
+/** Callbacks through which the map notifies the page. */
 export interface MapEvents {
-  /** A star was clicked in the galaxy. */
   onSelect(index: number): void;
-  /** A planet was clicked in a system, or the star (`null`) to see the whole system again. */
+  /** A planet was clicked, or the star was clicked (`null`) to show the whole system again. */
   onFocus(planet: number | null): void;
-  /** Escape was pressed while the map had the keyboard. */
   onEscape(): void;
-  /** The camera started (true) or stopped circling the galactic centre. */
+  /** The camera started (true) or stopped (false) orbiting the galactic centre. */
   onOrbit?(orbiting: boolean): void;
 }
 
 const SKY_LARGE = "/textures/sky/milky-way-lg.jpg";
 const SKY_SMALL = "/textures/sky/milky-way-sm.jpg";
-/** The artist's impression of the galaxy (galaxy.ts). */
 const GALAXY_PICTURE = "/textures/sky/galaxy.jpg";
-/** How long the curtain takes to close or open. Its class `duration-320` must say the same. */
+/** The duration of the curtain fade, which must match the `duration-320` class. */
 const FADE_MS = 320;
-/** The mouse pointers of the map, as Tailwind classes. */
 const CURSORS = {
   grab: "cursor-grab",
   grabbing: "cursor-grabbing",
   pointer: "cursor-pointer",
 } as const;
-/** A press that moves less than this many pixels is a click, not a drag. */
+/** A press that moves less than this many pixels counts as a click rather than a drag. */
 const CLICK_SLACK = 5;
 const DOUBLE_CLICK_MS = 400;
-/** Keys that move the camera. The browser must not scroll the page with them. */
+/** Keys that move the camera. Their default action is prevented so the page does not scroll. */
 const FLIGHT_KEYS = new Set([
   "KeyW",
   "KeyA",
@@ -52,13 +48,11 @@ const FLIGHT_KEYS = new Set([
 ]);
 
 /**
- * Runs the map: owns the WebGL canvas, draws one of the two views each frame
- * (the galaxy, or one star system) and turns mouse, touch and keyboard into
- * camera moves. It knows nothing about React; the page talks to it through
- * the methods below and hears back through `MapEvents`.
+ * Runs the map independently of React. It owns the WebGL canvas, renders either the galaxy or a star
+ * system each frame and turns pointer and keyboard input into camera moves.
  */
 export class MapEngine {
-  /** True when the visitor asked their system for less motion: flights and fades then happen at once. */
+  /** True when the user prefers reduced motion, in which case flights and fades happen instantly. */
   readonly reducedMotion: boolean;
 
   private readonly renderer: WebGLRenderer;
@@ -70,7 +64,6 @@ export class MapEngine {
   private readonly skyTexture: Texture;
   private readonly galaxy: GalaxyView;
   private system: SystemView | null = null;
-  /** Builds the shaders of a star system in the background (see shaderGate.ts). */
   private readonly systemGate = new ShaderGate();
 
   private readonly viewport: Viewport = { width: 1, height: 1, pixelRatio: 1 };
@@ -111,12 +104,12 @@ export class MapEngine {
     container.append(this.canvas);
     this.labels = new LabelLayer(container);
     this.curtain = document.createElement("div");
-    // Closed at first. `duration-320` is FADE_MS.
+    // The curtain starts closed. Its `duration-320` class must match FADE_MS.
     this.curtain.className =
       "pointer-events-none absolute inset-0 bg-black transition-opacity duration-320 ease-[ease] motion-reduce:transition-none";
     container.append(this.curtain);
 
-    // The photograph of the sky. Mipmaps would draw a seam where its left and right edge meet.
+    // Mipmaps are disabled because they draw a seam where the left and right edges of the sky photo meet.
     const large = this.renderer.capabilities.maxTextureSize >= 4096 && window.innerWidth > 700;
     const raise = () => {
       if (!this.pendingSwap) this.closeCurtain(false);
@@ -148,13 +141,10 @@ export class MapEngine {
     this.frame = requestAnimationFrame(this.tick);
   }
 
-  // ---- What the page can ask for --------------------------------------------
-
   setStars(stars: MapStar[]): void {
     this.galaxy.setStars(stars);
   }
 
-  /** Marks a star in the galaxy, or none. */
   select(index: number | null): void {
     this.galaxy.selected = index;
   }
@@ -171,12 +161,12 @@ export class MapEngine {
     this.galaxy.flyToOverview(instantly || this.reducedMotion);
   }
 
-  /** Makes the galactic centre the fixed point the camera turns round, or lets it fly freely. */
+  /** Switches between orbiting the galactic centre and free flight. */
   setOrbit(on: boolean): void {
     this.galaxy.setOrbit(on, this.reducedMotion);
   }
 
-  /** Leaves the galaxy for one star system. `planet` is the planet to look at first, if any. */
+  /** Switches from the galaxy to a star system, optionally focused on `planet`. */
   showSystem(payload: MapSystemPayload, planet: number | null, paused: boolean): void {
     this.swap(() => {
       this.system?.dispose();
@@ -188,7 +178,6 @@ export class MapEngine {
     });
   }
 
-  /** Back from a system to the galaxy. */
   showGalaxy(): void {
     this.swap(() => {
       this.system?.dispose();
@@ -219,18 +208,16 @@ export class MapEngine {
     this.skyTexture.dispose();
     this.labels.dispose();
     this.renderer.dispose();
-    // Browsers only allow a handful of WebGL contexts: give this one back.
+    // Browsers allow only a few WebGL contexts at a time, so this one is released explicitly.
     this.renderer.forceContextLoss();
     this.canvas.remove();
     this.curtain.remove();
   }
 
-  // ---- Drawing ----------------------------------------------------------------
-
   private readonly tick = (now: number): void => {
     if (this.disposed) return;
     this.frame = requestAnimationFrame(this.tick);
-    // After a pause, for example in a background tab, time does not jump ahead.
+    // The step is clamped so that time does not jump ahead after a pause, for example in a background tab.
     const dt = Math.min((now - (this.lastTime || now)) / 1000, 0.1);
     this.lastTime = now;
     this.seconds += dt;
@@ -260,9 +247,9 @@ export class MapEngine {
     this.renderer.setSize(width, height, false);
   }
 
-  /** Changes the view behind a short fade to black, so nothing pops. */
+  /** Applies a view change behind a short fade to black, so that nothing pops. */
   private swap(change: () => void): void {
-    // A change still waiting behind the curtain happens now: none may get lost.
+    // A change still waiting behind the curtain is applied now, so that none gets lost.
     window.clearTimeout(this.swapTimer);
     this.pendingSwap?.();
     this.pendingSwap = null;
@@ -279,7 +266,6 @@ export class MapEngine {
     }, FADE_MS);
   }
 
-  /** The black curtain over the map: closed it hides a change of scene, open it lets the map show. */
   private closeCurtain(closed: boolean): void {
     this.curtain.classList.toggle("opacity-0", !closed);
   }
@@ -289,8 +275,6 @@ export class MapEngine {
     this.canvas.classList.replace(CURSORS[this.cursor], CURSORS[cursor]);
     this.cursor = cursor;
   }
-
-  // ---- Mouse and touch ---------------------------------------------------------
 
   private place(event: PointerEvent | WheelEvent): { x: number; y: number } {
     const rect = this.canvas.getBoundingClientRect();
@@ -305,7 +289,7 @@ export class MapEngine {
     if (this.pointers.size === 1) this.travelled = 0;
     if (this.pointers.size === 2) {
       this.pinch = this.pointerSpread();
-      // Two fingers are never a click.
+      // A two-finger gesture is never a click.
       this.travelled = Infinity;
     }
   };
@@ -359,12 +343,12 @@ export class MapEngine {
 
   private readonly onWheel = (event: WheelEvent): void => {
     event.preventDefault();
-    // Mice report lines or pixels, depending on the browser and the device.
+    // Depending on the browser and device, the wheel reports lines (deltaMode 1) or pixels.
     const pixels = event.deltaMode === 1 ? event.deltaY * 33 : event.deltaY;
     this.push(Math.max(-3, Math.min(3, -pixels / 100)));
   };
 
-  /** Moves the camera closer (positive) or away. */
+  /** Moves the camera closer for positive amounts and away for negative ones. */
   private push(amount: number): void {
     if (this.system) this.system.push(amount);
     else this.galaxy.push(amount);
@@ -400,10 +384,8 @@ export class MapEngine {
     if (again) this.flyToStar(star);
   }
 
-  // ---- Keyboard ---------------------------------------------------------------
-
   private readonly onKeyDown = (event: KeyboardEvent): void => {
-    // Only keys pressed on the map itself fly; typing in a field of the page does not.
+    // Only keys pressed on the map itself are handled, so typing in a form field does not move the camera.
     if (event.target !== this.container) return;
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     if (event.code === "Escape") {

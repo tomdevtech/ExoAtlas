@@ -5,30 +5,26 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useTransition } from "react";
 import { listHref, type ListSort } from "./paging";
 
-/** Wait this long after the last key press before the list is filtered. */
+/** Delay after the last key press before the list is filtered. */
 const DEBOUNCE_MS = 250;
 
 /**
- * The filter field above the list of all planets.
+ * The filter field above the planet list.
  *
- * The filter lives in the address (`/planets?q=…`), not in this component:
- * typing replaces the address, and the server sends the matching page of the
- * list. That way a filtered list can be shared and reloaded. The field is an
- * ordinary form, so Enter also works before JavaScript has loaded.
- *
- * While the server answers, the form carries `data-pending`, which the page
- * uses to dim the list.
+ * The filter lives in the URL (`/planets?q=…`) and the server renders the matching page, so a filtered list
+ * can be shared and reloaded. It is a plain form, so Enter works before JavaScript has loaded. While the
+ * server responds, the form carries `data-pending`, which the page uses to dim the list.
  */
 export function PlanetFilter({
   initial = "",
   sort = "name",
   disabled = false,
 }: {
-  /** The filter from the address. */
+  /** The filter from the URL. */
   initial?: string;
-  /** The order from the address. A new filter keeps it. */
+  /** The sort order from the URL. A new filter keeps it. */
   sort?: ListSort;
-  /** For the placeholder that shows until the address is known. */
+  /** Used by the placeholder that shows until the URL is known. */
   disabled?: boolean;
 }) {
   const router = useRouter();
@@ -39,7 +35,7 @@ export function PlanetFilter({
   // Nothing may fire after the component is gone.
   useEffect(() => () => clearTimeout(timer.current), []);
 
-  // Back and forward change the address without any typing. The field follows,
+  // Back and forward navigation changes the URL without typing, so the field follows it
   // unless the visitor is typing in it right now.
   useEffect(() => {
     const field = input.current;
@@ -50,8 +46,8 @@ export function PlanetFilter({
     clearTimeout(timer.current);
     timer.current = setTimeout(() => {
       startTransition(() => {
-        // A new filter starts on page 1. `replace` keeps the history free of
-        // one entry per key press, and the page stays where it is scrolled to.
+        // A new filter starts on page 1. `replace` avoids one history entry per key press,
+        // and `scroll: false` keeps the scroll position.
         router.replace(listHref(value.trim(), 1, sort), { scroll: false });
       });
     }, DEBOUNCE_MS);
@@ -78,7 +74,7 @@ export function PlanetFilter({
         aria-label="Filter planets by name"
         className="w-full rounded-lg border border-line bg-surface px-5 py-3.5 text-lg text-foreground placeholder:text-muted focus:border-accent focus:outline-none"
       />
-      {/* Carries the order along when the form is sent with Enter. */}
+      {/* Keeps the sort order when the form is submitted with Enter. */}
       {sort !== "name" && <input type="hidden" name="sort" value={sort} />}
     </Form>
   );

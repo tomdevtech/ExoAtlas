@@ -2,7 +2,7 @@ import { io } from "next/cache";
 import { PlanetCard } from "@/app/planets/PlanetCard";
 import { getPlanetsBySlug, type PlanetSummary } from "@/app/planets/queries";
 
-/** A hand-picked start into the catalogue: famous exoplanets and three from home. */
+/** A hand-picked entry point into the catalogue: famous exoplanets and three solar-system planets. */
 const FEATURED_SLUGS = [
   "proxima-cen-b",
   "trappist-1-e",
@@ -15,7 +15,7 @@ const FEATURED_SLUGS = [
   "saturn",
 ];
 
-/** Cards for a few well-known planets. Reads the database, so it needs <Suspense>. */
+/** Cards for a few well-known planets. It reads the database, so it needs <Suspense>. */
 export async function FeaturedPlanets() {
   // See CatalogStats: keeps the query out of the prerendered part of the page.
   await io();

@@ -14,8 +14,8 @@ export const metadata: Metadata = {
 type Props = PageProps<"/search">;
 
 export default function SearchPage({ searchParams }: Props) {
-  // The frame is static. The query in the URL is only known at request time,
-  // so everything that depends on it streams in.
+  // The page shell is static. The query in the URL is only known at request time, so everything that
+  // depends on it streams in.
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-8 px-6 py-10">
       <h1 className="text-3xl font-semibold tracking-tight">Search</h1>

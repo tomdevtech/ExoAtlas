@@ -1,7 +1,4 @@
-/**
- * Small helpers for the colours of the planets. Colours are "#rrggbb" texts,
- * as the rest of the app passes them around.
- */
+/** Colour helpers for the planet images. Colours are "#rrggbb" strings, as the rest of the app passes them around. */
 
 type Rgb = [number, number, number];
 
@@ -18,7 +15,7 @@ function format([red, green, blue]: Rgb): string {
   return `#${channel(red)}${channel(green)}${channel(blue)}`;
 }
 
-/** The colour between two colours: `share` 0 gives the first, 1 the second. */
+/** Interpolates between two colours: `share` 0 gives the first, 1 the second. */
 export function mixColors(from: string, to: string, share: number): string {
   const a = parse(from);
   const b = parse(to);
@@ -26,7 +23,7 @@ export function mixColors(from: string, to: string, share: number): string {
   return format([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]);
 }
 
-/** How a colour is changed by `shade`. Everything left out stays as it is. */
+/** How `shade` changes a colour. Fields left out stay unchanged. */
 export interface Shade {
   /** Degrees around the colour wheel. */
   hue?: number;
@@ -36,7 +33,7 @@ export interface Shade {
   lightness?: number;
 }
 
-/** The same colour a little further round the colour wheel, greyer or stronger, darker or lighter. */
+/** Shifts a colour's hue, scales its saturation and offsets its lightness in HSL. */
 export function shade(hex: string, change: Shade): string {
   const [red, green, blue] = parse(hex).map((value) => value / 255);
   const max = Math.max(red, green, blue);

@@ -48,11 +48,10 @@ test.describe("map", () => {
   });
 
   test("opens the planet's system when the map was already open before", async ({ page }) => {
-    // Next keeps the map loaded (and hidden) after it was left. When its effects
-    // read the address themselves, they can run before Next has written the new
-    // one: under `next dev` that left the visitor in the galaxy instead of the
-    // system the link named. The production build here did not show it, so this
-    // test guards the path, not that exact timing.
+    // Next keeps the map mounted but hidden after it is left. Under `next dev`,
+    // its effects once read the address before Next had updated it, which left
+    // the visitor in the galaxy. The production build never showed that race,
+    // so this test guards the path rather than the exact timing.
     await page.goto("/map");
     await waitForMap(page);
     await page.getByRole("searchbox", { name: "Find a star on the map" }).fill("trapp");
@@ -64,28 +63,29 @@ test.describe("map", () => {
     await expect(page).toHaveURL(/\/map\?system=trappist-1&planet=trappist-1-e$/);
     await expect(page.getByRole("button", { name: "← Galaxy" })).toBeVisible({ timeout: 45_000 });
     await expect(page.getByRole("heading", { level: 2, name: "TRAPPIST-1" })).toBeVisible();
-    // The address stays on the system once it has loaded.
     await expect(page).toHaveURL(/\/map\?system=trappist-1&planet=trappist-1-e$/);
   });
 
   test("shows the whole galaxy from outside, on a black sky", async ({ page }) => {
-    // The galaxy is built after the artist's impression: the picture is fetched,
-    // and a worker places the clouds beside the map.
+    // The test browser renders in software, so the tens of thousands of galaxy
+    // clouds take most of a minute on a two-core CI runner instead of milliseconds.
+    test.setTimeout(240_000);
+    // The galaxy is built from the artist's impression, and a worker places the clouds from that picture.
     const picture = page.waitForResponse((response) => response.url().endsWith("/textures/sky/galaxy.jpg"));
     const worker = page.waitForEvent("worker");
-    // The worker is ended once it has handed over the clouds.
+    // The worker closes once it has handed over the clouds, which tells the test they are ready.
     let cloudsMade = false;
     page.on("worker", (started) => started.on("close", () => (cloudsMade = true)));
     await page.goto("/map?view=galaxy");
     await waitForMap(page);
     expect((await picture).status()).toBe(200);
     expect((await worker).url()).toContain("/_next/");
-    // From out there the camera circles the centre of the galaxy.
+    // From outside the galaxy, the camera circles its centre.
     await expect(page.getByRole("button", { name: "Fly freely" })).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByRole("link", { name: "NASA/JPL-Caltech/ESO/R. Hurt" })).toBeVisible();
     await expect(page.getByText("the galaxy is an artist’s impression")).toBeVisible();
 
-    // How bright the map is around a point, given as shares of its width and height.
+    // This measures the brightness around a point given as fractions of the canvas width and height.
     const canvas = page.locator("canvas").first();
     const brightness = async (x: number, y: number) => {
       const { data, info } = await sharp(await canvas.screenshot()).greyscale().raw().toBuffer({ resolveWithObject: true });
@@ -97,14 +97,12 @@ test.describe("map", () => {
       }
       return sum / 144;
     };
-    // The flight out takes a few seconds, then the galaxy fills the middle of the picture.
-    await expect.poll(() => brightness(0.5, 0.6), { timeout: 30_000 }).toBeGreaterThan(60);
-    // Beside it there is no sky from the Sun's point of view any more, only black.
+    // The flight out takes a few seconds before the galaxy fills the middle of the picture.
+    await expect.poll(() => brightness(0.5, 0.6), { timeout: 120_000 }).toBeGreaterThan(60);
+    // Outside the galaxy the sky seen from the Sun is gone, so the edge must be black.
     expect(await brightness(0.02, 0.5)).toBeLessThan(6);
 
-    // As the visitor sees it: the glow, the clouds and clusters of the worker,
-    // and the stars. Once the clouds are there and the camera rests, the
-    // picture stands still.
+    // The screenshot is only stable once the worker's clouds are in place and the camera rests.
     await expect.poll(() => cloudsMade, { timeout: 45_000 }).toBe(true);
     const shot = async (): Promise<Picture> => {
       const { data, info } = await sharp(await canvas.screenshot()).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
@@ -120,7 +118,7 @@ test.describe("map", () => {
           last = now;
           return change;
         },
-        { timeout: 30_000 },
+        { timeout: 90_000 },
       )
       .toBeLessThan(0.05);
     await expectLook(last, "map-galaxy-from-outside");
@@ -129,7 +127,7 @@ test.describe("map", () => {
   test("names famous sights near the Sun", async ({ page }) => {
     await page.goto("/map");
     await waitForMap(page);
-    // The Veil Nebula, the shell of a star that exploded 735 parsecs away, is in view from home.
+    // The Veil Nebula, 735 parsecs away, is a landmark in view from the Sun.
     await expect(page.getByText("Veil Nebula", { exact: true })).toBeVisible();
   });
 
@@ -145,7 +143,7 @@ test.describe("map", () => {
     const free = page.getByRole("button", { name: "Fly freely" });
     await expect(free).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByText(/Drag to turn round the centre · scroll or W and S to zoom/)).toBeVisible();
-    // Dragging turns the view round the centre and does not end the circling.
+    // Dragging turns the view around the centre but must not end the circling.
     const box = await canvas.boundingBox();
     if (!box) throw new Error("The map has no canvas.");
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -154,7 +152,7 @@ test.describe("map", () => {
     await page.mouse.up();
     await expect(free).toHaveAttribute("aria-pressed", "true");
 
-    // Flying home ends it, and so does the button.
+    // Flying home ends the circling, and so does the button.
     await page.getByRole("button", { name: "Sun", exact: true }).click();
     await expect(circle).toHaveAttribute("aria-pressed", "false");
     await circle.click();
@@ -176,7 +174,7 @@ test.describe("map", () => {
 
     await page.getByRole("button", { name: /^TRAPPIST-1 e/ }).click();
     await expect(page).toHaveURL(/planet=trappist-1-e/);
-    // A rocky planet is mixed from two base maps.
+    // A rocky planet is mixed from two base maps, so two large maps are loaded.
     await expect.poll(() => maps.filter((size) => size === "lg")).toHaveLength(2);
   });
 });

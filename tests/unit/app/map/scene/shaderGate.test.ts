@@ -3,8 +3,9 @@ import { describe, expect, it } from "vitest";
 import { ShaderGate } from "@/app/map/scene/shaderGate";
 
 /**
- * A renderer that only notes what it was asked to do. A build ends when the
- * test says so, as the graphics driver ends it some frames later.
+ * A fake renderer that only records what it was asked to do. Each build
+ * finishes when the test calls `finish`, just as the graphics driver
+ * finishes it some frames later.
  */
 function fakeRenderer() {
   const builds: { visible: string[]; finish: (ok: boolean) => void }[] = [];
@@ -30,7 +31,7 @@ function fakeRenderer() {
 }
 
 const camera = {} as Camera;
-/** Lets the promises that ended run their callbacks. */
+/** Lets settled promises run their callbacks. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 function thing(name: string) {
@@ -47,10 +48,10 @@ describe("ShaderGate", () => {
 
     expect(gate.render(renderer, scene, camera)).toBe(false);
     expect(builds).toHaveLength(1);
-    // The frame is drawn all the same, without the two.
+    // The frame is still drawn, but without the two objects that are being compiled.
     expect(pictures).toEqual([[]]);
 
-    // Still building: no second build, still left out.
+    // While the build is running, no second build starts and the objects stay hidden.
     expect(gate.render(renderer, scene, camera)).toBe(false);
     expect(builds).toHaveLength(1);
 
@@ -75,7 +76,7 @@ describe("ShaderGate", () => {
   it("builds what is hidden too, so a planet that waits for its maps is ready when they come", async () => {
     const { renderer, builds, pictures } = fakeRenderer();
     const gate = new ShaderGate();
-    // A planet hangs on an anchor that stays hidden until its maps are there.
+    // A planet hangs on an anchor that stays hidden until its maps have loaded.
     const anchor = new Group();
     anchor.visible = false;
     const planet = thing("planet");
@@ -143,7 +144,6 @@ describe("ShaderGate", () => {
     builds[0].finish(true);
     await settle();
     expect(gate.isReady(glow.material)).toBe(true);
-    // Nothing is left to build.
     gate.prepare(renderer, scene, camera);
     expect(builds).toHaveLength(1);
   });

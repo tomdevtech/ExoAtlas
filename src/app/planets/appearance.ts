@@ -3,41 +3,34 @@ import { mixColors, shade } from "./color";
 import PRESETS from "./globe/presets.json";
 import { NO_TURN, type GlobeSpec, type Turn } from "./globe/spec";
 
-/**
- * What a planet looks like. The still image, the moving image and the 3D model
- * all read this description, so they show the same planet.
- */
+/** Describes how a planet looks. The still image, the animated image and the 3D globe all read it, so they show the same planet. */
 export interface Appearance {
-  /** Base colour of the sphere. */
   base: string;
-  /** Patches or bands on top of the base colour, from bottom to top. Used by the still image. */
+  /** Patches or bands drawn over the base colour from bottom to top. Only the still image uses them. */
   layers: Layer[];
-  /** Bands as on Jupiter instead of patches as with continents. */
+  /** True for Jupiter-like bands, false for continent-like patches. */
   banded: boolean;
-  /** Colour of the atmosphere rim, or nothing for planets without a visible envelope. */
+  /** Colour of the atmosphere rim, or null when the planet has no visible atmosphere. */
   atmosphere: string | null;
-  /** Colour cast from the light of the star, or nothing for sun-like light. */
+  /** Colour cast of the starlight, or null when the light is Sun-like. */
   starTint: string | null;
   rings: boolean;
-  /** Seed of the random pattern. Same planet, same image. */
+  /** Seed of the procedural pattern, so the same planet always gets the same image. */
   seed: number;
-  /** The same look in the detail the moving image and the 3D model need. */
+  /** The same look in the detail the animated image and the 3D globe need. */
   globe: GlobeSpec;
 }
 
 export interface Layer {
   color: string;
-  /** Share of the surface the layer roughly covers, 0 to 1. */
+  /** Roughly how much of the surface the layer covers, from 0 to 1. */
   coverage: number;
   opacity: number;
 }
 
 /**
- * What is known about a planet. Measured values shape the picture where they
- * exist: the temperature gives the colours and the climate, the density what
- * the planet is made of, the orbit whether it has days and nights. What nobody
- * has measured (the lie of the land, rings, moons, polar lights) is drawn from
- * the name of the planet, so it is always the same for the same planet.
+ * What is known about a planet. Measured values shape the look where they exist; features nobody has
+ * measured (terrain, rings, moons, aurorae) are derived from the slug, so they stay the same for each planet.
  */
 export interface AppearanceInput {
   slug: string;
@@ -45,27 +38,19 @@ export interface AppearanceInput {
   planetClass: PlanetClass | null;
   climateClass: ClimateClass | null;
   starTeffK: number | null;
-  /** Larger planets pull harder, so their mountains are lower. */
+  /** Radius in Earth radii. Larger planets have stronger gravity and therefore get lower mountains. */
   radiusEarth: number | null;
-  /**
-   * The equilibrium temperature in kelvin. The climate class says which kind
-   * of world it is; the temperature says where within that kind, so a mild
-   * world near freezing has more ice than one near boiling.
-   */
+  /** Equilibrium temperature in kelvin. It places the planet within its climate class, so a world near freezing gets more ice. */
   eqTempK: number | null;
-  /**
-   * The density compared with Earth, only where both mass and radius were
-   * measured: it tells a world of iron from one of rock or of water.
-   */
+  /** Density relative to Earth, set only when mass and radius were both measured. It tells iron, rock and water worlds apart. */
   densityEarth: number | null;
-  /** A planet close to its star always turns the same side to it. */
+  /** Planets on short orbits are assumed to be tidally locked. */
   orbitalPeriodDays: number | null;
 }
 
-/** How much the belts of a gas planet stand out and how strongly its fine streaks show. */
 type BandLook = Pick<GlobeSpec["bands"], "contrast" | "turbulence">;
 
-/** The parts of a globe that depend on the kind of planet. Everything left out gets a default. */
+/** The globe parts that depend on the kind of planet. Parts left out get defaults. */
 type Traits = Partial<Pick<GlobeSpec, "palette" | "ocean" | "clouds" | "glow" | "relief" | "aurora">> & {
   bands?: BandLook;
   density?: number;
@@ -82,7 +67,7 @@ const layer = (color: string, coverage: number, opacity = 1): Layer => ({
   opacity,
 });
 
-/** Rocky planets and super-Earths: solid surface, look depends on temperature. */
+/** Looks for rocky planets and super-Earths, chosen by climate class. */
 const SOLID: Record<ClimateClass | "unknown", Look> = {
   // A shell of ice with darker, older ice in between.
   frozen: {
@@ -98,7 +83,7 @@ const SOLID: Record<ClimateClass | "unknown", Look> = {
     atmosphere: "#e0c7b0",
     traits: { clouds: { color: "#f3e9dc", cover: 0.1 }, density: 0.35 },
   },
-  // Liquid water is possible here, so the image shows oceans, land and clouds.
+  // Liquid water is possible, so the planet gets oceans, land and clouds.
   temperate: {
     base: "#255a94",
     layers: [layer("#4a7a4f", 0.38), layer("#b9a37a", 0.16), layer("#ffffff", 0.3, 0.8)],
@@ -110,14 +95,14 @@ const SOLID: Record<ClimateClass | "unknown", Look> = {
       density: 1,
     },
   },
-  // Too hot for water: deserts and dust.
+  // It is too hot for water, so the surface is desert and dust.
   hot: {
     base: "#c2905a",
     layers: [layer("#8a552c", 0.45), layer("#e6c690", 0.25)],
     atmosphere: "#f1d2a0",
     traits: { clouds: { color: "#f0dcb4", cover: 0.18 }, density: 0.6 },
   },
-  // Hot enough to melt rock: a dark crust with glowing lava.
+  // The planet is hot enough to melt rock, so a dark crust shows glowing lava.
   scorching: {
     base: "#2b1b18",
     layers: [layer("#57241a", 0.5), layer("#ff6a2a", 0.16), layer("#ffd27a", 0.05)],
@@ -129,7 +114,7 @@ const SOLID: Record<ClimateClass | "unknown", Look> = {
       relief: 1.2,
     },
   },
-  // Nothing known about the temperature: bare, cratered rock.
+  // Without a known temperature the planet is drawn as bare, cratered rock.
   unknown: {
     base: "#85878f",
     layers: [layer("#5d5f69", 0.45), layer("#b3b5bd", 0.2)],
@@ -139,27 +124,23 @@ const SOLID: Record<ClimateClass | "unknown", Look> = {
 };
 
 /**
- * Winds on the maps of the solar system (GlobeSpec.jets). Jupiter: many narrow
- * jets in turn. Saturn: one broad, fast jet at the equator. Uranus and
- * Neptune: the equator runs backwards, the higher latitudes forwards.
+ * Band winds for the solar-system maps (GlobeSpec.jets). Jupiter has many narrow alternating jets and Saturn
+ * one broad equatorial jet; on Uranus and Neptune the equatorial wind blows backwards.
  */
 const NO_JETS: GlobeSpec["jets"] = [0, 0, 0, 0];
 const GIANT_JETS: GlobeSpec["jets"] = [0.7, 16, 0.35, 6];
 const SATURN_JETS: GlobeSpec["jets"] = [0.2, 9, 1, 5];
 const ICE_GIANT_JETS: GlobeSpec["jets"] = [0.15, 6, -1, 2.5];
 
-/** The values for the parts of a globe that its kind of surface does not use. */
+/** Neutral values for the globe parts that a kind of surface does not use. */
 const NO_TERRAIN: GlobeSpec["terrain"] = [0, 0, 1, 0];
 const NO_BELTS: GlobeSpec["belts"] = [1, 0];
 
-/** The simulated base maps (scripts/generate-presets.ts writes what the app needs to know of them into presets.json). */
+/** Names of the simulated base maps. scripts/generate-presets.ts writes their metadata to presets.json. */
 type Preset = keyof typeof PRESETS.terrain;
 type BandPreset = keyof typeof PRESETS.bands;
 
-/**
- * The base maps a rocky planet can be drawn from, by climate. A name that
- * appears twice is chosen twice as often.
- */
+/** Base maps a rocky planet can be drawn from, by climate. A name listed twice is picked twice as often. */
 const TERRAIN_PRESETS: Record<ClimateClass | "unknown", readonly Preset[]> = {
   frozen: ["icecrust", "icecrust", "cratered", "basins"],
   cold: ["desert", "continents", "supercontinent", "cratered", "basins", "highlands"],
@@ -169,13 +150,13 @@ const TERRAIN_PRESETS: Record<ClimateClass | "unknown", readonly Preset[]> = {
   unknown: ["cratered", "basins"],
 };
 
-/** The same for gas giants and for planets like Neptune, and for those of each that are very hot or veiled in haze. */
+/** Band presets for gas giants and Neptune-like planets, with separate lists for very hot or hazy ones. */
 const GIANT_PRESETS: readonly BandPreset[] = ["bands-stormy", "bands-stormy", "bands-fine", "bands-wild", "bands-broad"];
 const HOT_GIANT_PRESETS: readonly BandPreset[] = ["bands-wild", "bands-wild", "bands-stormy", "bands-fine"];
 const NEPTUNE_PRESETS: readonly BandPreset[] = ["bands-calm", "bands-calm", "bands-broad", "bands-hazy", "bands-fine"];
 const HAZY_NEPTUNE_PRESETS: readonly BandPreset[] = ["bands-hazy", "bands-hazy", "bands-calm", "bands-broad"];
 
-/** How deep the craters of each preset show. */
+/** How deep the craters of each preset appear. */
 const TERRAIN_CRATERS: Record<Preset, number> = {
   continents: 0.4,
   archipelago: 0.4,
@@ -190,7 +171,7 @@ const TERRAIN_CRATERS: Record<Preset, number> = {
 
 const STRONG_BANDS: BandLook = { contrast: 1, turbulence: 1 };
 
-/** The colours of a gas planet at one temperature: dark belts, base colour, bright zones, and the haze at its edge. */
+/** The colours of a gas planet at one temperature: dark belts, base colour, bright zones and the haze at the limb. */
 interface GasColors {
   low: string;
   mid: string;
@@ -199,13 +180,9 @@ interface GasColors {
 }
 
 /**
- * What the clouds of a gas giant are made of depends on how hot it is, and
- * with it the colour (after Sudarsky's classes of giant planets). Cold giants
- * carry clouds of ammonia in creams and browns like Jupiter and Saturn. Warmer
- * ones have white clouds of water. Still warmer the clouds are gone and the
- * clear air scatters blue. Hot giants are dark, as sodium and potassium
- * swallow the light, and the hottest glow under clouds of rock dust. Between
- * the temperatures listed here the colours run into each other.
+ * Gas giant colours by temperature, after Sudarsky's classes. Cold giants have ammonia clouds, warmer ones water
+ * clouds, then clear blue skies; hot giants turn dark because sodium and potassium absorb the light, and the
+ * hottest glow under silicate clouds. Colours are interpolated between the stops.
  */
 const GIANT_COLORS: [tempK: number, colors: GasColors][] = [
   [60, { low: "#9a7a52", mid: "#cdb48a", high: "#efe3c8", atmosphere: "#f0dfb8" }],
@@ -219,9 +196,8 @@ const GIANT_COLORS: [tempK: number, colors: GasColors][] = [
 ];
 
 /**
- * The same for planets like Neptune: methane makes the cold ones blue and
- * cyan, the mild ones have clouds of water, the warm ones lie under a pale
- * haze that hides nearly everything, and the hot ones are dark.
+ * Neptune-like colours by temperature. Methane makes cold ones blue, mild ones have water clouds, warm ones lie
+ * under a pale haze and hot ones are dark.
  */
 const NEPTUNE_COLORS: [tempK: number, colors: GasColors][] = [
   [60, { low: "#2a4fa8", mid: "#3b6fd6", high: "#8fc4f0", atmosphere: "#8fc4ff" }],
@@ -234,17 +210,16 @@ const NEPTUNE_COLORS: [tempK: number, colors: GasColors][] = [
 ];
 
 /**
- * What the haze of a warm planet like Neptune may be made of, which nobody
- * can tell from its temperature: tans like the smog of Titan, grey greens,
- * slate blues. Each such planet leans towards one of them.
+ * Possible haze tints for warm Neptune-like planets, such as Titan-like tans, grey greens and slate blues.
+ * The temperature cannot tell them apart, so each planet picks one.
  */
 const HAZES = ["#c9ae86", "#9fb8a8", "#8ea3c4", "#b9a0c8", "#c8c3b4"];
 
-/** Gas planets whose temperature nobody knows: plain tans and grey blues that claim nothing. */
+/** Neutral colours for gas planets of unknown temperature, so the picture claims nothing that is not known. */
 const UNKNOWN_GIANT: GasColors = { low: "#8a7a62", mid: "#b3a58c", high: "#ddd3c0", atmosphere: "#e6dcc8" };
 const UNKNOWN_NEPTUNE: GasColors = { low: "#456886", mid: "#5f86ad", high: "#b9d0e2", atmosphere: "#a8ccee" };
 
-/** The colours for a temperature between two entries of such a list. Temperatures are compared by their ratio. */
+/** Interpolates the colours between two temperature stops. Temperatures are compared by ratio because the stops span a wide range. */
 function gasColors(stops: [tempK: number, colors: GasColors][], tempK: number): GasColors {
   const last = stops.length - 1;
   if (tempK <= stops[0][0]) return stops[0][1];
@@ -261,28 +236,24 @@ function gasColors(stops: [tempK: number, colors: GasColors][], tempK: number): 
   };
 }
 
-/** What only the planets of the solar system have: a real map and the real shape and tilt. */
+/** Data only the solar-system planets have: real maps and their real shape and tilt. */
 interface SolarSystemLook extends Look {
   banded: boolean;
-  /** Winds of the bands, for banded planets. */
+  /** Band winds, only for banded planets. */
   jets?: GlobeSpec["jets"];
-  /** Tilt of the axis in degrees. */
+  /** Axial tilt in degrees. */
   tiltDeg: number;
-  /** Negative for the planets that turn backwards. */
+  /** Negative for planets that rotate backwards. */
   spin?: number;
-  /** How much shorter the planet is from pole to pole than across. */
+  /** How much shorter the polar radius is than the equatorial one (1 - polar / equatorial). */
   flattening?: number;
-  /** A second map with the lights of the cities at night. */
+  /** Whether a night map with city lights exists. */
   night?: boolean;
-  /** A third map with the clouds. */
+  /** Whether a separate cloud map exists. */
   cloudMap?: boolean;
 }
 
-/**
- * Everybody knows the planets of the solar system, so they get their real
- * colours and real maps of their surface instead of the general rules. Keyed
- * by slug.
- */
+/** Solar-system planets get their real colours and surface maps instead of the generic rules. Keyed by slug. */
 const SOLAR_SYSTEM: Record<string, SolarSystemLook> = {
   mercury: {
     base: "#8f8a85",
@@ -322,7 +293,7 @@ const SOLAR_SYSTEM: Record<string, SolarSystemLook> = {
     atmosphere: "#e8b090",
     banded: false,
     tiltDeg: 25.2,
-    // Thin clouds of water ice, which the map of the ground does not show.
+    // Mars has thin water-ice clouds that the ground map does not show.
     traits: { density: 0.3, relief: 1.2, clouds: { color: "#f4ece6", cover: 0.4 } },
   },
   jupiter: {
@@ -372,10 +343,10 @@ const SOLAR_SYSTEM: Record<string, SolarSystemLook> = {
   },
 };
 
-/** The main rings of Saturn reach from 1.24 to 2.27 times the radius of the planet. */
+/** Saturn's main rings span 1.24 to 2.27 planet radii. */
 const SATURN_RINGS = { inner: 1.24, outer: 2.27, map: "saturn-ring" };
 
-/** Cool stars shine reddish, hot stars bluish. Sun-like light stays neutral. */
+/** Cool stars shine reddish and hot stars bluish; Sun-like light stays neutral (null). */
 function starTint(teffK: number | null): string | null {
   if (teffK === null) return null;
   if (teffK < 3700) return "#ff6a3a";
@@ -385,11 +356,9 @@ function starTint(teffK: number | null): string | null {
 }
 
 /**
- * The colour of the vegetation under a star of this temperature. Plants are
- * the colour of the light they do not use. Under the faint red light of a cool
- * star they would use nearly all of it and look almost black; under a Sun-like
- * star they are green; under a hot star, with blue light to spare, they turn
- * teal and blue. Nobody knows, but this is what the studies of it suggest.
+ * Assumed vegetation colour by stellar temperature. Plants reflect the light they do not use, so they would be
+ * near-black under red dwarfs, green under Sun-like stars and teal to blue under hot stars. This is speculative
+ * but follows published studies.
  */
 const PLANT_COLORS: [teffK: number, color: string][] = [
   [2600, "#2b2024"],
@@ -411,7 +380,7 @@ function plantColor(teffK: number | null): string {
   return mixColors(cool, hot, (teffK - coolTeff) / (hotTeff - coolTeff));
 }
 
-/** The colour of the starlight for the 3D model: the tint, but paler, so colours stay readable. */
+/** Starlight colour for the 3D globe. It is paler than the tint so that surface colours stay readable. */
 function starLight(teffK: number | null): string {
   if (teffK === null) return "#ffffff";
   if (teffK < 3700) return "#ffe2d2";
@@ -420,7 +389,7 @@ function starLight(teffK: number | null): string {
   return "#ffffff";
 }
 
-/** A number from a text, always the same for the same text (FNV-1a). */
+/** Deterministic 32-bit FNV-1a hash, so the same text always gives the same number. */
 function hash(text: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) {
@@ -430,20 +399,17 @@ function hash(text: string): number {
   return h >>> 0;
 }
 
-/** Four decimals are finer than a pixel of any picture, and keep the description short on its way to the browser. */
+/** Rounds to four decimals, which is finer than any pixel and keeps the serialised spec small. */
 const round = (value: number) => Math.round(value * 10000) / 10000;
 
-/** A turn about the axis by an angle, with east and west or north and south swapped for -1. */
+/** Rotation about the polar axis by an angle; passing -1 mirrors east-west or north-south. */
 function axisTurn(angle: number, mirrorEast: number, mirrorNorth: number): Turn {
   const c = round(Math.cos(angle));
   const s = round(Math.sin(angle));
   return [mirrorEast * c, 0, -s, 0, mirrorNorth, 0, mirrorEast * s, 0, c];
 }
 
-/**
- * Any turn in space, evenly spread over all of them, from three numbers
- * between 0 and 1 (Shoemake's method), and mirrored for -1.
- */
+/** Uniformly distributed random rotation from three numbers between 0 and 1 (Shoemake's method); passing -1 mirrors it. */
 function freeTurn(u1: number, u2: number, u3: number, mirror: number): Turn {
   const a = Math.sqrt(1 - u1);
   const b = Math.sqrt(u1);
@@ -464,13 +430,9 @@ function freeTurn(u1: number, u2: number, u3: number, mirror: number): Turn {
   ].map(round) as Turn;
 }
 
-/** A planet without weather that moves. */
 const NO_STORMS: GlobeSpec["storms"] = { cyclones: 0, dust: 0, spin: 0, outbreaks: 0 };
 
-/**
- * The globe of a look. `rest` holds what does not depend on the look. The
- * parts that only some planets have start switched off; the caller sets them.
- */
+/** Builds the globe spec of a look. Features only some planets have start switched off, and the caller sets them. */
 function globe(
   look: Look,
   rest: Pick<GlobeSpec, "kind" | "seed" | "light" | "rings" | "tiltDeg" | "spin" | "maps" | "flow" | "jets" | "turn" | "zones" | "flattening">,
@@ -501,21 +463,15 @@ function globe(
   };
 }
 
-/**
- * How firmly a planet is held with one side towards its star: 1 up to an
- * orbit of twelve days, 0 from thirty days on. The pull of a star on a planet
- * this close stops its turning within a small part of its age.
- */
+/** How firmly a planet is tidally locked: 1 for orbits up to 12 days, 0 from 30 days on, linear in between. */
 function tidalLock(orbitalPeriodDays: number | null): number {
   if (orbitalPeriodDays === null) return 0;
   return round(Math.min(1, Math.max(0, (30 - orbitalPeriodDays) / 18)));
 }
 
 /**
- * What a rocky planet is made of, from how much room its mass takes. A ball
- * of rock like Earth has a radius of about its mass to the power of 0.27 (in
- * Earth's units). One clearly smaller than that is mostly iron, like Mercury;
- * one clearly larger holds much water or ice.
+ * Estimates the bulk composition from mass and radius. A rocky planet's radius is about mass^0.27 in Earth units;
+ * a clearly smaller planet is iron-rich, and a clearly larger one holds much water or ice.
  */
 function composition(densityEarth: number | null, radiusEarth: number | null): "iron" | "rock" | "water" {
   if (densityEarth === null || radiusEarth === null) return "rock";
@@ -556,7 +512,7 @@ export function planetAppearance(input: AppearanceInput): Appearance {
       rings: sol.rings ?? false,
       starTint: null,
       seed,
-      // Mars is the planet of dust storms; some of them wrap it whole.
+      // Mars has dust storms that can cover the whole planet.
       globe: input.slug === "mars" ? { ...solGlobe, storms: { ...NO_STORMS, dust: 1 } } : solGlobe,
     };
   }
@@ -565,29 +521,24 @@ export function planetAppearance(input: AppearanceInput): Appearance {
   const gaseous =
     input.planetClass === "gas_giant" || input.planetClass === "neptune_like";
 
-  // Everything below that is not measured is drawn from the name of the
-  // planet, so the same planet always gets the same picture and two planets
-  // hardly ever the same one.
+  // Features nobody has measured are derived from the slug, so each planet always looks the same.
   const chance = (what: string) => (hash(`${input.slug}/${what}`) % 10000) / 10000;
   const pick = <T,>(what: string, from: readonly T[]): T =>
     from[Math.floor(chance(what) * from.length)];
-  // No two planets have quite the same colours: each moves a little round the
-  // colour wheel and is a little greyer or stronger, darker or lighter.
+  // Every planet shifts its hue, saturation and lightness a little, so no two look quite alike.
   const hue = (chance("hue") - 0.5) * 30;
   const saturation = 1 + (chance("saturation") - 0.5) * 0.4;
   const lightness = (chance("lightness") - 0.5) * 0.08;
   const own = (color: string) => shade(color, { hue, saturation, lightness });
 
   const locked = tidalLock(input.orbitalPeriodDays);
-  // The real tilt is unknown, so every planet gets its own between 0 and 30
-  // degrees. A planet held by its star stands upright.
+  // The real axial tilt is unknown, so each planet gets one between 0 and 30 degrees.
+  // A tidally locked planet stands upright.
   let tiltDeg = ((hash(`${input.slug}/tilt`) % 300) / 10) * (1 - locked);
-  // A tilted axis gives seasons, and seasons carry warmth towards the poles
-  // and rain into the dry belts: fainter climate zones and smaller ice caps.
+  // A tilted axis brings seasons, which soften the climate zones and shrink the ice caps.
   const upright = 1 - tiltDeg / 30;
-  // 0 at the cold end of the planet's climate class, 1 at the hot end.
   const warmth = climateWarmth(climate, input.eqTempK);
-  // Red dwarfs flare, and their storms of particles light up the skies of their planets.
+  // Red dwarfs flare, and their particle storms strengthen the aurorae of their planets.
   const flaring = input.starTeffK !== null && input.starTeffK < 4000;
   const light = starLight(input.starTeffK);
 
@@ -600,7 +551,7 @@ export function planetAppearance(input: AppearanceInput): Appearance {
           ? UNKNOWN_GIANT
           : UNKNOWN_NEPTUNE
         : gasColors(giant ? GIANT_COLORS : NEPTUNE_COLORS, tempK);
-    // The haze of a warm planet like Neptune hides its belts and gives it its colour.
+    // Warm Neptune-like planets are veiled in haze that hides the belts and sets the colour.
     const hazy = !giant && tempK !== null && tempK > 350 && tempK < 900;
     const haze = pick("haze", HAZES);
     const veiled = (color: string, share: number) => own(hazy ? mixColors(color, haze, share) : color);
@@ -620,8 +571,7 @@ export function planetAppearance(input: AppearanceInput): Appearance {
           ? HAZY_NEPTUNE_PRESETS
           : NEPTUNE_PRESETS,
     );
-    // From about 900 kelvin a giant begins to glow by itself, dull red at
-    // first, brighter and more orange the hotter it is.
+    // Giants start to glow by themselves at about 900 K, dull red at first and more orange the hotter they are.
     const heat = tempK === null ? 0 : Math.min(1, Math.max(0, (tempK - 900) / 1500));
     const glow =
       heat > 0
@@ -630,16 +580,14 @@ export function planetAppearance(input: AppearanceInput): Appearance {
             strength: round(0.1 + 0.75 * heat),
           }
         : null;
-    // Rings and moons do not last close to a star, and a planet held by its
-    // star turns too slowly to be flattened.
+    // Rings and moons do not survive close to the star, and locked planets spin too slowly to flatten.
     const free = locked < 0.5;
     const cool = tempK === null || tempK < 300;
     const ringed = free && chance("rings") < (cool ? 0.22 : 0.06);
     const inner = 1.25 + 0.3 * chance("rings/inner");
     if (ringed) tiltDeg = Math.max(tiltDeg, 12);
     const moon = free && !ringed && chance("moon") < 0.3;
-    // The winds the preset was simulated with: they blow on, so the clouds
-    // keep drifting the way they were drawn out.
+    // Reuse the winds the preset was simulated with, so the clouds keep drifting along the streaks they were drawn with.
     const winds = PRESETS.bands[preset];
     const look: Look = {
       base: colors.mid,
@@ -666,8 +614,7 @@ export function planetAppearance(input: AppearanceInput): Appearance {
       light,
       rings: ringed ? { inner: round(inner), outer: round(inner + 0.45 + 0.5 * chance("rings/outer")), map: null } : null,
       tiltDeg,
-      // Gas giants turn fast. One held by its star does not, but its winds
-      // carry the clouds around it at about half that pace.
+      // A tidally locked giant does not rotate, but its winds still carry the clouds round at about half speed.
       spin: round(1.3 * (1 - 0.5 * locked)),
       flattening: round((giant ? 0.03 + 0.07 * chance("flattening") : 0.01 + 0.03 * chance("flattening")) * (1 - locked)),
       maps: { day: preset, night: null, clouds: null },
@@ -688,12 +635,11 @@ export function planetAppearance(input: AppearanceInput): Appearance {
         ...bands,
         locked,
         bands: { ...bands.bands, storms: round(0.4 + 0.6 * chance("storms")) },
-        // Between two thirds and all of the latitudes: wider or narrower belts.
+        // The belts cover between two thirds and all of the latitudes.
         belts: [round(0.64 + 0.36 * chance("belts")), winds.phase],
-        // Thunderstorms need clouds; the hottest giants have none of water.
+        // Lightning needs water clouds, which the hottest giants lack.
         lightning: (tempK === null || tempK < 1500) && chance("lightning") < 0.35 ? round(0.4 + 0.6 * chance("lightning/rate")) : 0,
-        // The storms of the preset turn. Now and then fresh cloud wells up
-        // from below and is drawn out along its band, as on Saturn.
+        // The preset's storms rotate, and now and then fresh cloud wells up and is drawn out along its band, as on Saturn.
         storms: {
           ...NO_STORMS,
           spin: winds.storms.length > 0 ? round(0.7 + 0.3 * chance("storms/spin")) : 0,
@@ -714,17 +660,16 @@ export function planetAppearance(input: AppearanceInput): Appearance {
 
   const made = composition(input.densityEarth, input.radiusEarth);
   const solid = SOLID[climate];
-  // A world of iron is darker and greyer than one of rock.
+  // Iron worlds are darker and greyer than rocky ones.
   const rock = (color: string) =>
     made === "iron" ? shade(own(color), { saturation: 0.5, lightness: -0.06 }) : own(color);
-  // Plants take the colour that makes the most of their star's light.
   const plants = climate === "temperate" ? plantColor(input.starTeffK) : null;
   const traits = solid.traits ?? {};
   const palette: GlobeSpec["palette"] = traits.palette
     ? [plants ?? rock(traits.palette[0]), rock(traits.palette[1]), rock(traits.palette[2])]
     : [rock(solid.layers[0].color), rock(solid.base), rock(solid.layers[1].color)];
   const look: Look = {
-    // The sea of a mild world and the lava of a molten one keep their own colours.
+    // Seas of temperate worlds and lava of scorching ones keep their own colours.
     base: climate === "temperate" ? own(solid.base) : rock(solid.base),
     layers: solid.layers.map((item, index) => ({
       ...item,
@@ -744,7 +689,7 @@ export function planetAppearance(input: AppearanceInput): Appearance {
   };
 
   const list = TERRAIN_PRESETS[climate];
-  // Much water on a cold world freezes to a shell of ice.
+  // Water-rich cold worlds freeze into an ice shell.
   const preset = made === "water" && (climate === "cold" || climate === "frozen") ? "icecrust" : pick("preset", list);
   const others = list.filter((name) => name !== preset);
   const second = others.length > 0 ? pick("second", others) : null;
@@ -760,26 +705,25 @@ export function planetAppearance(input: AppearanceInput): Appearance {
     flow: 0,
     jets: NO_JETS,
     turn: freeTurn(chance("turn"), chance("turn/2"), chance("turn/3"), chance("mirror") < 0.5 ? -1 : 1),
-    // A planet held by its star has one climate for good at every place.
+    // A tidally locked planet keeps the same climate at every place, so its zones stay fixed.
     zones: round(locked + (1 - locked) * (0.4 + 0.6 * upright)),
   });
-  // A planet twice as wide as Earth pulls much harder: lower mountains.
+  // Higher surface gravity on larger planets means lower mountains.
   const radius = input.radiusEarth ?? 1;
   const relief = Math.min(1.3, Math.max(0.6, 1.25 - 0.35 * (radius - 1)));
   const icy = preset === "icecrust";
-  // The height below which this share of the surface lies, across both presets.
+  // The height below which the given share of the surface lies, averaged over both presets.
   const levelAt = (share: number) =>
     round(second ? (presetLevel(preset, share) + presetLevel(second, share)) / 2 : presetLevel(preset, share));
   const level =
     climate === "scorching"
-      ? // From lava in the deepest basins to lava over two thirds of the planet.
+      ? // Depending on temperature, lava fills anything from the deepest basins to two thirds of the surface.
         levelAt(0.15 + 0.45 * warmth + 0.1 * chance("lava"))
       : climate === "temperate" || icy
         ? 0
         : levelAt(0.15 + 0.25 * chance("basins"));
   const cool = 1 - warmth;
-  // Size of the ice caps, share of sky with clouds and glow of the lava, by
-  // temperature. On a planet held by its star the ice covers the night side.
+  // Ice caps shrink as the planet gets warmer. On a tidally locked planet the ice covers the night side instead.
   const caps =
     climate === "temperate"
       ? 0.04 + 0.2 * cool
@@ -790,7 +734,7 @@ export function planetAppearance(input: AppearanceInput): Appearance {
           : 0;
   const nightIce = climate === "temperate" ? 0.42 + 0.14 * cool : climate === "cold" ? 0.52 + 0.1 * cool : caps;
   const ice = caps * (0.65 + 0.5 * upright) * (1 - locked) + nightIce * locked;
-  // A hot world with much water lies under a deck of steam.
+  // Hot water worlds lie under a deck of steam.
   const steamy = made === "water" && climate === "hot";
   const cover = steamy
     ? 0.85
@@ -805,14 +749,13 @@ export function planetAppearance(input: AppearanceInput): Appearance {
             : 0;
   const glow =
     climate === "scorching"
-      ? // Rock that has just melted glows red, hotter lava orange.
+      ? // Freshly melted rock glows red, and hotter lava glows orange.
         { color: mixColors("#e0401a", "#ffa040", warmth), strength: round(0.7 + 0.5 * warmth) }
       : climate === "hot" && warmth > 0.7
-        ? // Near the melting point of rock the lowest plains begin to glow.
+        ? // Near rock's melting point the lowest plains start to glow.
           { color: "#ff5a1f", strength: round(((warmth - 0.7) / 0.3) * 0.4) }
         : null;
-  // A warm world has less water locked in ice, so its seas stand higher. A
-  // world of water is nearly all sea.
+  // Warmer worlds lock less water in ice, so their seas stand higher. Water worlds are nearly all sea.
   const sea =
     made === "water"
       ? 0.93 + 0.06 * chance("sea")
@@ -822,7 +765,7 @@ export function planetAppearance(input: AppearanceInput): Appearance {
   const aurora =
     base.atmosphere && chance("aurora") < (flaring ? 0.7 : 0.3)
       ? {
-          // Green like the oxygen of Earth where plants could grow, else the pinks and blues of other gases.
+          // Aurorae are oxygen green where plants could grow, otherwise pink or blue from other gases.
           color: plants ? "#58f29a" : mixColors("#7fd0ff", "#ff8ad0", chance("aurora/colour")),
           strength: round((flaring ? 0.8 : 0.45) + 0.4 * chance("aurora/strength")),
         }
@@ -849,7 +792,7 @@ export function planetAppearance(input: AppearanceInput): Appearance {
       aurora,
       storms: {
         ...NO_STORMS,
-        // Cyclones draw their strength from warm sea: more of them the warmer it is.
+        // Cyclones feed on warm sea, so warmer oceans get more of them.
         cyclones: base.ocean ? round(0.45 + 0.5 * warmth) : 0,
         // Wind lifts dust where there is air but no water to hold the ground.
         dust:
@@ -857,7 +800,6 @@ export function planetAppearance(input: AppearanceInput): Appearance {
             ? round(0.4 + 0.6 * chance("dust"))
             : 0,
       },
-      // Between a little under half and most of the surface is sea.
       ocean: base.ocean && { ...base.ocean, level: levelAt(sea) },
       craters: round(Math.min(1, TERRAIN_CRATERS[preset] * (climate === "temperate" ? 0.4 : 1) * (made === "iron" ? 1.3 : 1))),
       terrain: [
@@ -878,7 +820,7 @@ export function planetAppearance(input: AppearanceInput): Appearance {
   };
 }
 
-/** The temperatures in kelvin between which each climate class lies (classify.ts), with ends for the open ones. */
+/** Temperature range in kelvin of each climate class (see classify.ts), with assumed bounds for the open-ended classes. */
 const CLIMATE_RANGE: Record<ClimateClass, [number, number]> = {
   frozen: [50, 150],
   cold: [150, 250],
@@ -888,9 +830,8 @@ const CLIMATE_RANGE: Record<ClimateClass, [number, number]> = {
 };
 
 /**
- * Where a temperature lies within its climate class: 0 at the cold end, 1 at
- * the hot end, 0.5 when the temperature is not known. Hot worlds span a wide
- * range, so they are measured by the ratio of temperatures.
+ * Where a temperature lies within its climate class: 0 at the cold end, 1 at the hot end and 0.5 if unknown.
+ * The wide "hot" range is measured by temperature ratio.
  */
 function climateWarmth(climate: ClimateClass | "unknown", eqTempK: number | null): number {
   if (climate === "unknown" || eqTempK === null) return 0.5;
@@ -902,7 +843,7 @@ function climateWarmth(climate: ClimateClass | "unknown", eqTempK: number | null
   return Math.min(1, Math.max(0, share));
 }
 
-/** The height (0 to 1) below which the given share of the surface of a preset lies. */
+/** Returns the height (0 to 1) below which the given share of a preset's surface lies. */
 function presetLevel(preset: Preset, share: number): number {
   const levels = PRESETS.terrain[preset].levels;
   const at = Math.min(0.9999, Math.max(0, share)) * (levels.length - 1);

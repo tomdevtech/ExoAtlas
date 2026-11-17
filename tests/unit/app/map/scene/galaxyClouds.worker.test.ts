@@ -6,7 +6,7 @@ afterEach(() => {
   vi.resetModules();
 });
 
-/** A small picture of a galaxy: a bright middle and a dimmer ring, black around. */
+/** Builds a small synthetic galaxy picture with a bright middle, a dimmer ring and black around it. */
 function picture(size: number): Float32Array {
   const rgb = new Float32Array(size * size * 3);
   for (let row = 0; row < size; row++) {
@@ -34,12 +34,12 @@ describe("the worker of the galaxy clouds", () => {
     scope.onmessage?.({ data: { rgb: picture(size), size } });
     expect(posted).toHaveLength(1);
     const [{ message, transfer }] = posted;
-    // The same clouds as made on the page itself.
+    // The worker must produce the same clouds as the page would compute itself.
     const expected = galaxyClouds(picture(size), size);
     expect(Array.from(message.light)).toEqual(Array.from(expected.light));
     expect(Array.from(message.dust)).toEqual(Array.from(expected.dust));
     expect(Array.from(message.clusters)).toEqual(Array.from(expected.clusters));
-    // Their memory is handed over, not copied.
+    // The buffers are transferred rather than copied, to avoid duplicating large arrays.
     expect(transfer).toEqual([message.light.buffer, message.dust.buffer, message.clusters.buffer]);
   });
 });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { NOISE_PERIOD, NOISE_SIZE, noiseAt, noiseVolume, pcg3d } from "@/app/planets/globe/noise";
 
-/** The noise exactly as the shader used to calculate it, without repeating. */
+/** Reproduces the noise exactly as the shader used to compute it, without tiling. */
 function shaderNoise(x: number, y: number, z: number): number {
   const i = [Math.floor(x), Math.floor(y), Math.floor(z)];
   const f = [x - i[0], y - i[1], z - i[2]];
@@ -45,7 +45,7 @@ describe("noiseVolume", () => {
   it("holds the noise for every texel", () => {
     const volume = noiseVolume();
     expect(volume).toHaveLength(NOISE_SIZE ** 3);
-    // Texel (8, 0, 0) lies on the lattice point (1, 0, 0), where the noise is 0.
+    // Texel (8, 0, 0) lies on the lattice point (1, 0, 0), where gradient noise is 0.
     expect(volume[8]).toBeCloseTo(0, 6);
     const steps = NOISE_SIZE / NOISE_PERIOD;
     for (const [x, y, z] of [

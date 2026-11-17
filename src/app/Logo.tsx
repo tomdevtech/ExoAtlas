@@ -1,7 +1,6 @@
 /**
- * The ExoFinder mark: a planet in transit in front of its star, the way most
- * exoplanets were found. The same drawing as icon.svg (the browser tab), so a
- * change here belongs there too.
+ * The ExoFinder mark: a planet transiting its star, the method by which most exoplanets were found.
+ * It is the same drawing as icon.svg (the browser tab icon), so a change here belongs there too.
  */
 export function Logo({ className }: { className?: string }) {
   return (

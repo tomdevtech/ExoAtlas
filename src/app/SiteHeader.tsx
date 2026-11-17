@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Logo } from "./Logo";
 import { SearchBox } from "./search/SearchBox";
 
-/** The bar at the top of every page: name, search, the list of all planets, the map and the way home to our own system. */
+/** The bar at the top of every page, with the name, the search and links to the planet list, the map and the solar system. */
 export function SiteHeader() {
   return (
     <header className="border-b border-line">

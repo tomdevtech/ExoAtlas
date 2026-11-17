@@ -1,14 +1,10 @@
 /**
- * Creates the database role the website reads with, or gives it a new
- * password. Run it once after the first deployment, and again whenever the
- * password should change:
+ * Creates the website's read-only database role, or rotates its password.
  *
  *   DATABASE_URL="<owner, pooled>" DATABASE_URL_UNPOOLED="<owner, direct>" npm run db:readonly-role
  *
- * It connects as the owner (direct address if given) and prints the pooled
- * address of the new role. Store that in Vercel as DATABASE_URL_READONLY
- * (Production) and deploy again. The password is shown only this once and
- * is not saved anywhere.
+ * It prints the role's pooled URL, which belongs in Vercel as DATABASE_URL_READONLY.
+ * The password is shown only once and is not stored anywhere.
  */
 import { randomBytes } from "node:crypto";
 import postgres from "postgres";
@@ -29,7 +25,7 @@ async function main() {
       try {
         await sql.unsafe(statement);
       } catch (error) {
-        // Name the step, without the password.
+        // The error names the failing statement but masks the password.
         const step = statement.replace(/PASSWORD '[^']*'/, "PASSWORD '…'").split("\n")[0];
         throw new Error(`${error instanceof Error ? error.message : error}\n  in: ${step}`);
       }

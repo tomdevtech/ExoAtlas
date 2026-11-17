@@ -1,14 +1,11 @@
 /**
- * Takes the screenshots for the user guide in docs/wiki/images.
+ * Takes the user-guide screenshots in docs/wiki/images from a running app.
+ * Run it again after changing the interface.
  *
- * Runs a headless Chromium against a running ExoFinder (by default the dev
- * server on http://localhost:3000) and walks through the same steps the guide
- * describes. Run it again after a change to the interface:
+ *   npm run docs:screenshots [-- <shot names>]
  *
- *   npm run docs:screenshots
- *   BASE_URL=http://localhost:3001 npm run docs:screenshots
- *
- * The first run needs the browser: `npx playwright install chromium --only-shell`.
+ * It reads BASE_URL (default http://localhost:3000) and needs the browser from
+ * `npx playwright install chromium --only-shell`.
  */
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -19,7 +16,7 @@ const OUT_DIR = join(process.cwd(), "docs", "wiki", "images");
 const DESKTOP = { width: 1280, height: 800 };
 const PHONE = { width: 390, height: 844 };
 
-/** Hides the Next.js dev badge, so it does not show up in the pictures. */
+/** Hides the Next.js dev badge from screenshots. */
 const HIDE_DEV_TOOLS = "nextjs-portal { display: none !important; }";
 
 interface Shot {
@@ -40,7 +37,7 @@ async function save(page: Page, name: string, target?: ReturnType<Page["locator"
   console.log(`  ${name}.png`);
 }
 
-/** Saves a part of the page with a little room around it. */
+/** Saves an element with a margin around it. */
 async function saveArea(page: Page, name: string, target: ReturnType<Page["locator"]>, margin = 16) {
   await target.scrollIntoViewIfNeeded();
   const box = await target.boundingBox();
@@ -52,13 +49,13 @@ async function saveArea(page: Page, name: string, target: ReturnType<Page["locat
   console.log(`  ${name}.png`);
 }
 
-/** Waits until the 3D model of a planet is drawn: its buttons appear only then. */
+/** Waits until the planet's 3D model has rendered (its controls appear only then). */
 async function waitForGlobe(page: Page) {
   await page.getByRole("button", { name: "Reset" }).waitFor({ state: "visible", timeout: 60_000 });
   await page.waitForTimeout(800);
 }
 
-/** Waits until the map has its stars and the camera has stopped flying. */
+/** Waits until the map has loaded and the camera has settled. */
 async function waitForMap(page: Page, settle = 4000) {
   await page.getByText("Loading the stars…").waitFor({ state: "hidden", timeout: 60_000 });
   await page.waitForTimeout(settle);
@@ -145,7 +142,6 @@ const SHOTS: Shot[] = [
     run: async (page) => {
       await open(page, "/planets/jupiter");
       await waitForGlobe(page);
-      // The model and its row of buttons.
       const model = page.locator("article header > div").first();
       await save(page, "planet-model", model);
     },
@@ -259,7 +255,7 @@ const SHOTS: Shot[] = [
 
 async function main() {
   await mkdir(OUT_DIR, { recursive: true });
-  // WebGL in a headless browser: the software renderer draws the 3D models and the map.
+  // Headless Chromium has no GPU, so SwiftShader renders WebGL in software.
   const browser = await chromium.launch({
     headless: true,
     args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"],

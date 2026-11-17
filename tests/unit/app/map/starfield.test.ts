@@ -28,15 +28,15 @@ describe("the classes of stars", () => {
   });
 
   it("end where their faintest star is about as bright as that of the others", () => {
-    // Seen light falls with the square of the distance, so the reach grows
-    // with the square root of the light: no class pops out of the dark.
+    // Apparent brightness falls with the square of the distance, so the reach
+    // must grow with the square root of the light for no class to pop out of the dark.
     const edges = STAR_CLASSES.map((item) => item.light[0] / item.reach ** 2);
     const [low, high] = [Math.min(...edges), Math.max(...edges)];
     expect(high / low).toBeLessThan(15);
   });
 
   it("leave the stars of the photograph to the photograph near the Sun", () => {
-    // The faint ones the photograph cannot show; the bright ones it shows already.
+    // The photograph cannot show faint stars, while the bright ones are already in it.
     expect(STAR_CLASSES[0].photographed).toBe(false);
     expect(STAR_CLASSES[STAR_CLASSES.length - 1].photographed).toBe(true);
   });
@@ -59,16 +59,15 @@ describe("the density of stars", () => {
   });
 
   it("follows the arms of the picture", () => {
-    // A picture with one bright stripe through the Sun, along the y axis.
+    // The picture has one bright stripe through the Sun, along the y axis.
     const size = 64;
     const brightness = new Float32Array(size * size).fill(0.01);
     const sunRow = Math.round((0.5 + GALACTIC_CENTRE[0] / GALAXY_PICTURE_WIDTH) * size - 0.5);
     for (let column = 0; column < size; column++) brightness[sunRow * size + column] = 1;
     const plan = planFromPicture(brightness, size);
-    // On the stripe as at the Sun, far beside it much less.
     expect(plan(0, 3000)).toBeGreaterThan(0.5);
     expect(plan(-4000, 0)).toBeLessThan(0.2);
-    // Within its bounds.
+    // Beyond the edge of the galaxy the plan must be empty.
     expect(plan(GALACTIC_CENTRE[0] + GALAXY_EDGE + 100, 0)).toBe(0);
   });
 });
@@ -103,7 +102,7 @@ describe("the cells", () => {
   });
 
   it("hold about as many stars as the density says where the galaxy is crowded too", () => {
-    // A plan five times as crowded as near the Sun: hundreds of stars per cell.
+    // A plan five times as crowded as near the Sun gives hundreds of stars per cell.
     const crowded: Plan = () => 5;
     const starClass = STAR_CLASSES[SUNS];
     const size = cellSize(starClass);
@@ -118,7 +117,7 @@ describe("the cells", () => {
     expect(expected / 4).toBeGreaterThan(100);
     expect(stars / expected).toBeGreaterThan(0.85);
     expect(stars / expected).toBeLessThan(1.15);
-    // However crowded, a cell holds at most 6,000 stars.
+    // A cell is capped at 6,000 stars however crowded it is.
     expect(cellStars(SUNS, 0, 0, 0, () => 40).count).toBe(6000);
   });
 
@@ -130,7 +129,7 @@ describe("the cells", () => {
     for (let ix = -3; ix < 3; ix++) {
       for (let iy = -3; iy < 3; iy++) {
         stars += cellStars(SUNS, ix, iy, 0, SMOOTH_PLAN).count;
-        // The column of the cell from the plane up to its top.
+        // The expected count integrates the density over the column of the cell from the plane up to its top.
         expected += starDensity(starClass, SMOOTH_PLAN, (ix + 0.5) * size, (iy + 0.5) * size, 0) *
           size * size * starClass.height * (1 - Math.exp(-size / starClass.height));
       }
@@ -148,7 +147,7 @@ describe("the cells", () => {
       const distance = Math.hypot((ix + 0.5) * size - 10, (iy + 0.5) * size + 5, (iz + 0.5) * size - 2);
       expect(distance).toBeLessThanOrEqual(reach + size);
     }
-    // A sphere of three cells' radius: some hundred cells, not thousands.
+    // A sphere with a radius of three cells holds a few hundred cells, not thousands.
     expect(cells.length).toBeGreaterThan(100);
     expect(cells.length).toBeLessThan(400);
   });
@@ -163,7 +162,7 @@ describe("the reach", () => {
     expect(nearSun).toBeGreaterThan(giants.reach * 0.5);
     const nearCentre = reachAt(giants, SMOOTH_PLAN, GALACTIC_CENTRE[0] - 500, 0, 0);
     expect(nearCentre).toBeLessThan(nearSun * 0.7);
-    // So that the class keeps to its budget there.
+    // The reach shrinks near the centre so that the class keeps to its star budget there.
     const plan = SMOOTH_PLAN(GALACTIC_CENTRE[0] - 500, 0);
     const inReach = giants.density * plan * Math.PI * nearCentre ** 2 * 2 * Math.min(nearCentre, giants.height * 3);
     expect(inReach).toBeLessThan(STARS_PER_CLASS * 2);

@@ -3,14 +3,10 @@ import { PLANET_CLASS_ORDER, PLANET_CLASS_PLURALS } from "@/app/planets/labels";
 import { formatCount, formatDateTime } from "@/shared/format";
 import { getCatalogStats, type CatalogStats as Stats } from "./stats";
 
-/**
- * The key figures of the catalogue. Reads the database on every request, so
- * the page that shows it has to wrap it in <Suspense>.
- */
+/** The key figures of the catalogue. It reads the database on every request, so the page must wrap it in <Suspense>. */
 export async function CatalogStats() {
-  // Keeps the query out of the part of the page that is built in advance: it
-  // runs fresh on every request and never during `next build`. Has to stay
-  // outside the try block.
+  // `io()` keeps the query out of the prerendered part of the page, so it runs on every request and never
+  // during `next build`. It has to stay outside the try block.
   await io();
 
   let stats: Stats;

@@ -1,21 +1,17 @@
 /**
- * The database role the website reads with (see scripts/create-readonly-role.ts).
- *
- * The website never writes: only the sync and the seed do, with the owner role.
- * A role that may only read limits the damage of a flaw in a query, and the
- * time limit stops a single expensive query from tying up the database.
+ * The database role the website reads with (see scripts/create-readonly-role.ts). Only the sync and the seed
+ * write, using the owner role. A read-only role limits the damage of a flawed query, and the statement timeout
+ * stops a single expensive query from tying up the database.
  */
 
 export const READONLY_ROLE = "exofinder_web";
 
-/** Longest a single query of the website may run. */
+/** The longest time a single query of the website may run. */
 export const STATEMENT_TIMEOUT = "5s";
 
 /**
- * The statements that create the role, or bring an existing one up to date
- * with a new password. Run them as the role that owns the tables and runs the
- * migrations: the default privileges then also cover tables of later
- * migrations.
+ * Returns the statements that create the role or update an existing one with a new password. Run them as the
+ * role that owns the tables and runs the migrations, so the default privileges also cover later tables.
  */
 export function readonlyRoleStatements(database: string, password: string): string[] {
   if (!/^[A-Za-z0-9_-]{24,}$/.test(password)) {
@@ -30,9 +26,8 @@ export function readonlyRoleStatements(database: string, password: string): stri
         CREATE ROLE ${role} LOGIN;
       END IF;
     END $$`,
-    // No NOSUPERUSER, NOCREATEDB or NOCREATEROLE: a new role has none of these
-    // anyway, and on hosted databases such as Neon the owner is no superuser
-    // and may not name them ("permission denied to alter role").
+    // NOSUPERUSER, NOCREATEDB and NOCREATEROLE are left out: a new role has none of these anyway, and on
+    // hosted databases such as Neon the owner is no superuser and may not name them ("permission denied to alter role").
     `ALTER ROLE ${role} WITH LOGIN PASSWORD '${password}'`,
     `ALTER ROLE ${role} SET default_transaction_read_only = on`,
     `ALTER ROLE ${role} SET statement_timeout = '${STATEMENT_TIMEOUT}'`,
@@ -44,7 +39,7 @@ export function readonlyRoleStatements(database: string, password: string): stri
   ];
 }
 
-/** The same address with the read-only role and its password instead of the owner. */
+/** Returns the same URL with the read-only role and its password instead of the owner's. */
 export function withRole(url: string, password: string): string {
   const parsed = new URL(url);
   parsed.username = READONLY_ROLE;

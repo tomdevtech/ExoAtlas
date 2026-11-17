@@ -8,54 +8,35 @@ import {
 } from "./galaxy";
 
 /**
- * The stars between the stars with planets.
- *
- * The Milky Way has some hundred billion stars; nobody can store them, let
- * alone draw them. Nor is that needed: from any one place only a few hundred
- * thousand are bright enough to make out, the nearest faint ones and the
- * rare brilliant ones far away. So space is divided into cubes (cells), and
- * a cell only makes its stars when the camera comes near enough to see them.
- * The stars of a cell come from its own coordinates, so a cell always holds
- * the same stars, wherever one flies and however often one comes back.
- *
- * The stars are sorted into classes by how much light they give. Each class
- * has its own size of cell and is only made out to the distance at which
- * stars of its brightness fade into the glow of the galaxy: red dwarfs a few
- * parsecs, stars like the Sun some dozens, giants hundreds, the rare
- * supergiants thousands. How many stars a cell holds follows the density of
- * the galaxy there: the plan of its arms from the artist's impression (see
- * galaxy.ts), a disc that thins out above and below its plane, and the
- * crowded bulge in the middle.
- *
- * Lengths are parsecs in the coordinates of the map (galaxy.ts).
+ * Generates the background stars procedurally. Space is split into cells per
+ * luminosity class, and each cell's stars are derived from its coordinates, so they
+ * are the same on every visit. Lengths are parsecs in map coordinates (galaxy.ts).
  */
 
 export interface StarClass {
   name: string;
-  /** Light of the faintest and the brightest stars of the class, in suns. */
+  /** The luminosity range of the class, in solar luminosities. */
   light: [number, number];
-  /** Surface temperatures in kelvin; `hot` stars are drawn from the second pair now and then. */
+  /** The surface temperature range in kelvin; a `hot.share` fraction of stars uses `hot.teff` instead. */
   teff: [number, number];
   hot?: { share: number; teff: [number, number] };
-  /** Stars of this class per cubic parsec in the plane near the Sun. */
+  /** The number of stars per cubic parsec in the galactic plane near the Sun. */
   density: number;
-  /** The light thins out by e every so many parsecs above and below the plane. Young bright stars keep close to it. */
+  /** The vertical scale height in parsecs. */
   height: number;
-  /** How far from the camera its stars are made out, in parsecs. */
+  /** The distance from the camera, in parsecs, up to which stars of this class are generated. */
   reach: number;
   /**
-   * Whether the photograph of the sky shows these stars near the Sun. There
-   * the photograph is right and the computed stars would only add false
-   * ones, so they appear as it fades. The faint classes it cannot show stay
-   * dim there too, or they would lie over it like grain.
+   * Whether the sky photograph already shows these stars near the Sun. Generated
+   * stars of such a class only fade in as the photograph fades, to avoid duplicates.
    */
   photographed: boolean;
 }
 
 /**
- * About one star in ten per cubic parsec near the Sun, most of them red
- * dwarfs. The reach grows with the square root of the light, so the faintest
- * star of every class is about equally bright where its class ends.
+ * Together the classes give about 0.1 stars per cubic parsec near the Sun, mostly
+ * red dwarfs. Reach grows with the square root of luminosity, so the faintest star
+ * of every class has about the same apparent brightness where its class ends.
  */
 export const STAR_CLASSES: readonly StarClass[] = [
   { name: "red dwarfs", light: [0.004, 0.08], teff: [2700, 3800], density: 0.075, height: 300, reach: 20, photographed: false },
@@ -83,31 +64,24 @@ export const STAR_CLASSES: readonly StarClass[] = [
   },
 ];
 
-/** Cells per class are so big that its reach is three cells. */
+/** The number of cells that a class's reach spans. */
 export const CELLS_PER_REACH = 3;
 
-/** At most this many stars of one class at once. Where the galaxy is crowded the reach shrinks instead. */
+/** The maximum number of stars per class at once. In crowded regions the reach shrinks instead. */
 export const STARS_PER_CLASS = 50_000;
 
-/** At most this many stars in one cell, whatever the density. */
+/** Caps the stars per cell so that one very dense cell cannot exhaust the budget. */
 const STARS_PER_CELL = 6000;
 
-/** The size of a cell of the class, in parsecs. */
+/** Returns the edge length of the class's cells in parsecs. */
 export function cellSize(starClass: StarClass): number {
   return starClass.reach / CELLS_PER_REACH;
 }
 
-// ---- The plan of the disc -----------------------------------------------------
-
-/**
- * How crowded the plane of the galaxy is at (x, y), compared with the
- * neighbourhood of the Sun. Read from a brightness grid of the artist's
- * impression when there is one (see `planFromPicture`), else from a smooth
- * disc that thins out away from the centre.
- */
+/** Returns the relative stellar density of the galactic plane at (x, y), where 1 is the solar neighbourhood. */
 export type Plan = (x: number, y: number) => number;
 
-/** A disc without arms: crowded in the middle, thinning out every 2,600 parsecs. */
+/** A fallback plan without spiral arms: an exponential disc with a 2,600 pc scale length plus a bulge. */
 export const SMOOTH_PLAN: Plan = (x, y) => {
   const fromCentre = Math.hypot(x - GALACTIC_CENTRE[0], y - GALACTIC_CENTRE[1]);
   if (fromCentre > GALAXY_EDGE) return 0;
@@ -117,15 +91,13 @@ export const SMOOTH_PLAN: Plan = (x, y) => {
 };
 
 /**
- * A plan from the brightness of the artist's impression, given as a square
- * grid of `size` × `size` values, row by row from the top (as a picture is
- * stored). Bright arms are crowded, the dark gaps between them thin. The
- * brightness at the Sun counts as 1, and the plan stays between a twentieth
- * of that and forty times it.
+ * Builds a plan from a `size` × `size` brightness grid of the artist's impression,
+ * stored row by row from the top. The result is 1 at the Sun and clamped to
+ * [0.05, 40], so gaps never become completely empty and the core never explodes.
  */
 export function planFromPicture(brightness: Float32Array, size: number): Plan {
   const at = (x: number, y: number) => {
-    // Towards the centre is up in the picture, the longitude of 90 degrees left.
+    // In the picture the galactic centre is up and galactic longitude 90 degrees is to the left.
     const column = (0.5 - y / GALAXY_PICTURE_WIDTH) * size - 0.5;
     const row = (0.5 - (x - GALACTIC_CENTRE[0]) / GALAXY_PICTURE_WIDTH) * size - 0.5;
     if (column < 0 || row < 0 || column > size - 1 || row > size - 1) return 0;
@@ -139,8 +111,8 @@ export function planFromPicture(brightness: Float32Array, size: number): Plan {
     const bottom = brightness[r1 * size + c] * (1 - fc) + brightness[r1 * size + c1] * fc;
     return top * (1 - fr) + bottom * fr;
   };
-  // The Sun sits in a gap of the picture; its neighbourhood on a scale of a
-  // few hundred parsecs is the fair comparison.
+  // The Sun sits in a dark gap of the picture, so we normalise to the mean
+  // brightness within about 300 pc instead of the single pixel at the Sun.
   let sun = 0;
   for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) sun += at(dx * 300, dy * 300);
   sun = Math.max(sun / 9, 1e-4);
@@ -151,28 +123,27 @@ export function planFromPicture(brightness: Float32Array, size: number): Plan {
   };
 }
 
-/** How far the stars of a class reach above and below the plane at a distance `fromCentre` from the centre: more in the bulge. */
+/** Returns the class's scale height at `fromCentre` parsecs from the centre, which grows in the bulge. */
 function thickness(starClass: StarClass, fromCentre: number): number {
   return starClass.height + BULGE_HEIGHT * Math.exp(-((fromCentre / BULGE_WIDTH) ** 2));
 }
 
-/** Stars of the class per cubic parsec at a point. */
+/** Returns the number of stars of the class per cubic parsec at a point. */
 export function starDensity(starClass: StarClass, plan: Plan, x: number, y: number, z: number): number {
   const fromCentre = Math.hypot(x - GALACTIC_CENTRE[0], y - GALACTIC_CENTRE[1]);
   return starClass.density * plan(x, y) * Math.exp(-Math.abs(z) / thickness(starClass, fromCentre));
 }
 
 /**
- * How far the class is made out from a point. Where the galaxy is crowded,
- * so many stars of a class would be in reach that it is cut down, so that
- * the class keeps to its budget; the glow of the galaxy fills in beyond.
+ * Returns how far the class is generated around a point. In crowded regions the
+ * reach shrinks to stay within `STARS_PER_CLASS`, and the galaxy glow fills in beyond.
  */
 export function reachAt(starClass: StarClass, plan: Plan, x: number, y: number, z: number): number {
   const reach = starClass.reach;
-  // The stars in reach lie mostly in the plane below the camera.
   const fromCentre = Math.hypot(x - GALACTIC_CENTRE[0], y - GALACTIC_CENTRE[1]);
   const height = thickness(starClass, fromCentre);
   const above = Math.abs(z);
+  // Far above the disc the reach barely touches any stars, so no limit is needed.
   if (above > reach + 4 * height) return reach;
   const depth = Math.min(2 * reach, 2 * height);
   const expected = starClass.density * plan(x, y) * Math.PI * reach * reach * depth * Math.exp(-above / height);
@@ -180,28 +151,23 @@ export function reachAt(starClass: StarClass, plan: Plan, x: number, y: number, 
   return reach * Math.sqrt(STARS_PER_CLASS / expected);
 }
 
-// ---- Cells -----------------------------------------------------------------------
-
-/** The stars of one cell: position, colour and light, seven numbers each. */
 export interface CellStars {
-  /** x, y, z, red, green, blue, light in suns; one star after the other. */
+  /** Seven floats per star: x, y, z, red, green, blue and luminosity in suns. */
   data: Float32Array;
   count: number;
 }
 
-/** Numbers that tell a cell apart from all others: its class and where it is. */
 export function cellKey(classIndex: number, ix: number, iy: number, iz: number): string {
   return `${classIndex}:${ix}:${iy}:${iz}`;
 }
 
-/** The cells of a class whose stars can be in reach of a point, nearest first. */
+/** Returns the indices of the class's cells that lie at least partly within `reach` of a point, nearest first. */
 export function cellsAround(classIndex: number, reach: number, x: number, y: number, z: number): [number, number, number][] {
   const size = cellSize(STAR_CLASSES[classIndex]);
   const cx = Math.floor(x / size);
   const cy = Math.floor(y / size);
   const cz = Math.floor(z / size);
   const span = Math.ceil(reach / size);
-  // A cell counts if any of it is in reach.
   const corner = size * Math.sqrt(3) * 0.5;
   const cells: { cell: [number, number, number]; distance: number }[] = [];
   for (let ix = cx - span; ix <= cx + span; ix++) {
@@ -216,7 +182,7 @@ export function cellsAround(classIndex: number, reach: number, x: number, y: num
   return cells.map((item) => item.cell);
 }
 
-/** Mulberry32: small, fast, and the same on every machine. */
+/** Mulberry32, a small seeded generator that gives the same sequence on every machine. */
 function random(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
@@ -228,7 +194,7 @@ function random(seed: number): () => number {
   };
 }
 
-/** One number from the class and the place of a cell. */
+/** Derives a seed from the class and cell indices with an FNV-1a style hash. */
 function cellSeed(classIndex: number, ix: number, iy: number, iz: number): number {
   let h = 0x811c9dc5 ^ classIndex;
   for (const value of [ix, iy, iz]) {
@@ -238,11 +204,11 @@ function cellSeed(classIndex: number, ix: number, iy: number, iz: number): numbe
   return h >>> 0;
 }
 
-/** A count with the given average, as a count of rare events comes out (Poisson). */
+/** Draws a Poisson-distributed count with the given mean. */
 function countAround(mean: number, rand: () => number): number {
   if (mean <= 0) return 0;
   if (mean > 40) {
-    // Many events: a bell curve is close enough.
+    // For large means a normal approximation is accurate enough and avoids a long loop.
     const u = Math.max(rand(), 1e-12);
     const v = rand();
     return Math.max(0, Math.round(mean + Math.sqrt(mean) * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v)));
@@ -258,9 +224,8 @@ function countAround(mean: number, rand: () => number): number {
 }
 
 /**
- * The stars of a cell. Always the same for the same cell and plan. The plan
- * is only read within the cell, so a finer or coarser plan changes a cell's
- * stars only where the two differ.
+ * Generates the stars of a cell; the same cell and plan always give the same stars.
+ * The plan is only sampled inside the cell, so a finer plan changes stars only where it differs.
  */
 export function cellStars(classIndex: number, ix: number, iy: number, iz: number, plan: Plan): CellStars {
   const starClass = STAR_CLASSES[classIndex];
@@ -272,13 +237,14 @@ export function cellStars(classIndex: number, ix: number, iy: number, iz: number
   const fromCentre = Math.hypot(x0 + size / 2 - GALACTIC_CENTRE[0], y0 + size / 2 - GALACTIC_CENTRE[1]);
   const height = thickness(starClass, fromCentre);
 
-  // The plan at the corners and the middle: the most crowded of them bounds the cell.
+  // The densest of the corners and the centre bounds the cell for rejection sampling.
   let crowded = 0;
   for (const [fx, fy] of [[0, 0], [1, 0], [0, 1], [1, 1], [0.5, 0.5]]) {
     crowded = Math.max(crowded, plan(x0 + fx * size, y0 + fy * size));
   }
   if (crowded <= 0) return { data: new Float32Array(0), count: 0 };
-  // The share of the light of the disc between the top and bottom of the cell.
+  // `below` is the signed cumulative share of the exponential disc up to height z,
+  // so `share` is the fraction of the disc's stars between the cell's bottom and top.
   const below = (z: number) => (z < 0 ? -1 : 1) * (1 - Math.exp(-Math.abs(z) / height));
   const share = Math.abs(below(z0 + size) - below(z0)) / 2;
   const mean = starClass.density * crowded * size * size * 2 * height * share;
@@ -290,7 +256,7 @@ export function cellStars(classIndex: number, ix: number, iy: number, iz: number
   for (let n = 0; n < candidates && count < STARS_PER_CELL; n++) {
     const x = x0 + rand() * size;
     const y = y0 + rand() * size;
-    // Height from the thinning of the disc, within the cell.
+    // The height is drawn by inverting the exponential profile within the cell.
     const a = below(z0);
     const b = below(z0 + size);
     const t = a + (b - a) * rand();
@@ -300,7 +266,8 @@ export function cellStars(classIndex: number, ix: number, iy: number, iz: number
     const hot = starClass.hot && rand() < starClass.hot.share;
     const [low, high] = hot && starClass.hot ? starClass.hot.teff : starClass.teff;
     const teff = low + (high - low) * rand();
-    // Fewer stars in the gaps between the arms than in the arms.
+    // Rejecting against the plan thins out the gaps between the arms. All random
+    // numbers are drawn before this test, so the sequence does not depend on the plan.
     if (keep > plan(x, y) / crowded) continue;
     const [red, green, blue] = starColor(teff);
     data.set([x, y, z, red, green, blue, light], count * 7);

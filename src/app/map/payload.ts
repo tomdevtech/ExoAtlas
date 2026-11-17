@@ -4,9 +4,8 @@ import type { GlobeSpec } from "@/app/planets/globe/spec";
 import { describePlanet } from "@/app/planets/labels";
 
 /**
- * One star on the map, as short as possible because the browser loads all of
- * them at once: slug, name, x, y, z in parsecs, temperature in kelvin (or
- * null), number of planets.
+ * One star on the map, kept as a compact tuple because the browser loads all of
+ * them at once. Positions are in parsecs and the temperature is in kelvin.
  */
 export type MapStar = [
   slug: string,
@@ -18,12 +17,12 @@ export type MapStar = [
   planetCount: number,
 ];
 
-/** What GET /map/stars answers with. */
+/** The response body of GET /map/stars. */
 export interface MapStarsPayload {
   stars: MapStar[];
 }
 
-/** What GET /map/systems/[slug] answers with: everything the system view draws. */
+/** The response body of GET /map/systems/[slug]. */
 export interface MapSystemPayload {
   star: {
     slug: string;
@@ -40,13 +39,13 @@ export interface MapSystemPayload {
 export interface MapPlanet {
   slug: string;
   name: string;
-  /** "Super-Earth, temperate" */
+  /** A short label such as "Super-Earth, temperate". */
   description: string;
   orbitalPeriodDays: number | null;
   semiMajorAxisAu: number | null;
   eccentricity: number | null;
   radiusEarth: number | null;
-  /** The look of the planet, the same as on its page. */
+  /** The same appearance as on the planet's own page. */
   globe: GlobeSpec;
 }
 
@@ -84,7 +83,7 @@ export interface SystemPlanetRow {
   densityEarth: number | null;
 }
 
-/** Positions with three decimals are exact to a thousandth of a parsec, far finer than the measurements. */
+/** Three decimals (a thousandth of a parsec) are far finer than the measurements and keep the payload small. */
 const round = (value: number) => Math.round(value * 1000) / 1000;
 
 export function toMapStar(row: StarRow): MapStar {

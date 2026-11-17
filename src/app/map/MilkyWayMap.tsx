@@ -16,33 +16,29 @@ const PRIMARY =
 const TEXT_LINK = "text-sm text-accent underline-offset-4 underline decoration-current/40 hover:decoration-current";
 
 /**
- * The map of the Milky Way with everything around it: the panels, the search
- * field and the address bar. The drawing itself is the job of `MapEngine`;
- * this component tells it what to show and listens to what was clicked.
- *
- * The address keeps track of the place, so a view can be linked:
- * `/map?star=trappist-1`, `/map?system=sun&planet=saturn`, `/map?view=galaxy`.
+ * The Milky Way map page: panels, search and links around the `MapEngine` canvas.
+ * The current view is mirrored in the URL so it can be linked, for example
+ * `/map?star=trappist-1`, `/map?system=sun&planet=saturn` or `/map?view=galaxy`.
  */
 export default function MilkyWayMap() {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<MapEngine | null>(null);
   /**
-   * The address as the router knows it. `window.location` is not enough: when
-   * the map's code is already loaded, its effects run before Next has written
-   * the new address, and a link like `/map?system=…` would be read as `/map`.
+   * We read the router's search params instead of `window.location`, because after
+   * a client-side navigation the effects run before Next has updated the URL.
    */
   const searchParams = useSearchParams();
 
   const [stars, setStars] = useState<MapStar[] | null>(null);
   const [problem, setProblem] = useState<"webgl" | "stars" | null>(null);
-  /** Index into `stars` of the marked star. */
+  /** The index into `stars` of the selected star. */
   const [selected, setSelected] = useState<number | null>(null);
-  /** The system the visitor is in, or null in the galaxy. */
+  /** The system being viewed, or null while the galaxy is shown. */
   const [system, setSystem] = useState<MapSystemPayload | null>(null);
-  /** Slug of the system that is loading. */
+  /** The slug of the system that is currently loading. */
   const [entering, setEntering] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
-  /** Index into `system.planets` of the planet the camera follows. */
+  /** The index into `system.planets` of the planet the camera follows. */
   const [planet, setPlanet] = useState<number | null>(null);
   /** Whether the camera circles the galactic centre instead of flying freely. */
   const [orbiting, setOrbiting] = useState(false);
@@ -50,7 +46,7 @@ export default function MilkyWayMap() {
     () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
 
-  /** Gives the keyboard back to the map, so the flight keys work after a click on a button. */
+  /** Returns keyboard focus to the map so that the flight keys keep working after a button click. */
   const focusMap = () => containerRef.current?.focus({ preventScroll: true });
 
   async function enterSystem(slug: string, planetSlug: string | null = null) {
@@ -61,7 +57,7 @@ export default function MilkyWayMap() {
       const response = await fetch(`/map/systems/${encodeURIComponent(slug)}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const payload = (await response.json()) as MapSystemPayload;
-      // The map was left (or hidden and started anew) while the system loaded.
+      // Drop the result if the map was left or recreated while the system was loading.
       if (!engine || engineRef.current !== engine) return;
       const index = planetSlug ? payload.planets.findIndex((p) => p.slug === planetSlug) : -1;
       const focus = index >= 0 ? index : null;
@@ -99,7 +95,7 @@ export default function MilkyWayMap() {
     else selectStar(null);
   });
 
-  /** Goes to the place named in the address the page was opened with. */
+  /** Shows the star, system or view named in the URL that the page was opened with. */
   const openLink = useEffectEvent((loaded: MapStar[]) => {
     const link = searchParams;
     const engine = engineRef.current;
@@ -117,7 +113,6 @@ export default function MilkyWayMap() {
     if (systemSlug) void enterSystem(systemSlug, link.get("planet"));
   });
 
-  // Starts the map once and loads the stars.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -144,7 +139,7 @@ export default function MilkyWayMap() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const payload = (await response.json()) as MapStarsPayload;
         if (cancelled) return;
-        // One more star that no catalogue knows, at the galactic centre.
+        // The easter-egg star at the galactic centre is not in the catalogue, so it is added here.
         const loaded = [...payload.stars, SPECIAL_STAR];
         engine.setStars(loaded);
         setStars(loaded);
@@ -158,9 +153,9 @@ export default function MilkyWayMap() {
       cancelled = true;
       engineRef.current = null;
       engine.dispose();
-      // Next keeps a left page alive but hidden (React Activity) and runs this
-      // effect again when it comes back, with a new engine. The place must
-      // then come from the new address, not from the state of the last visit.
+      // Next keeps a page that was left alive but hidden (React Activity) and reruns
+      // this effect with a new engine on return. The state is reset so that the view
+      // comes from the new URL and not from the previous visit.
       setStars(null);
       setSelected(null);
       setSystem(null);
@@ -171,7 +166,8 @@ export default function MilkyWayMap() {
     };
   }, []);
 
-  // Keeps the address in step with the place.
+  // Mirror the current view in the URL so that it can be shared. While a system is
+  // loading the URL is left alone, so it never names a view that is not shown yet.
   useEffect(() => {
     if (!stars || entering) return;
     const params = new URLSearchParams();
@@ -258,7 +254,7 @@ export default function MilkyWayMap() {
                       focusMap();
                     }}
                     onEnter={() => {
-                      // Park the camera next to the star, so the way back out leads there.
+                      // Move the camera next to the star first, so that leaving the system returns there.
                       engineRef.current?.flyToStar(selected!, true);
                       void enterSystem(star[0]);
                     }}
@@ -367,7 +363,7 @@ export default function MilkyWayMap() {
                 : "The surfaces are illustrations computed from the data."
               : "Star positions are measured, the galaxy is an artist’s impression."}
             <br />
-            {/* The footer of the other pages is hidden on the map, so its legal links stand here. */}
+            {/* The site footer is hidden on the map, so its legal links are repeated here. */}
             <Link className="hover:text-foreground" href="/legal/notice">
               Legal notice
             </Link>
@@ -390,14 +386,15 @@ function planetsText(count: number): string {
   return count === 1 ? "1 known planet" : `${count} known planets`;
 }
 
-/** A field to find a star by name among the ones on the map. */
+/** Search field that finds a star on the map by name. */
 function Finder({ stars, onChoose }: { stars: MapStar[]; onChoose: (index: number) => void }) {
   const [query, setQuery] = useState("");
 
   const matches = useMemo(() => {
     const wanted = query.trim().toLowerCase();
     if (wanted.length < 2) return [];
-    // The stars are sorted by distance: of equal matches, the nearest come first.
+    // The stars arrive sorted by distance, so among equal matches the nearest come first.
+    // Prefix matches rank above substring matches, and at most eight are shown.
     const beginning: number[] = [];
     const inside: number[] = [];
     for (let i = 0; i < stars.length && beginning.length < 8; i++) {
@@ -513,7 +510,7 @@ function StarPanel({
   );
 }
 
-/** The panel of the easter-egg star: it has no system to enter, only a message. */
+/** Panel for the easter-egg star, which has no system to enter and only links to its info page. */
 function SpecialStarPanel({
   name,
   onFly,
@@ -577,7 +574,7 @@ function SystemPanel({
   onLeave: () => void;
 }) {
   const { star, planets } = system;
-  // On a narrow screen the list would cover the planets, so it folds away there.
+  // On narrow screens the planet list would cover the view, so it can be collapsed there.
   const [listOpen, setListOpen] = useState(false);
   const choose = (index: number | null) => {
     setListOpen(false);

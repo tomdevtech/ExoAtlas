@@ -1,10 +1,7 @@
 /**
- * Orbits for the system view of the map.
- *
- * Real proportions cannot be shown: Neptune is 80 times as far from the Sun as
- * Mercury, and next to their orbits all planets are dust. The view therefore
- * keeps the order, the shape and the relative speed of the orbits, but
- * squeezes the distances and enlarges the planets.
+ * Lays out orbits for the system view. Real proportions are unreadable (Neptune is
+ * 80 times as far out as Mercury), so the order, shape and relative speed of the
+ * orbits are kept while distances are compressed and planets are enlarged.
  */
 
 export interface OrbitInput {
@@ -15,49 +12,50 @@ export interface OrbitInput {
 }
 
 export interface OrbitLayout {
-  /** Index of the planet in the input. */
+  /** The index of the planet in the input. */
   index: number;
-  /** Half of the longest diameter of the ellipse, in units of the view. */
+  /** The semi-major axis in view units. */
   semiMajor: number;
   eccentricity: number;
-  /** Direction of the point closest to the star, as an angle in the plane. */
+  /** The angle of the point closest to the star, in radians. */
   periapsis: number;
-  /** Seconds one lap takes in the view. */
+  /** The seconds one orbit takes in the view. */
   period: number;
-  /** Where on the orbit the planet starts, 0 to 2π. */
+  /** The starting mean anomaly, from 0 to 2π. */
   phase: number;
-  /** Radius of the planet in units of the view. */
+  /** The planet radius in view units. */
   size: number;
 }
 
-/** Radius of a star in units of the view. The Sun is 1; giants and dwarfs differ less than in reality. */
+/**
+ * Returns the star radius in view units, where the Sun is 1. Size differences are
+ * compressed and clamped so that giants and dwarfs both stay readable.
+ */
 export function starSize(radiusSun: number | null): number {
   return Math.min(Math.max((radiusSun ?? 1) ** 0.3, 0.55), 2.2);
 }
 
-/** Radius of a planet in units of the view. Earth is 0.12, Jupiter about three times that. */
+/**
+ * Returns the planet radius in view units, where Earth is 0.12. A missing radius is
+ * treated as two Earth radii, and the result is clamped to stay visible but not huge.
+ */
 export function planetSize(radiusEarth: number | null): number {
   return Math.min(Math.max(0.12 * (radiusEarth ?? 2) ** 0.45, 0.07), 0.5);
 }
 
-/**
- * Kepler's third law: the distance from the star in astronomical units that
- * belongs to a period in days, for a star of `massSun` solar masses.
- */
+/** Returns the semi-major axis in AU for a period in days around a star of `massSun` solar masses (Kepler's third law). */
 export function axisFromPeriod(periodDays: number, massSun: number): number {
   return Math.cbrt(massSun * (periodDays / 365.25) ** 2);
 }
 
-/** The other way round: the period in days for a distance in astronomical units. */
+/** Returns the period in days for a semi-major axis in AU (Kepler's third law). */
 export function periodFromAxis(axisAu: number, massSun: number): number {
   return 365.25 * Math.sqrt(axisAu ** 3 / massSun);
 }
 
-/**
- * Solves Kepler's equation M = E − e·sin E for E. `meanAnomaly` grows evenly
- * with time; the result says where on the ellipse the planet is.
- */
+/** Solves Kepler's equation M = E − e·sin E for the eccentric anomaly E with Newton's method. */
 export function solveKepler(meanAnomaly: number, eccentricity: number): number {
+  // For high eccentricities, starting at π keeps Newton's method from diverging.
   let E = eccentricity < 0.8 ? meanAnomaly : Math.PI;
   for (let i = 0; i < 12; i++) {
     const step = (E - eccentricity * Math.sin(E) - meanAnomaly) / (1 - eccentricity * Math.cos(E));
@@ -67,10 +65,7 @@ export function solveKepler(meanAnomaly: number, eccentricity: number): number {
   return E;
 }
 
-/**
- * Position on an orbit in its plane, with the star at the origin (one focus of
- * the ellipse). `meanAnomaly` 0 is the point closest to the star.
- */
+/** Returns the position in the orbital plane with the star at the origin; a `meanAnomaly` of 0 is the periapsis. */
 export function orbitPoint(
   semiMajor: number,
   eccentricity: number,
@@ -85,7 +80,7 @@ export function orbitPoint(
   return [x * cos - y * sin, x * sin + y * cos];
 }
 
-/** A number from 0 to 1 that is always the same for the same two inputs. */
+/** Hashes two integers to a number in [0, 1) that is always the same for the same inputs. */
 function scatter(seed: number, salt: number): number {
   let h = Math.imul(seed ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(salt + 1, 0xc2b2ae35);
   h ^= h >>> 15;
@@ -95,12 +90,9 @@ function scatter(seed: number, salt: number): number {
 }
 
 /**
- * Lays out the orbits of a system for the view.
- *
- * The result is sorted from the inside out. Missing distances are derived
- * from the period and the other way round; a planet with neither goes to the
- * outside. `seed` fixes the starting points, so a system looks the same on
- * every visit.
+ * Lays out a system's orbits, sorted from the inside out. A missing axis or period
+ * is derived from the other, and planets with neither are placed outermost. The
+ * `seed` keeps periapses and phases the same on every visit.
  */
 export function layoutOrbits(
   planets: OrbitInput[],
@@ -115,7 +107,7 @@ export function layoutOrbits(
     return { planet, index, axis, period: period ?? (axis ? periodFromAxis(axis, mass) : null) };
   });
 
-  // Planets without any orbit data line up behind the outermost known one.
+  // Planets without any orbit data are placed beyond the outermost known one.
   let outermost = Math.max(0, ...known.map((entry) => entry.axis ?? 0));
   const placed = known
     .map((entry) => {
@@ -134,13 +126,15 @@ export function layoutOrbits(
 
   for (const entry of placed) {
     const size = planetSize(entry.planet.radiusEarth);
+    // Eccentricity is capped so that extreme orbits do not stretch the whole layout.
     const eccentricity = Math.min(Math.max(entry.planet.eccentricity ?? 0, 0), 0.75);
     let semiMajor: number;
     if (layouts.length === 0) {
-      // The closest point of the innermost orbit stays clear of the star.
+      // The innermost orbit's closest point must stay clear of the star.
       semiMajor = (starSize(star.radiusSun) + 0.7 + size) / (1 - eccentricity);
     } else {
-      // Twice the distance is one step further out; steps are neither tiny nor huge.
+      // Each doubling of the real distance adds one fixed step, so spacing is
+      // logarithmic. Steps are at least wide enough to avoid overlap and at most 4 units.
       const wanted = 1.6 * Math.log2(entry.axis / previousAxis);
       const smallest = previousSize + size + 0.3;
       semiMajor = previousRadius + Math.min(Math.max(wanted, smallest), 4);

@@ -1,6 +1,6 @@
 import { expect, test } from "@tests/e2e/fixtures";
 
-/** Answers of every kind: pages, JSON, a static file and an unknown address. */
+/** These paths cover every kind of response: pages, JSON, a static file and an unknown route. */
 const PATHS = [
   "/",
   "/planets",
@@ -71,7 +71,7 @@ test.describe("hostile input over HTTP", () => {
   }
 
   test("a broken address answers 400, not a server error", async ({ request }) => {
-    // src/proxy.ts catches broken percent-encoding in addresses with a slug.
+    // src/proxy.ts catches broken percent-encoding in routes with a slug.
     for (const path of ["/planets/%E0%A4%A", "/stars/%", "/map/systems/%ZZ"]) {
       const response = await request.get(path);
       expect(response.status(), path).toBe(400);
@@ -114,8 +114,8 @@ test.describe("no script injection through the address", () => {
 });
 
 test.describe("content security policy in the browser", () => {
-  // The fixture fails a test on every CSP violation. These pages use the most:
-  // streaming, client components, WebGL, textures and fetch.
+  // The fixture fails a test on every CSP violation. These pages are chosen
+  // because they use the most: streaming, client components, WebGL, textures and fetch.
   test("the start page, a planet with its model and the map run without violations", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "Places to start" })).toBeVisible();
@@ -127,7 +127,7 @@ test.describe("content security policy in the browser", () => {
 });
 
 test.describe("framing", () => {
-  // The browser reports the refused frame in the console: that is the point.
+  // The browser reports the refused frame in the console, which is exactly what this test expects.
   test.use({ allowedErrors: /frame/i });
 
   test("another site cannot show ExoFinder in a frame", async ({ page, baseURL }) => {

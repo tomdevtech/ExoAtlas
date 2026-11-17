@@ -8,8 +8,8 @@ export const metadata: Metadata = {
 };
 
 /**
- * The frame of the map. It is static; the map itself starts in the browser
- * and fetches its data from /map/stars and /map/systems/[slug].
+ * Renders the static shell of the map page. The map itself runs in the browser and fetches its
+ * data from /map/stars and /map/systems/[slug].
  */
 export default function MapPage() {
   return (

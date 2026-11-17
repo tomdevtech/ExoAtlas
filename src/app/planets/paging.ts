@@ -4,19 +4,19 @@ export const PAGE_SIZE = 200;
 /** The orders the list offers: by name, or by year of discovery with the newest first. */
 export type ListSort = "name" | "discovery";
 
-/** A value from the address, as Next.js hands it over. */
+/** A search param value as Next.js passes it. */
 type Param = string | string[] | undefined;
 
 function first(value: Param): string {
   return (Array.isArray(value) ? value[0] : value) ?? "";
 }
 
-/** The filter text from `?q=`, without spaces around it. */
+/** The trimmed filter text from `?q=`. */
 export function parseFilter(value: Param): string {
   return first(value).trim();
 }
 
-/** The page number from `?page=`. Anything that is not a whole number from 1 up counts as page 1. */
+/** The page number from `?page=`. Anything that is not a whole number of 1 or more counts as page 1. */
 export function parsePage(value: Param): number {
   const text = first(value).trim();
   if (!/^\d{1,9}$/.test(text)) return 1;
@@ -38,10 +38,7 @@ export function clampPage(page: number, total: number): number {
   return Math.min(Math.max(1, page), pageCount(total));
 }
 
-/**
- * Address of a page of the list. Page 1, an empty filter and the order by
- * name are left out, so `/planets` stays short.
- */
+/** URL of a list page. Page 1, an empty filter and the name order are left out so that `/planets` stays short. */
 export function listHref(filter: string, page = 1, sort: ListSort = "name"): string {
   const params = new URLSearchParams();
   if (filter !== "") params.set("q", filter);

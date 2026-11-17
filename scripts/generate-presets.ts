@@ -1,34 +1,16 @@
 /**
- * Simulates the base maps ("presets") the exoplanets are drawn from and
- * stores them in public/textures/presets.
+ * Simulates the colourless base maps ("presets") that the planet shader colours per
+ * planet, and writes them to public/textures/presets plus metadata to presets.json.
  *
- *   npm run presets
+ *   npm run presets   (runs `terrain 1024` and `bands 2048`)
  *
- * A preset holds no colours, only what shaped the surface. The shader
- * (surface.glsl.ts) turns it into a planet with the values of that planet:
- * sea level, ice, lava, colours, turn and mirroring. So a handful of presets
- * gives thousands of different planets, and the same planet always looks the same.
+ * PRESET_ONLY=a,b limits a run to some presets, and PRESET_DIR=folder writes the
+ * maps and presets.json there instead (the tests use this).
  *
- * Rocky presets (red, green, blue):
- *   height after erosion · where water gathers (valleys and rivers; cracks on
- *   ice crusts) · craters (0.5 is level ground)
- * Banded presets for gas giants:
- *   belts and zones · a second tracer for streaks · storms
- *
- * Everything is seeded, so a run always gives the same files. They are
- * checked in; this only runs again when the simulation changes.
- *
- * What the app has to know about a preset goes into presets.json next to the
- * planet code: for rocky presets the heights below which each share of the
- * surface lies (for choosing a sea level), for banded presets the winds they
- * were simulated with (so the clouds can drift on the same way).
- *
- * `npm run presets` calls this twice: `terrain 1024` and `bands 2048`. Rocky
- * presets are simulated at half the size and enlarged, because single
- * raindrops leave a grain at full size that shows as speckled coasts. The
- * fine threads of the gas giants need the full size.
- * PRESET_ONLY=name limits a trial run to some presets. PRESET_DIR=folder
- * writes the maps and presets.json there instead: the tests use that.
+ * Rocky channels (RGB): eroded height, drainage (rivers, or cracks on ice), craters (0.5 is level).
+ * Banded channels (RGB): belts and zones, a second tracer for streaks, storms.
+ * Output is seeded and checked in. Rocky presets are simulated at half size and
+ * enlarged, because at full size single raindrops leave a grain that shows as speckled coasts.
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -42,9 +24,7 @@ const DIR = process.env.PRESET_DIR;
 const OUT = path.resolve(DIR ?? "public/textures/presets");
 const META = DIR ? path.join(OUT, "presets.json") : path.resolve("src/app/planets/globe/presets.json");
 
-// ---- Random numbers and noise ------------------------------------------------
-
-/** Mulberry32: small, fast, and the same on every machine. */
+/** Mulberry32 PRNG, chosen because it gives the same sequence on every machine. */
 function random(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
@@ -56,7 +36,7 @@ function random(seed: number): () => number {
   };
 }
 
-/** Perlin noise in three dimensions, about -0.7 to 0.7. */
+/** 3D Perlin noise with values of about -0.7 to 0.7. */
 class Noise {
   private readonly perm = new Uint8Array(512);
 
@@ -112,7 +92,7 @@ class Noise {
     return (m1 + w * (m2 - m1)) * 0.7;
   }
 
-  /** Several layers, each twice as fine and half as strong. About -0.6 to 0.6. */
+  /** Fractal Brownian motion with values of about -0.6 to 0.6. */
   fbm(x: number, y: number, z: number, octaves: number): number {
     let sum = 0;
     let amp = 0.5;
@@ -128,7 +108,7 @@ class Noise {
     return sum / total;
   }
 
-  /** Sharp ridges, 0 to 1. */
+  /** Ridged multifractal noise with values of 0 to 1. */
   ridged(x: number, y: number, z: number, octaves: number): number {
     let sum = 0;
     let amp = 0.5;
@@ -149,13 +129,11 @@ class Noise {
   }
 }
 
-// ---- The grid ----------------------------------------------------------------
-
-/** Unit vector of each pixel: longitude across, latitude up, as the shader reads maps. */
+/** Unit vector of each pixel, in the equirectangular layout the shader samples. */
 const PX = new Float32Array(W * H);
 const PY = new Float32Array(W * H);
 const PZ = new Float32Array(W * H);
-/** Width of a pixel at each row, compared with the equator. */
+/** Pixel width of each row relative to the equator, clamped so the poles stay finite. */
 const COS = new Float32Array(H);
 for (let y = 0; y < H; y++) {
   const lat = (0.5 - (y + 0.5) / H) * Math.PI;
@@ -176,14 +154,14 @@ function randomDirection(rand: () => number): [number, number, number] {
   return [r * Math.sin(lon), y, r * Math.cos(lon)];
 }
 
-/** Pixel column and row of a direction, as fractions. */
+/** Returns the fractional pixel column and row of a unit direction. */
 function toPixel(x: number, y: number, z: number): [number, number] {
   const lon = Math.atan2(x, z);
   const lat = Math.asin(Math.max(-1, Math.min(1, y)));
   return [(lon / (2 * Math.PI) + 0.5) * W - 0.5, (0.5 - lat / Math.PI) * H - 0.5];
 }
 
-/** The angle between two unit vectors, safe against rounding just outside -1 to 1. */
+/** Angle from a dot product, clamped because rounding can push it just outside -1 to 1. */
 const angle = (dot: number) => Math.acos(Math.min(1, Math.max(-1, dot)));
 
 const smoothstep = (a: number, b: number, x: number) => {
@@ -191,22 +169,20 @@ const smoothstep = (a: number, b: number, x: number) => {
   return t * t * (3 - 2 * t);
 };
 
-// ---- Rocky planets -----------------------------------------------------------
-
 interface Terrain {
   name: string;
   seed: number;
   /** Number of tectonic plates and the share of them that carries continents. */
   plates: number;
   continental: number;
-  /** How far continents stand above the sea floors: 1 for sharp continents, less for blotchy lowlands. */
+  /** Height of continents above sea floors: 1 gives sharp continents, less gives blotchy lowlands. */
   split: number;
   /** Strength of the general unevenness and of the mountain belts. */
   relief: number;
   mountains: number;
-  /** Shield volcanoes. */
+  /** Number of shield volcanoes. */
   volcanoes: number;
-  /** Lowlands are levelled to plains by this much, 0 to 1. */
+  /** How much lowlands are levelled to plains, from 0 to 1. */
   plains: number;
   /** Raindrops per pixel and how hard they carve. */
   rain: number;
@@ -214,7 +190,7 @@ interface Terrain {
   /** Number of craters and the angular radius of the largest. */
   craters: number;
   craterMax: number;
-  /** Cracks in a crust of ice, instead of rivers. */
+  /** Number of cracks in an ice crust, which replace rivers. */
   cracks: number;
 }
 
@@ -239,7 +215,7 @@ const TERRAINS: Terrain[] = [
   { name: "icecrust", seed: 79, plates: 8, continental: 0.5, split: 0.15, relief: 0.5, mountains: 0.1, volcanoes: 0, plains: 0.5, rain: 0, carve: 0, craters: 120, craterMax: 0.04, cracks: 650 },
 ];
 
-/** The height before any weather: plates, mountain belts, volcanoes. */
+/** Builds the height map before erosion from plates, mountain belts and volcanoes. */
 function buildTerrain(t: Terrain): Float32Array {
   const rand = random(t.seed);
   const noise = new Noise(t.seed * 7 + 1);
@@ -247,7 +223,7 @@ function buildTerrain(t: Terrain): Float32Array {
   const cx = new Float32Array(K);
   const cy = new Float32Array(K);
   const cz = new Float32Array(K);
-  // Each plate turns slowly about its own axis; that is its drift.
+  // Each plate drifts as a rotation about its own axis.
   const ox = new Float32Array(K);
   const oy = new Float32Array(K);
   const oz = new Float32Array(K);
@@ -277,7 +253,7 @@ function buildTerrain(t: Terrain): Float32Array {
     const py = PY[i];
     const pz = PZ[i];
 
-    // Bent coordinates give ragged plate edges instead of straight lines.
+    // Warped coordinates give ragged plate edges instead of straight lines.
     let wx = px + 0.42 * noise.fbm(px * 1.7 + 31.7, py * 1.7, pz * 1.7, 6);
     let wy = py + 0.42 * noise.fbm(px * 1.7, py * 1.7 + 67.1, pz * 1.7, 6);
     let wz = pz + 0.42 * noise.fbm(px * 1.7, py * 1.7, pz * 1.7 + 11.9, 6);
@@ -305,7 +281,7 @@ function buildTerrain(t: Terrain): Float32Array {
     // Distance to the edge between the two nearest plates, in radians.
     const edge = (angle(next) - angle(best)) / 2;
 
-    // Do the two plates move towards each other here (above 0) or apart?
+    // A positive `closing` means the two plates converge here, a negative one that they separate.
     let tx = cx[second] - cx[first];
     let ty = cy[second] - cy[first];
     let tz = cz[second] - cz[first];
@@ -334,7 +310,7 @@ function buildTerrain(t: Terrain): Float32Array {
     }
 
     const ridges = noise.ridged(px * 5.2 + 3.3, py * 5.2, pz * 5.2, 6);
-    // Old ranges inside the continents, worn lower than the young belts.
+    // Old ranges inside continents are kept lower than the young collision belts.
     const inner = Math.max(0, noise.fbm(px * 1.3 + 7.1, py * 1.3, pz * 1.3, 3)) * (land[first] ? 1 : 0.15);
     height += t.mountains * (uplift * (0.28 + 0.75 * ridges) + inner * 0.55 * ridges);
     height += t.relief * 0.55 * noise.fbm(px * 2.3, py * 2.3 + 5.5, pz * 2.3, 10);
@@ -342,7 +318,7 @@ function buildTerrain(t: Terrain): Float32Array {
     for (const v of volcanoes) {
       const d = angle(px * v.x + py * v.y + pz * v.z) / v.radius;
       if (d >= 1) continue;
-      // A broad shield with a pit at the summit.
+      // Each volcano is a broad shield with a caldera at the summit.
       const shield = Math.pow(1 - d, 1.6);
       const pit = d < 0.12 ? (0.12 - d) * 2.2 : 0;
       height += v.height * (shield - pit) * (0.85 + 0.3 * ridges);
@@ -352,7 +328,7 @@ function buildTerrain(t: Terrain): Float32Array {
   }
 
   if (t.plains > 0) {
-    // Lowlands fill with sediment or lava and become plains.
+    // The lowest 35% are flattened, as if filled with sediment or lava.
     const sorted = Float32Array.from(h).sort();
     const low = sorted[Math.floor(sorted.length * 0.35)];
     for (let i = 0; i < h.length; i++) {
@@ -362,15 +338,12 @@ function buildTerrain(t: Terrain): Float32Array {
   return h;
 }
 
-/**
- * Rain: each drop runs downhill, picks up ground where it is fast and drops it
- * where it slows. Thousands of them cut valleys and build plains.
- */
+/** Hydraulic erosion: simulated raindrops pick up sediment where they are fast and deposit it where they slow. */
 function erode(h: Float32Array, t: Terrain): void {
   const drops = Math.floor(W * H * t.rain);
   if (drops === 0) return;
   const rand = random(t.seed * 13 + 5);
-  // The drops work on steeper ground than the stored heights, see `scale`.
+  // Heights are scaled up for the drops, so they see steeper slopes than are stored.
   const scale = (W / 340) * t.carve;
   const inertia = 0.06;
   const capacity = 4;
@@ -393,7 +366,7 @@ function erode(h: Float32Array, t: Terrain): void {
   for (const b of brush) b.w /= weight;
 
   for (let n = 0; n < drops; n++) {
-    // Spread evenly over the ball, not over the map.
+    // Drops are spread evenly over the sphere, not over the map, so the poles are not overcrowded.
     let y = (0.5 - Math.asin(rand() * 2 - 1) / Math.PI) * H - 0.5;
     let x = rand() * W;
     let dirX = 0;
@@ -465,10 +438,7 @@ function erode(h: Float32Array, t: Terrain): void {
   }
 }
 
-/**
- * Takes the grain of single raindrops out of the heights. The light on slopes
- * would show it as a rough skin all over the land.
- */
+/** Blurs away the grain of single raindrops, which lighting would show as a rough skin on all land. */
 function smooth(h: Float32Array): void {
   const copy = Float32Array.from(h);
   for (let y = 1; y < H - 1; y++) {
@@ -487,7 +457,7 @@ function smooth(h: Float32Array): void {
   }
 }
 
-/** A heap of cell numbers, lowest height first. */
+/** Min-heap of cell indices, ordered by height. */
 class Heap {
   private readonly cells: number[] = [];
   constructor(private readonly key: Float32Array) {}
@@ -530,9 +500,8 @@ class Heap {
 }
 
 /**
- * Where water gathers: every cell hands its rain to a lower neighbour, from
- * the summits down to the deepest basins. Hollows are filled on the way, so
- * rivers run through to the sea. Returns 0 (ridge) to 1 (largest rivers).
+ * Computes flow accumulation after filling depressions, so that rivers run through to the sea.
+ * Returns 0 on ridges up to 1 for the largest rivers.
  */
 function rivers(h: Float32Array): Float32Array {
   const n = W * H;
@@ -542,7 +511,7 @@ function rivers(h: Float32Array): Float32Array {
   const order = new Int32Array(n);
   const heap = new Heap(filled);
 
-  // The deepest tenth is certainly sea or basin floor: water ends there.
+  // The deepest tenth is assumed to be sea or basin floor, where water drains.
   const sorted = Float32Array.from(h).sort();
   const floor = sorted[Math.floor(n * 0.1)];
   for (let i = 0; i < n; i++) {
@@ -582,11 +551,9 @@ function rivers(h: Float32Array): Float32Array {
   const out = new Float32Array(n);
   const top = Math.log(1 + n * 0.004);
   for (let i = 0; i < n; i++) {
-    // Filled hollows are lakes or level plains. Water crosses them without a
-    // bed of its own, and drawing its path there would hatch them with lines.
+    // Filled depressions are lakes or plains; drawing flow paths there would hatch them with lines.
     const level = filled[i] !== h[i];
-    // Only real valleys and rivers are kept, from where a fair stretch of
-    // land drains together. The trickle on every slope would only be noise.
+    // Small catchments are dropped, because the trickle on every slope would only add noise.
     const amount = Math.min(1, Math.log(1 + water[i]) / top);
     out[i] = h[i] <= floor || level ? 0 : Math.max(0, (amount - 0.45) / 0.55);
   }
@@ -594,9 +561,8 @@ function rivers(h: Float32Array): Float32Array {
 }
 
 /**
- * Lets fine lines keep some strength when the map is seen from afar, and
- * rounds them off: a line one pixel wide runs in steps, which show as soon as
- * the viewer comes close.
+ * Widens and softens thin lines, so they survive mipmapping and do not show
+ * pixel steps up close.
  */
 function widen(lines: Float32Array): Float32Array {
   const wide = new Float32Array(lines.length);
@@ -606,7 +572,7 @@ function widen(lines: Float32Array): Float32Array {
       for (let dy = -1; dy <= 1; dy++) {
         const ny = Math.min(H - 1, Math.max(0, y + dy));
         for (let dx = -1; dx <= 1; dx++) {
-          // Less across a corner than across an edge, so the line grows round.
+          // Diagonal neighbours get less weight, so the widened line stays round.
           const reach = dx !== 0 && dy !== 0 ? 0.6 : 0.82;
           around = Math.max(around, lines[ny * W + ((x + dx + W) % W)] * reach);
         }
@@ -632,12 +598,12 @@ function widen(lines: Float32Array): Float32Array {
   return out;
 }
 
-/** Long cracks in a crust of ice: arcs of great circles, some of them doubled. */
+/** Draws ice-crust cracks as slightly bent great-circle arcs and raises the ice along them. */
 function cracks(t: Terrain, h: Float32Array): Float32Array {
   const rand = random(t.seed * 17 + 3);
   const out = new Float32Array(W * H);
   for (let c = 0; c < t.cracks; c++) {
-    // A great circle is all points at right angles to its pole.
+    // The arc lies in the plane perpendicular to the random pole n, spanned by u and v.
     const [nx, ny, nz] = randomDirection(rand);
     let [ux, uy, uz] = randomDirection(rand);
     const d = ux * nx + uy * ny + uz * nz;
@@ -658,7 +624,7 @@ function cracks(t: Terrain, h: Float32Array): Float32Array {
     const steps = Math.ceil((length * W) / Math.PI);
     for (let s = 0; s <= steps; s++) {
       const a = (s / steps) * length;
-      // A slight bend keeps the cracks from looking ruled.
+      // A slight bend keeps the cracks from looking drawn with a ruler.
       const off = bend * Math.sin((s / steps) * Math.PI);
       let x = Math.cos(a) * ux + Math.sin(a) * vx + off * nx;
       let y = Math.cos(a) * uy + Math.sin(a) * vy + off * ny;
@@ -688,14 +654,13 @@ function cracks(t: Terrain, h: Float32Array): Float32Array {
       }
     }
   }
-  // The ice is pushed up a little along its cracks.
   for (let i = 0; i < out.length; i++) h[i] += out[i] * 0.03;
   return out;
 }
 
 /**
- * Impacts: a bowl, a raised rim and a blanket of thrown-out ground. Young
- * craters wipe out what lay below them. Returns the change in height.
+ * Returns the height change from impact craters (bowl, raised rim and ejecta blanket).
+ * Later craters overwrite earlier ones beneath them.
  */
 function craters(t: Terrain): Float32Array {
   const rand = random(t.seed * 19 + 7);
@@ -703,10 +668,10 @@ function craters(t: Terrain): Float32Array {
   const smallest = (1.6 * Math.PI) / H;
   for (let c = 0; c < t.craters; c++) {
     const [x, y, z] = randomDirection(rand);
-    // Many small ones, few large ones.
+    // Radii follow a power law, so there are many small craters and few large ones.
     const radius = smallest / Math.pow(1 - rand() * (1 - (smallest / t.craterMax) ** 2), 0.5);
-    // Small craters are shallow, large ones deep. The giant basins are
-    // shallow for their width again: their floors rose and their rims sank.
+    // Depth grows with size, but giant basins are shallow for their width again
+    // because their floors rebound and their rims slump.
     const depth = (0.25 + 0.75 * Math.min(1, radius / 0.06)) * Math.min(1, 0.16 / radius);
     const age = rand();
     const [fx, fy] = toPixel(x, y, z);
@@ -721,7 +686,7 @@ function craters(t: Terrain): Float32Array {
         const i = yy * W + xx;
         const d = angle(PX[i] * x + PY[i] * y + PZ[i] * z) / radius;
         if (d > 2.2) continue;
-        // Old craters are worn: shallower bowls and softer rims.
+        // Older craters are weathered, with shallower bowls and softer rims.
         const worn = 0.45 + 0.55 * age;
         const bowl = d < 1 ? (d * d - 1) * depth * worn : 0;
         const rim = Math.exp(-(((d - 1) / 0.14) ** 2)) * 0.32 * depth * worn;
@@ -734,35 +699,32 @@ function craters(t: Terrain): Float32Array {
   return out;
 }
 
-// ---- Gas giants ----------------------------------------------------------------
-
 interface Bands {
   name: string;
   seed: number;
   /** Number of jets between the poles and how fast they blow. */
   jets: number;
   wind: number;
-  /** Strength of the jet at the equator: Saturn has a broad fast one. */
+  /** Strength of the equatorial jet; Saturn, for example, has a broad fast one. */
   equator: number;
-  /** Counts of large ovals and of smaller whirls that last, and how hard they turn. */
+  /** Counts of large ovals and of smaller long-lived eddies, and how fast they spin. */
   ovals: number;
   eddies: number;
   spin: number;
-  /** Strength of the turbulence between the jets, and how fine it is (swirls around the planet's girth). */
+  /** Strength of the turbulence between the jets, and its scale in swirls around the circumference. */
   turbulence: number;
   grain: number;
   /** How finely the belts are divided. */
   belts: number;
-  /** How long the simulation runs: longer draws the clouds out further. */
+  /** Simulation duration; a longer run draws the clouds out further. */
   time: number;
 }
 
-/** Strength of the alternating jets, where the jet at the equator of a preset with `equator: 1` has the strength 1. */
+/** Strength of the alternating jets, relative to an equatorial jet with `equator: 1`. */
 const JET_STRENGTH = 0.75;
-/** How narrow the jet at the equator is. */
 const EQUATOR_NARROWNESS = 7;
 
-/** The winds of a band preset as the shader reads them (GlobeSpec.jets and belts in globe/spec.ts). */
+/** Winds of a band preset in the form the shader reads them (GlobeSpec in globe/spec.ts). */
 interface Winds {
   strength: number;
   count: number;
@@ -770,24 +732,22 @@ interface Winds {
   narrowness: number;
   phase: number;
   /**
-   * The largest storms, so the shader can let them turn: longitude and
-   * latitude of the centre in radians, half its height in radians of
-   * latitude (it is 1.7 times as wide in longitude), and 1 if it turns
-   * anticlockwise seen from above with north up, -1 if clockwise.
+   * The largest storms, so the shader can rotate them: centre longitude and latitude
+   * (radians), half-height in latitude (radians; the storm is 1.7 times as wide), and
+   * 1 for anticlockwise or -1 for clockwise rotation, seen from above with north up.
    */
   storms: [number, number, number, number][];
 }
 
-/** A storm as the simulation placed it, before rounding: see `Winds.storms`. */
+/** A storm as simulated, before rounding (see `Winds.storms`). */
 type Storm = [lon: number, lat: number, size: number, spin: number];
 
-/** How many storms a preset names for the shader. */
+/** Maximum number of storms passed to the shader per preset. */
 const NAMED_STORMS = 6;
 
 /**
- * The winds a band preset is simulated with, for the shader: it lets them
- * blow on, so the clouds drift the way they were drawn out. Only their shape
- * counts there, so the fastest latitude gets a speed of about 1.
+ * Exports the simulated winds, so the shader can keep the clouds drifting the way they
+ * were drawn out. Only the profile shape matters, so speeds are normalised to about 1.
  */
 function winds(b: Bands, phase: number, storms: Storm[]): Winds {
   const fastest = JET_STRENGTH + Math.abs(b.equator);
@@ -821,22 +781,16 @@ const BANDS: Bands[] = [
 ];
 
 /**
- * Lets coloured gas flow in a wind field and records where it ends up. For
- * every pixel the path of the gas is followed backwards in time, which keeps
- * the finest threads sharp, where a grid of dye would blur them. Returns the
- * picture and where along the latitudes the alternating jets begin.
- *
- * Three winds blow at once: the jets along the latitudes, a few whirls that
- * last (the ovals), and turbulence that keeps changing while the gas flows.
- * In a flow that stands still, gas winds up into neat spirals, which look
- * drawn. In one that changes, it is stretched and folded into the festoons
- * and ragged plumes of a real giant.
+ * Advects tracers through zonal jets, long-lived vortices and time-varying turbulence.
+ * Each pixel is traced backwards in time, which keeps fine filaments sharp where a
+ * dye grid would blur them. The turbulence must vary in time: a steady flow winds the
+ * gas into neat spirals that look drawn. Returns the pixels, the jet phase and the storms.
  */
 function buildBands(b: Bands): { pixels: Uint8Array; phase: number; storms: Storm[] } {
   const rand = random(b.seed);
   const noise = new Noise(b.seed * 3 + 1);
 
-  // Wind along the latitudes, by row. Positive blows east.
+  // Zonal wind per row; positive values blow east.
   const phase = rand() * 6.28;
   const windAt = (s: number) =>
     (Math.sin(s * b.jets + phase) * JET_STRENGTH + b.equator * Math.exp(-s * s * EQUATOR_NARROWNESS)) *
@@ -844,9 +798,8 @@ function buildBands(b: Bands): { pixels: Uint8Array; phase: number; storms: Stor
     b.wind;
   const jet = new Float32Array(H);
   for (let y = 0; y < H; y++) jet[y] = windAt(Math.sin((0.5 - (y + 0.5) / H) * Math.PI));
-  // How fast the wind changes at a share of the height of the map, measured
-  // on the rows of the full-size map whatever the size of this run, so the
-  // whirls land in the same places in a small trial run.
+  // Shear is always measured on full-size rows, so vortices land in the same
+  // places in a smaller trial run.
   const SHEAR_ROWS = 1024;
   const shearAt = (where: number) => {
     const row = Math.floor(SHEAR_ROWS * where);
@@ -854,15 +807,15 @@ function buildBands(b: Bands): { pixels: Uint8Array; phase: number; storms: Stor
     return at(row + 3) - at(row - 3);
   };
 
-  // Everything but the jets is a stream function on a coarser grid: gas flows
-  // along its contour lines, so nothing piles up or thins out.
+  // Everything except the jets is a stream function on a coarser grid. Its flow is
+  // divergence-free, so the gas neither piles up nor thins out.
   const GW = 1024;
   const GH = 512;
   const steady = new Float32Array(GW * GH);
   const storms = new Float32Array(GW * GH);
   const named: Storm[] = [];
   const whirl = (size: number, turns: number, marks: boolean) => {
-    // Whirls sit where the wind changes fastest and roll with it.
+    // Vortices are placed where the shear is strongest and spin with it.
     let row = 0;
     let shear = 0;
     let at = 0;
@@ -879,10 +832,9 @@ function buildBands(b: Bands): { pixels: Uint8Array; phase: number; storms: Stor
     const gy = (row / H) * GH;
     const sx = size * 1.7;
     const sy = size;
-    // This strength turns the centre `turns` times during the simulation.
+    // This strength rotates the centre `turns` times during the simulation.
     const strength = turns * 2 * Math.PI * sx * sy * Math.sign(shear || 1);
-    // Gas circles a whirl of positive strength anticlockwise: east of the
-    // centre it flows north, north of it west. Its place is taken from the
+    // Positive strength means anticlockwise rotation. The position comes from the
     // unrounded row, so it does not depend on the size of the run.
     if (marks) {
       named.push([(gx / GW - 0.5) * 2 * Math.PI, (0.5 - at) * Math.PI, (sy / GH) * Math.PI, Math.sign(strength)]);
@@ -895,7 +847,7 @@ function buildBands(b: Bands): { pixels: Uint8Array; phase: number; storms: Stor
       for (let dx = -reachX; dx <= reachX; dx++) {
         const xx = (((Math.round(gx) + dx) % GW) + GW) % GW;
         const r2 = (dx / sx) ** 2 + (dy / sy) ** 2;
-        // Down to exactly nothing at the edge: a step there would show as a scratch.
+        // The falloff reaches exactly zero at the edge, because a step there would show as a scratch.
         if (r2 >= 9) continue;
         steady[yy * GW + xx] += strength * (Math.exp(-r2 * 0.5) - Math.exp(-4.5)) * (1 - r2 / 9);
         if (marks) storms[yy * GW + xx] = Math.max(storms[yy * GW + xx], Math.exp(-r2 * 0.9));
@@ -905,8 +857,8 @@ function buildBands(b: Bands): { pixels: Uint8Array; phase: number; storms: Stor
   for (let i = 0; i < b.ovals; i++) whirl(9 + 9 * rand(), 0.8 * b.spin, true);
   for (let i = 0; i < b.eddies; i++) whirl(3 + 4 * rand(), 0.5 * b.spin, rand() < 0.5);
 
-  // The turbulence at a few moments of the simulation; in between it is
-  // blended. It is strongest where neighbouring jets rub against each other.
+  // Turbulence is sampled at a few moments and blended in between. It is
+  // strongest where neighbouring jets shear against each other.
   const MOMENTS = 7;
   const rub = new Float32Array(GH);
   let strongest = 1e-6;
@@ -915,16 +867,15 @@ function buildBands(b: Bands): { pixels: Uint8Array; phase: number; storms: Stor
     rub[y] = Math.abs(jet[Math.min(H - 1, row + 4)] - jet[Math.max(0, row - 4)]);
     strongest = Math.max(strongest, rub[y]);
   }
-  // A swirl is this many cells of the grid wide. The turbulence carries the
-  // gas a fraction of that width: enough to fold the edges of the belts into
-  // festoons, not enough to stir the belts away.
+  // `swirl` is the eddy width in grid cells. Turbulence moves the gas only a fraction
+  // of it: enough to fold belt edges into festoons, but not enough to erase the belts.
   const swirl = GW / (2 * Math.PI) / b.grain;
   const push = (b.turbulence * 0.35 * swirl * swirl) / 0.25;
   const eu: Float32Array[] = [];
   const ev: Float32Array[] = [];
   const psi = new Float32Array(GW * GH);
   for (let m = 0; m < MOMENTS; m++) {
-    // Moving through the noise lets the swirls drift, grow and fade.
+    // Offsetting the noise over time lets the eddies drift, grow and fade.
     const age = (m / (MOMENTS - 1)) * 0.45;
     for (let y = 0; y < GH; y++) {
       const lat = (0.5 - (y + 0.5) / GH) * Math.PI;
@@ -933,7 +884,7 @@ function buildBands(b: Bands): { pixels: Uint8Array; phase: number; storms: Stor
       const here = push * (0.3 + 0.7 * (rub[y] / strongest)) * (1 - Math.pow(Math.abs(s), 6));
       for (let x = 0; x < GW; x++) {
         const lon = ((x + 0.5) / GW - 0.5) * 2 * Math.PI;
-        // Drawn out along the latitudes, as the jets draw out everything.
+        // The noise is stretched along latitudes, as the jets would stretch it.
         const turbulent = noise.fbm(
           c * Math.sin(lon) * b.grain * 0.6 + age * 1.3,
           s * b.grain + 31.4 - age * 0.7,
@@ -958,13 +909,13 @@ function buildBands(b: Bands): { pixels: Uint8Array; phase: number; storms: Stor
 
   const STEPS = 72;
   const dt = 1 / STEPS;
-  // How far the jets drag the gas along, in cells of the coarse grid.
+  // Total jet displacement in coarse grid cells.
   const SHEAR = 26 * b.time;
   const sx = GW / W;
   const sy = GH / H;
   const out = new Uint8Array(W * H * 3);
 
-  // The wind of the whirls and the turbulence at a place and a moment.
+  // Writes the interpolated vortex and turbulence wind into windU and windV to avoid allocations.
   let windU = 0;
   let windV = 0;
   const wind = (x: number, y: number, moment: number) => {
@@ -1000,8 +951,7 @@ function buildBands(b: Bands): { pixels: Uint8Array; phase: number; storms: Stor
     for (let px = 0; px < W; px++) {
       let x = px * sx;
       let y = py * sy;
-      // Backwards in time, from the picture to where the gas came from, with
-      // a half step for accuracy.
+      // Trace backwards in time with a midpoint step for accuracy.
       for (let step = 0; step < STEPS; step++) {
         const moment = (1 - (step + 0.5) / STEPS) * (MOMENTS - 1);
         wind(x, y, moment);
@@ -1011,7 +961,7 @@ function buildBands(b: Bands): { pixels: Uint8Array; phase: number; storms: Stor
         y = Math.min(GH - 1, Math.max(0, y - windV * dt));
       }
 
-      // The gas as it was at the start: belts by latitude and fine streaks.
+      // Sample the initial tracers (belts by latitude and fine streaks) at the origin.
       const lat = (0.5 - (y + 0.5) / GH) * Math.PI;
       const lon = (x / GW - 0.5) * 2 * Math.PI;
       const s = Math.sin(lat);
@@ -1033,18 +983,14 @@ function buildBands(b: Bands): { pixels: Uint8Array; phase: number; storms: Stor
   return { pixels: out, phase, storms: named };
 }
 
-// ---- Output ------------------------------------------------------------------
-
 async function save(name: string, pixels: Uint8Array, separate: boolean): Promise<void> {
   const image = () => sharp(pixels, { raw: { width: W, height: H, channels: 3 } });
-  // Ordinary lossy pictures store brightness and colour, which mixes the
-  // three channels: rivers would leak into the heights and show as dotted
-  // ground. Terrain is therefore stored "near lossless", which keeps the
-  // channels apart. The bands of gas giants do not mind the mixing.
+  // Lossy WebP mixes channels through its YUV conversion, so rivers would leak into
+  // the heights as dotted ground. Terrain is therefore stored near-lossless; bands tolerate it.
   const format = separate
     ? ({ nearLossless: true, quality: 20, effort: 6 } as const)
     : ({ quality: 84, smartSubsample: true, effort: 6 } as const);
-  // Large for the 3D model, small for the images in lists.
+  // Large for the 3D model, small for list thumbnails.
   await image()
     .resize(2048, 1024, { kernel: "cubic" })
     .webp(format)
@@ -1055,7 +1001,7 @@ async function save(name: string, pixels: Uint8Array, separate: boolean): Promis
     .toFile(path.join(OUT, `${name}-sm.webp`));
 }
 
-/** Heights below which each twentieth of the surface lies, for choosing a sea level. */
+/** Area-weighted height quantiles in 5% steps, used by the app to choose a sea level. */
 function levels(height: Uint8Array): number[] {
   const histogram = new Float64Array(256);
   let total = 0;
@@ -1076,7 +1022,7 @@ function levels(height: Uint8Array): number[] {
   return out;
 }
 
-/** What presets.json holds. */
+/** Shape of presets.json. */
 interface Meta {
   terrain: Record<string, { levels: number[] }>;
   bands: Record<string, Winds>;
@@ -1084,7 +1030,7 @@ interface Meta {
 
 async function main() {
   await mkdir(OUT, { recursive: true });
-  // A run that only simulates one kind keeps what is known of the other.
+  // A run of one kind keeps the existing metadata of the other kind.
   const known = await readFile(META, "utf8").then(
     (text) => JSON.parse(text) as Partial<Meta>,
     () => ({}) as Partial<Meta>,
@@ -1100,12 +1046,11 @@ async function main() {
     const h = buildTerrain(t);
     erode(h, t);
     if (t.rain > 0) smooth(h);
-    // Without rain there are no rivers: the green channel stays empty.
     const lines =
       t.cracks > 0 ? cracks(t, h) : t.rain > 0 ? rivers(h) : new Float32Array(W * H);
     const dents = craters(t);
 
-    // The heights fill the whole range of a byte, without the rare extremes.
+    // Heights are stretched to the full byte range, ignoring the outer 0.2% so rare extremes do not compress it.
     const sorted = Float32Array.from(h).sort();
     const low = sorted[Math.floor(sorted.length * 0.002)];
     const high = sorted[Math.floor(sorted.length * 0.998)];
@@ -1132,7 +1077,7 @@ async function main() {
     console.log(`${b.name}: ${((Date.now() - started) / 1000).toFixed(1)} s`);
   }
 
-  // A trial run of some presets leaves the file as it is.
+  // A partial run with PRESET_ONLY must not overwrite the metadata of the other presets.
   if (!ONLY) await writeFile(META, `${JSON.stringify(meta, null, 2)}\n`);
 }
 

@@ -8,7 +8,7 @@ describe("map queries", () => {
     expect(slugs[0]).toBe("sun");
     expect(slugs[1]).toBe("proxima-cen");
     expect(slugs).toContain("trappist-1");
-    // Without a distance the star has no place on the map.
+    // A star without a distance cannot be placed on the map.
     expect(slugs).not.toContain("nodist-1");
     for (const star of stars) {
       expect(Number.isFinite(star.x) && Number.isFinite(star.y) && Number.isFinite(star.z)).toBe(true);

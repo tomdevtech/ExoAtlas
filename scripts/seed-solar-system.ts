@@ -1,9 +1,9 @@
 /**
- * Creates our solar system: the Sun and its eight planets.
+ * Stores the Sun and its eight planets in the database.
  *
  *   npm run seed:sol
  *
- * The data and the logic live in src/app/solar-system. This file only starts it.
+ * It writes to the database given by DATABASE_URL.
  */
 import { seedSolarSystem } from "@/app/solar-system/seed";
 import { closeDb } from "@/db/client";

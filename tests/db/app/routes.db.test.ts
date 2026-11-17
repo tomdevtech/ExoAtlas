@@ -1,6 +1,6 @@
 /**
- * The three JSON endpoints, called the way Next.js calls them, against the
- * test database. The browser tests in e2e/ call them once more over HTTP.
+ * Calls the three JSON endpoints the way Next.js does, against the test
+ * database. The browser tests in e2e/ also call them over HTTP.
  */
 import { NextRequest } from "next/server";
 import { describe, expect, it, vi } from "vitest";
@@ -9,7 +9,7 @@ import { GET as getStars } from "@/app/map/stars/route";
 import { GET as getSystem } from "@/app/map/systems/[slug]/route";
 import { GET as suggest, type Suggestion } from "@/app/search/suggest/route";
 
-// connection() only works inside a request that Next.js handles.
+// connection() only works inside a request that Next.js handles, so it is stubbed here.
 vi.mock("next/server", async (importOriginal) => ({
   ...(await importOriginal<typeof import("next/server")>()),
   connection: async () => {},
@@ -41,7 +41,7 @@ describe("GET /search/suggest", () => {
   });
 
   it("caps the list at eight suggestions", async () => {
-    // "st" is in ten names: TRAPPIST-1 and its seven planets, Nodist-1 and its planet.
+    // "st" occurs in ten names (TRAPPIST-1 and its seven planets, Nodist-1 and its planet), so the cap applies.
     const { body } = await suggestions("st");
     expect(body.suggestions).toHaveLength(8);
   });

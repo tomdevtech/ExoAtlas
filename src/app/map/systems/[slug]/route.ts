@@ -1,7 +1,7 @@
 import { toMapSystem } from "../../payload";
 import { getMapSystem } from "../../queries";
 
-/** GET /map/systems/[slug] answers with a star and its planets as the system view draws them. */
+/** Returns a star and its planets for the system view, or 404 if the star is unknown. */
 export async function GET(_request: Request, ctx: RouteContext<"/map/systems/[slug]">) {
   const { slug } = await ctx.params;
   try {

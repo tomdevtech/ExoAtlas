@@ -23,7 +23,6 @@ describe("checkHealth", () => {
     );
     expect(report).toEqual({ status: "error", database: "unreachable", commit: null });
     expect(JSON.stringify(report)).not.toContain("password");
-    // The details go to the server log.
     expect(log).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ message: secret }));
   });
 

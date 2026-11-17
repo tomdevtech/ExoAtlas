@@ -3,8 +3,7 @@ import { expect, test, typeUntil } from "@tests/e2e/fixtures";
 
 /**
  * Automatic accessibility checks with axe-core against WCAG 2.1 A and AA.
- * They find missing labels, poor contrast, broken ARIA and similar problems.
- * They do not replace a test with a screen reader and the keyboard.
+ * They do not replace a manual test with a screen reader and the keyboard.
  */
 const PAGES: { path: string; ready: string }[] = [
   { path: "/", ready: "Places to start" },
@@ -24,7 +23,7 @@ test.describe("accessibility", () => {
     test(`${path} has no WCAG A/AA violations`, async ({ page }) => {
       await page.goto(path);
       await expect(page.getByRole("heading", { name: ready }).first()).toBeVisible();
-      // Wait for the streamed parts; their placeholders say aria-busy.
+      // The streamed parts must be in place before checking, and their placeholders carry aria-busy.
       await expect(page.locator("[aria-busy=true]")).toHaveCount(0);
 
       const results = await new AxeBuilder({ page })
@@ -50,7 +49,6 @@ test.describe("accessibility", () => {
 
   test("the page can be used with the keyboard alone", async ({ page }) => {
     await page.goto("/planets");
-    // The first Tab lands on the logo link in the header.
     await page.keyboard.press("Tab");
     await expect(page.getByRole("banner").getByRole("link", { name: "ExoFinder" })).toBeFocused();
     await page.keyboard.press("Tab");

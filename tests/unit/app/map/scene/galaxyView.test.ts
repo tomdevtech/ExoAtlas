@@ -4,9 +4,9 @@ import { GALACTIC_CENTRE } from "@/app/map/galaxy";
 import { GalaxyView, type Viewport } from "@/app/map/scene/galaxyView";
 
 /**
- * How the camera of the galaxy moves. The view is built without a browser:
- * the picture of the galaxy cannot be fetched here, so the galaxy stays
- * without its stars and clouds, which the camera does not need.
+ * These tests cover the galaxy camera. Without a browser the galaxy picture
+ * cannot be fetched, so the view has no stars or clouds, which the camera
+ * does not need.
  */
 
 const viewport: Viewport = { width: 1280, height: 720, pixelRatio: 1 };
@@ -24,7 +24,7 @@ function view(): GalaxyView {
   return new GalaxyView(new Texture(), "/textures/sky/galaxy.jpg");
 }
 
-/** Lets the camera run for some frames of a sixtieth of a second. */
+/** Advances the camera by the given number of frames at 60 frames per second. */
 function run(galaxy: GalaxyView, frames: number, held = keys): void {
   for (let frame = 0; frame < frames; frame++) galaxy.update(1 / 60, held, viewport);
 }
@@ -38,19 +38,18 @@ describe("the camera circling the centre of the galaxy", () => {
     galaxy.flyToOverview(true);
     expect(galaxy.orbiting).toBe(true);
     expect(told).toHaveBeenLastCalledWith(true);
-    // Flying home lets it fly freely again.
     galaxy.flyHome(true);
     expect(galaxy.orbiting).toBe(false);
     expect(told).toHaveBeenLastCalledWith(false);
   });
 
   it("rests exactly where it is when nothing moves it, wherever it was turned to", () => {
-    // Worked out again from itself each frame, the place moved by a rounding
-    // error now and then, and the whole galaxy was drawn again for nothing.
+    // The position used to be recomputed from itself each frame, so rounding
+    // errors moved it now and then and the whole galaxy was redrawn for nothing.
     const galaxy = view();
     galaxy.flyToOverview(true);
     run(galaxy, 5);
-    // The rounding error only struck at a few places in a hundred, so many are tried.
+    // The rounding error only appeared at a few positions in a hundred, so many are tried.
     for (let turn = 0; turn < 400; turn++) {
       galaxy.drag(97 * Math.sin(turn * 12.9898), 61 * Math.sin(turn * 78.233));
       run(galaxy, 2);
@@ -70,9 +69,8 @@ describe("the camera circling the centre of the galaxy", () => {
     run(galaxy, 2);
     const after = galaxy.camera.position.clone();
     expect(after.equals(before)).toBe(false);
-    // On a sphere round the centre: the distance stays.
+    // The camera moves on a sphere around the centre, so its distance must not change.
     expect(after.distanceTo(centre)).toBeCloseTo(distance, 3);
-    // The centre stays in the middle of the view.
     const forward = new Vector3(0, 0, -1).applyQuaternion(galaxy.camera.quaternion);
     expect(forward.angleTo(centre.clone().sub(after))).toBeLessThan(1e-3);
   });
@@ -99,7 +97,7 @@ describe("the camera circling the centre of the galaxy", () => {
     run(galaxy, 5);
     galaxy.setOrbit(false);
     expect(galaxy.orbiting).toBe(false);
-    // Flying freely, W moves the camera forwards, away from where it was.
+    // In free flight, W moves the camera forwards and away from where it was.
     const before = galaxy.camera.position.clone();
     run(galaxy, 30, new Set(["KeyW"]));
     expect(galaxy.camera.position.distanceTo(before)).toBeGreaterThan(0);

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { StarImage } from "./StarImage";
 
-/** What a list entry needs to know about a star. */
+/** The star fields a list entry needs. */
 export interface StarSummary {
   slug: string;
   name: string;
@@ -9,12 +9,12 @@ export interface StarSummary {
   planetCount: number;
 }
 
-/** "Star · 3 known planets". */
+/** Describes a star by its planet count, for example "Star · 3 known planets". */
 export function describeStar(planetCount: number): string {
   return planetCount === 1 ? "Star · 1 known planet" : `Star · ${planetCount} known planets`;
 }
 
-/** A star as a list entry. Links to its page. */
+/** A star as a list entry that links to its page. */
 export function StarCard({ star }: { star: StarSummary }) {
   return (
     <Link

@@ -8,7 +8,6 @@ on:
 permissions:
   contents: read
 
-# A new push to the same branch cancels the run that is still going.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -36,13 +35,14 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-      # What ships to visitors must have no known vulnerability at all.
+      # Code that ships to visitors must have no known vulnerability at all.
       - name: Production dependencies
         run: npm audit --omit=dev --audit-level=low
-      # Tools that only run on our machines and here may have moderate ones,
-      # which often wait for a new release of the tool.
+      # Dev tools may have moderate advisories, but high or critical ones fail
+      # unless src/deploy/audit.ts accepts them temporarily.
+      - run: npm ci
       - name: All dependencies
-        run: npm audit --audit-level=high
+        run: npm run audit:tools
 
   db:
     runs-on: ubuntu-24.04
@@ -91,8 +91,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      # Pinned to ubuntu-24.04: ubuntu-latest moved to Ubuntu 26, for which this
-      # Playwright version cannot install the browser dependencies.
+      # The runner is pinned to ubuntu-24.04 because this Playwright version
+      # cannot install its browser dependencies on Ubuntu 26.
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       - name: Keep the report of a failed run

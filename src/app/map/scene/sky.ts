@@ -16,9 +16,8 @@ export interface Sky {
 }
 
 /**
- * The night sky as a background: a photograph of the whole Milky Way as seen
- * from Earth (ESO/S. Brunier). `toGalactic` turns the directions of the scene
- * into galactic ones, so the band of the Milky Way lies where it belongs.
+ * Creates the background sphere that shows the all-sky Milky Way photograph (ESO/S. Brunier).
+ * `toGalactic` rotates scene directions into galactic coordinates so that the band lies where it belongs.
  */
 export function createSky(texture: Texture, toGalactic: Matrix3): Sky {
   const material = new RawShaderMaterial({

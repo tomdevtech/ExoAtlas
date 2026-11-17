@@ -3,7 +3,7 @@ import { buildCatalog, type Catalog } from "@/app/sync/nasa";
 import { implausible, planSync, type ExistingPlanet, type ExistingStar } from "@/app/sync/plan";
 import { nasaRow } from "@tests/support/sync-fixtures";
 
-/** Pretends that a catalogue is already stored in the database. */
+/** Builds the database state for a catalogue that is already stored. */
 function stored(catalog: Catalog) {
   const stars: ExistingStar[] = catalog.stars.map((star, i) => ({
     ...star,

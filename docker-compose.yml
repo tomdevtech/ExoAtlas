@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: exofinder
       POSTGRES_DB: exofinder
     ports:
-      # Reachable from this machine only.
+      # Bound to localhost so the database is not reachable from the network.
       - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data

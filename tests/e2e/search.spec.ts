@@ -1,6 +1,6 @@
 import { expect, test, typeUntil } from "@tests/e2e/fixtures";
 
-/** The large search field on the start page. In the header it is hidden there. */
+/** Returns the large search field on the start page, where the header search is hidden. */
 function heroSearch(page: import("@playwright/test").Page) {
   const box = page.locator("[data-hero-search]");
   return {
@@ -46,7 +46,7 @@ test.describe("search suggestions", () => {
     await page.goto("/");
     const { field, list } = heroSearch(page);
     await field.fill("k");
-    // Give the debounce time to fire, then make sure nothing was suggested.
+    // A fixed wait is needed here because the test checks that nothing appears after the debounce.
     await page.waitForTimeout(400);
     await expect(list).toBeHidden();
   });

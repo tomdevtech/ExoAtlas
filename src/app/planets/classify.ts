@@ -2,9 +2,8 @@ export type PlanetClass = "rocky" | "super_earth" | "neptune_like" | "gas_giant"
 export type ClimateClass = "frozen" | "cold" | "temperate" | "hot" | "scorching";
 
 /**
- * Radius in Earth radii from the mass in Earth masses, using the mass-radius
- * relation of Chen & Kipping (2017). Only an estimate for planets without a
- * measured radius.
+ * Estimates the radius in Earth radii from the mass in Earth masses with the mass-radius relation of
+ * Chen & Kipping (2017). It is only used for planets without a measured radius.
  */
 export function radiusFromMass(massEarth: number): number {
   if (massEarth < 2.04) return 1.008 * massEarth ** 0.279;
@@ -12,7 +11,7 @@ export function radiusFromMass(massEarth: number): number {
   return 17.7 * massEarth ** -0.044;
 }
 
-/** Planet class from the radius. Without a radius it is estimated from the mass. */
+/** Planet class from the radius. Without a measured radius, the radius is estimated from the mass. */
 export function classifyPlanet(
   radiusEarth: number | null,
   massEarth: number | null,

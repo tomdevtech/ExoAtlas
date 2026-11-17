@@ -10,14 +10,14 @@ export function kelvinToCelsius(kelvin: number): number {
 
 const integer = new Intl.NumberFormat("en-US");
 
-/** Whole number with thousands separators: 6470 becomes "6,470". */
+/** Formats a whole number with thousands separators, so 6470 becomes "6,470". */
 export function formatCount(value: number): string {
   return integer.format(value);
 }
 
 /**
- * Number with about three significant digits: 1234.5 becomes "1,235",
- * 12.345 becomes "12.3" and 0.01234 becomes "0.0123".
+ * Formats a number with about three significant digits: 1234.5 becomes "1,235", 12.345 becomes "12.3"
+ * and 0.01234 becomes "0.0123".
  */
 export function formatNumber(value: number): string {
   const abs = Math.abs(value);
@@ -42,17 +42,17 @@ const dateTimeFormat = new Intl.DateTimeFormat("en-US", {
   timeZone: "UTC",
 });
 
-/** "November 14, 2026" */
+/** Formats a date in UTC, for example "November 14, 2026". */
 export function formatDate(date: Date): string {
   return dateFormat.format(date);
 }
 
-/** "November 14, 2026 at 7:53 PM UTC" */
+/** Formats a date and time in UTC, for example "November 14, 2026 at 7:53 PM UTC". */
 export function formatDateTime(date: Date): string {
   return `${dateTimeFormat.format(date)} UTC`;
 }
 
-/** Orbital period in days, or in years from two years up. */
+/** Formats an orbital period in days, or in years from two years up. */
 export function formatPeriod(days: number): string {
   if (days < 730) return `${formatNumber(days)} days`;
   return `${formatNumber(days / 365.25)} years`;

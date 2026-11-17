@@ -2,25 +2,22 @@ import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
 
-// Next.js reloads modules again and again during development. Without this
-// global slot every reload would open another set of database connections.
+// Next.js reloads modules repeatedly in development. Keeping the client on globalThis stops every reload
+// from opening another set of database connections.
 const globalForDb = globalThis as {
   exofinderSql?: postgres.Sql;
   exofinderDb?: PostgresJsDatabase<typeof schema>;
 };
 
 /**
- * How many connections to open and how to use them, read from the environment.
+ * Connection pool settings read from the environment.
  *
- * - `DATABASE_POOL_SIZE`: connections per running instance, 5 by default. A
- *   host like Vercel starts many instances at once, so the sum can reach the
- *   limit of the database. A pooled database address avoids that.
- * - `DATABASE_PREPARE=false`: no prepared statements. Needed behind a pooler
- *   in transaction mode that does not support them, such as port 6543 at
- *   Supabase.
+ * - `DATABASE_POOL_SIZE`: connections per instance, 5 by default. Hosts like Vercel run many instances at
+ *   once, so the total can reach the database limit; a pooled database URL avoids that.
+ * - `DATABASE_PREPARE=false`: disables prepared statements, which transaction-mode poolers such as
+ *   Supabase on port 6543 do not support.
  *
- * Idle connections close after 20 seconds, so an instance that the host
- * freezes or ends does not keep them open.
+ * Idle connections close after 20 seconds, so an instance the host freezes or stops does not hold them open.
  */
 export function poolOptions(env: Record<string, string | undefined>) {
   const size = Number(env.DATABASE_POOL_SIZE);
@@ -32,12 +29,9 @@ export function poolOptions(env: Record<string, string | undefined>) {
 }
 
 /**
- * The address to connect to.
- *
- * Inside the Next.js server (`inNextServer`) the website only reads. There it
- * takes `DATABASE_URL_READONLY` when that is set: a role that may only read,
- * with a time limit per query (see scripts/create-readonly-role.ts). Scripts
- * and tests run outside Next.js and write, so they always take `DATABASE_URL`.
+ * Returns the database URL. Inside the Next.js server the site only reads, so it uses `DATABASE_URL_READONLY`
+ * when set: a read-only role with a per-query time limit (see scripts/create-readonly-role.ts). Scripts and
+ * tests run outside Next.js and write, so they always use `DATABASE_URL`.
  */
 export function databaseUrl(
   env: Record<string, string | undefined>,
@@ -48,13 +42,10 @@ export function databaseUrl(
   return env.DATABASE_URL?.trim() || undefined;
 }
 
-/**
- * The database. It connects on the first call, not on import, so `next build`
- * also works when no database is reachable.
- */
+/** Returns the shared database client. It connects on the first call, not on import, so `next build` works without a database. */
 export function getDb() {
   if (!globalForDb.exofinderDb) {
-    // Written out in full, so that Next.js can replace it when it bundles the server.
+    // Written out in full so that Next.js can replace it at build time when it bundles the server.
     const inNextServer = Boolean(process.env.NEXT_RUNTIME);
     const url = databaseUrl(process.env, inNextServer);
     if (!url) {
@@ -66,7 +57,7 @@ export function getDb() {
   return globalForDb.exofinderDb;
 }
 
-/** Closes the connections. Scripts need this at the end, otherwise Node keeps running. */
+/** Closes the connections. Scripts must call this at the end, otherwise Node keeps running. */
 export async function closeDb() {
   await globalForDb.exofinderSql?.end();
   globalForDb.exofinderSql = undefined;

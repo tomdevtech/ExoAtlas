@@ -2,8 +2,8 @@ import { ImageBitmapLoader } from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
- * picture.ts runs in the browser. Here the browser's parts are stood in for:
- * fetch, createImageBitmap and a canvas that hands back fixed pixels.
+ * picture.ts runs in the browser, so these tests stub fetch,
+ * createImageBitmap and a canvas that returns fixed pixels.
  */
 
 afterEach(() => {
@@ -12,7 +12,7 @@ afterEach(() => {
   vi.resetModules();
 });
 
-/** A browser whose picture is `size` × `size` pixels of the bytes given, repeated. */
+/** Fakes a browser whose picture is `size` × `size` pixels, each made of the given bytes. */
 function fakeBrowser(size: number, pixel: number[], { ok = true, context = true } = {}) {
   const bitmap = { close: vi.fn() };
   const decode = vi.fn(async () => bitmap);
@@ -42,7 +42,7 @@ describe("loadPicture", () => {
     expect(fetch).toHaveBeenCalledWith("/textures/sky/galaxy.jpg");
     expect(browser.decode).toHaveBeenCalledWith("the file", { resizeWidth: 4, resizeHeight: 4, resizeQuality: "high" });
     expect(browser.drawn).toEqual([browser.bitmap]);
-    // The decoded picture is given back at once.
+    // The decoded bitmap must be released at once to free its memory.
     expect(browser.bitmap.close).toHaveBeenCalled();
     expect(picture.size).toBe(4);
     expect(picture.bytes).toBe(browser.bytes);
@@ -75,7 +75,7 @@ describe("loadTexture", () => {
   it("decodes pictures upside down and with their numbers untouched", async () => {
     const options = vi.spyOn(ImageBitmapLoader.prototype, "setOptions");
     await import("@/app/map/scene/picture");
-    // Maps of planets hold heights, not colours: nothing may change their numbers.
+    // Planet maps hold heights rather than colours, so no conversion may change their values.
     expect(options).toHaveBeenCalledWith({ imageOrientation: "flipY", premultiplyAlpha: "none", colorSpaceConversion: "none" });
   });
 
@@ -92,7 +92,7 @@ describe("loadTexture", () => {
     const failed = vi.fn();
     const texture = loadTexture("/textures/sky/milky-way-lg.jpg", loaded, failed);
     expect(load.mock.calls[0][0]).toBe("/textures/sky/milky-way-lg.jpg");
-    // Already turned while decoding: WebGL must not turn it again.
+    // The bitmap is already flipped while decoding, so WebGL must not flip it again.
     expect(texture.flipY).toBe(false);
     expect(loaded).not.toHaveBeenCalled();
     const version = texture.version;
@@ -100,7 +100,7 @@ describe("loadTexture", () => {
     const bitmap = { width: 8, height: 4 };
     finish(bitmap);
     expect(texture.image).toBe(bitmap);
-    // needsUpdate raises the version, which tells three.js to upload it.
+    // Setting needsUpdate raises the version, which tells three.js to upload the texture.
     expect(texture.version).toBe(version + 1);
     expect(loaded).toHaveBeenCalledWith(texture);
     expect(failed).not.toHaveBeenCalled();

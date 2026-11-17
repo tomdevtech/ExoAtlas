@@ -7,10 +7,10 @@ import { FIXTURE_ROWS_AFTER_RETRACTION } from "@tests/support/catalog";
 import { prepareTestDatabase, testDatabaseUrl } from "@tests/support/db";
 import { runSync } from "@/app/sync/run";
 
-/** The catalogue as the database holds it after the test data was loaded. */
+/** Returns a fresh copy of the catalogue as the database holds it after seeding. */
 const current = () => FIXTURE_ROWS_AFTER_RETRACTION.map((row) => ({ ...row }));
 
-/** NASA answers with `rows`. */
+/** Stubs fetch so that NASA responds with `rows`. */
 function nasaAnswers(rows: unknown[]) {
   vi.stubGlobal("fetch", async () => new Response(JSON.stringify(rows)));
 }
@@ -25,8 +25,8 @@ async function planetCount() {
 }
 
 describe("runSync against the database", () => {
-  // Every test starts from the known state, and the files after this one find
-  // it again.
+  // These tests change the data, so each one starts from the known state, which
+  // also leaves that state for the test files that run afterwards.
   beforeEach(() => prepareTestDatabase(testDatabaseUrl()));
   afterEach(() => vi.unstubAllGlobals());
   afterAll(() => prepareTestDatabase(testDatabaseUrl()));
@@ -75,14 +75,14 @@ describe("runSync against the database", () => {
   it("treats a vanished name with a new one at the same place as a rename", async () => {
     const rows = current();
     const k218 = rows.find((row) => row.pl_name === "K2-18 b")!;
-    // Same star, same orbital period: the same planet under a new name.
+    // The same star and orbital period identify the same planet under a new name.
     k218.pl_name = "K2-18 d";
     nasaAnswers(rows);
 
     const counts = await runSync({ force: true });
     expect(counts.renamed).toBe(1);
     expect(counts.added).toBe(0);
-    // The old address leads to the new one.
+    // The old route must lead to the new one.
     expect(await findPlanetSlugByAlias("k2-18-b")).toBe("k2-18-d");
     expect((await getPlanet("k2-18-d"))?.planet.name).toBe("K2-18 d");
   });

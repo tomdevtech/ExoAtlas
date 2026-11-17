@@ -1,17 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { GALACTIC_CENTRE, GALAXY_EDGE, GALAXY_PICTURE_WIDTH } from "@/app/map/galaxy";
-import { BULGE_CLOUDS, CLOUD_STRIDE, CLUSTERS, DUST_CLOUDS, galaxyClouds, HALO_CLOUDS, LIGHT_CLOUDS, THICKER } from "@/app/map/galaxyClouds";
+import { BULGE_CLOUDS, CLOUD_STRIDE, CLUSTERS, DUST_CLOUDS, galaxyClouds, HALO_CLOUDS, LIGHT_CLOUDS, THIN } from "@/app/map/galaxyClouds";
 
 /**
- * A small made-up picture of a galaxy from above: a bright yellow core, a
- * blue ring of young stars, a dark lane just inside the ring, and black
- * beyond. Rows from the top, as galaxyClouds reads pictures.
+ * Builds a small synthetic galaxy picture seen from above: a bright yellow
+ * core, a blue ring of young stars, a dark lane just inside the ring and black
+ * beyond. Rows run from the top, as galaxyClouds expects.
  */
 function picture(size: number): Float32Array {
   const rgb = new Float32Array(size * size * 3);
   for (let row = 0; row < size; row++) {
     for (let column = 0; column < size; column++) {
-      // Distance from the middle of the picture in parsecs.
       const dx = ((column + 0.5) / size - 0.5) * GALAXY_PICTURE_WIDTH;
       const dy = ((row + 0.5) / size - 0.5) * GALAXY_PICTURE_WIDTH;
       const r = Math.hypot(dx, dy);
@@ -28,7 +27,7 @@ function picture(size: number): Float32Array {
 const size = 128;
 const clouds = galaxyClouds(picture(size), size);
 
-/** The clouds of a list as objects. */
+/** Unpacks the flat cloud list into objects. */
 function each(data: Float32Array) {
   const out: { x: number; y: number; z: number; r: number; g: number; b: number; radius: number; share: number; fromCentre: number }[] = [];
   for (let i = 0; i < data.length; i += CLOUD_STRIDE) {
@@ -41,7 +40,7 @@ function each(data: Float32Array) {
 const light = each(clouds.light).slice(0, LIGHT_CLOUDS);
 const dust = each(clouds.dust);
 
-/** The middle spread of the heights of some clouds, robust against a few far out; or another quantile. */
+/** Returns a quantile (the median by default) of the cloud heights, which is robust against a few outliers. */
 function spread(list: { z: number }[], quantile = 0.5): number {
   const heights = list.map((item) => Math.abs(item.z)).sort((a, b) => a - b);
   return heights[Math.floor(heights.length * quantile)];
@@ -72,14 +71,14 @@ describe("the galaxy as a body", () => {
   });
 
   it("puts its light where the picture is bright, and none where it is black", () => {
-    // The clouds of the thick disc are scattered round their place, a few beyond the edge.
+    // The thick-disc clouds are scattered around their place, so a few may lie beyond the edge.
     const beyond = light.filter((cloud) => cloud.fromCentre > 12_500).length;
     expect(beyond / light.length).toBeLessThan(0.02);
     for (const cloud of light) expect(cloud.fromCentre).toBeLessThan(12_500 + 6000);
     const inRing = light.filter((cloud) => cloud.fromCentre > 7000 && cloud.fromCentre < 9000).length;
     const inLane = light.filter((cloud) => cloud.fromCentre > 6100 && cloud.fromCentre < 6500).length;
     expect(inRing).toBeGreaterThan(inLane * 10);
-    // Every cloud carries the same share, and together all the light.
+    // Every cloud carries the same share, and together they carry all the light.
     const total = light.reduce((sum, cloud) => sum + cloud.share, 0);
     expect(total).toBeCloseTo(1, 3);
   });
@@ -92,7 +91,6 @@ describe("the galaxy as a body", () => {
     expect(old.length).toBeGreaterThan(100);
     expect(spread(young)).toBeLessThan(spread(old));
     expect(spread(bulge)).toBeGreaterThan(spread(old) * 2);
-    // Young clouds are bluish, the bulge yellowish.
     const blue = young.reduce((sum, cloud) => sum + cloud.b - cloud.r, 0) / young.length;
     const yellow = bulge.reduce((sum, cloud) => sum + cloud.r - cloud.b, 0) / bulge.length;
     expect(blue).toBeGreaterThan(0);
@@ -104,11 +102,11 @@ describe("the galaxy as a body", () => {
     expect(bulge).toHaveLength(BULGE_CLOUDS);
     const wide = spread(bulge.map((cloud) => ({ z: cloud.fromCentre })));
     const high = spread(bulge);
-    // An oval: wider than high, but reaching higher than the disc around it.
+    // The bulge is an oval that is wider than high but reaches higher than the disc around it.
     expect(high).toBeLessThan(wide);
     const disc = light.filter((cloud) => cloud.fromCentre > 7000 && cloud.fromCentre < 9000);
     expect(spread(bulge, 0.9)).toBeGreaterThan(spread(disc, 0.9));
-    // Yellowish, as old stars are.
+    // The bulge is yellowish because its stars are old.
     for (const cloud of bulge) expect(cloud.r).toBeGreaterThan(cloud.b);
   });
 
@@ -120,6 +118,7 @@ describe("the galaxy as a body", () => {
       expect(cloud.fromCentre).toBeGreaterThan(2500);
       expect(cloud.fromCentre).toBeLessThan(GALAXY_EDGE);
     }
-    expect(spread(dust)).toBeLessThan(100 * THICKER);
+    // The dust lies in the thin layer: 55 parsecs at true scale, exaggerated by THIN.
+    expect(spread(dust)).toBeLessThan(100 * THIN);
   });
 });

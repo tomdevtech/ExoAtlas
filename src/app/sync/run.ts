@@ -167,9 +167,8 @@ async function fetchPlanApply(runId: number, { force = false, log = () => {} }: 
 }
 
 /**
- * One sync run with the NASA Exoplanet Archive. The run is recorded in
- * `sync_runs` outside the transaction, so a failed run leaves a trace too.
- * Throws when the run fails.
+ * Runs one sync with the NASA Exoplanet Archive and throws if it fails. The run is recorded in `sync_runs`
+ * outside the transaction, so a failed run leaves a trace too.
  */
 export async function runSync(options: SyncOptions = {}): Promise<SyncPlan["counts"]> {
   const db = getDb();

@@ -8,10 +8,7 @@ export const metadata: Metadata = {
   robots: { index: false },
 };
 
-/**
- * The page of the easter-egg star. A static route, so it wins over
- * /stars/[slug] and never asks the database.
- */
+/** The page of the easter-egg star. As a static route it takes precedence over /stars/[slug] and never queries the database. */
 export default function SpecialStarPage() {
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center px-6 py-16 text-center">

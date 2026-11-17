@@ -1,13 +1,7 @@
 /**
- * The noise the planet shaders build their surfaces from, computed ahead of
- * time into a 3D texture.
- *
- * Calculating the noise inside the shader made the shader so large that
- * Direct3D (WebGL on Windows) took around five seconds to compile it. Reading
- * it from a texture compiles about ten times faster and also draws faster.
- *
- * Each texel holds gradient noise, roughly -0.7 to 0.7. The shader reads it
- * interpolated linearly between texels.
+ * Precomputes the gradient noise of the planet shaders into a 3D texture. Computing the noise in the
+ * shader made Direct3D (WebGL on Windows) take about five seconds to compile it; reading it from a
+ * texture compiles about ten times faster and also draws faster.
  */
 
 /** Lattice cells along each axis before the pattern repeats. */
@@ -19,22 +13,21 @@ export const NOISE_SIZE = NOISE_PERIOD * STEPS;
 
 let volume: Float32Array | undefined;
 
-/** The texture data: one number per texel, x running fastest. Computed on first use, then shared. */
+/** Returns one value per texel with x running fastest. It is computed on first use and then shared. */
 export function noiseVolume(): Float32Array {
   volume ??= computeVolume();
   return volume;
 }
 
-/** GLSL that reads the texture. Needs `uniform highp sampler3D uNoise`. */
+/** GLSL that reads the noise texture. It needs `uniform highp sampler3D uNoise`. */
 export const NOISE_GLSL = /* glsl */ `
-// Gradient noise, roughly -0.7 to 0.7. Read from a texture computed in
-// noise.ts; the pattern repeats every ${NOISE_PERIOD} units.
+// Gradient noise, roughly -0.7 to 0.7, which repeats every ${NOISE_PERIOD} units.
 float gnoise(vec3 x) {
   return textureLod(uNoise, fract(x * ${(1 / NOISE_PERIOD).toFixed(6)}) + ${(0.5 / NOISE_SIZE).toFixed(6)}, 0.0).r;
 }
 `;
 
-/** The same integer hash (PCG) the shaders use, in 32-bit unsigned arithmetic. */
+/** The same PCG integer hash the shaders use, in 32-bit unsigned arithmetic, so CPU and GPU agree. */
 export function pcg3d(x: number, y: number, z: number): [number, number, number] {
   x = (Math.imul(x, 1664525) + 1013904223) >>> 0;
   y = (Math.imul(y, 1664525) + 1013904223) >>> 0;
@@ -51,7 +44,7 @@ export function pcg3d(x: number, y: number, z: number): [number, number, number]
   return [x, y, z];
 }
 
-/** Random gradients at the lattice points, each component from -1 to 1. */
+/** Random gradients at the lattice points, with each component from -1 to 1. */
 function latticeGradients(): Float64Array {
   const gradients = new Float64Array(NOISE_PERIOD ** 3 * 3);
   for (let k = 0; k < NOISE_PERIOD; k++) {
@@ -67,8 +60,8 @@ function latticeGradients(): Float64Array {
 }
 
 /**
- * Gradient noise at a point, with the lattice repeating every NOISE_PERIOD
- * units. Follows https://iquilezles.org/articles/gradientnoise/.
+ * Gradient noise at a point, with the lattice repeating every NOISE_PERIOD units.
+ * See https://iquilezles.org/articles/gradientnoise/.
  */
 export function noiseAt(
   x: number,
@@ -117,14 +110,12 @@ function sharedGradients(): Float64Array {
 }
 
 /**
- * The same as calling noiseAt for every texel, written for speed: it runs in
- * the browser before the first planet can be drawn. The noise is the sum over
- * the eight corners of a cell of weight × (gradient · offset).
+ * Computes the same values as calling noiseAt for every texel, but written for speed, because it runs
+ * in the browser before the first planet can be drawn.
  */
 function computeVolume(): Float32Array {
   const gradients = sharedGradients();
   const data = new Float32Array(NOISE_SIZE ** 3);
-  // Blend weights towards the far corner, per position in the cell.
   const fade = new Float64Array(STEPS);
   for (let s = 0; s < STEPS; s++) {
     const t = s / STEPS;

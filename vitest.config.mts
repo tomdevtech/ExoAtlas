@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
-// The same aliases as in tsconfig.json: "@/…" is the app in src/, "@tests/…" the tests.
+// These aliases must match the paths in tsconfig.json.
 const resolve = {
   alias: {
     "@tests": fileURLToPath(new URL("./tests", import.meta.url)),
@@ -11,7 +11,6 @@ const resolve = {
 
 export default defineConfig({
   test: {
-    // `npm run test:coverage`: which lines of the app the unit tests run.
     coverage: {
       provider: "v8",
       include: ["src/**/*.{ts,tsx}"],
@@ -20,8 +19,7 @@ export default defineConfig({
     },
     projects: [
       {
-        // tests/unit mirrors src/. These tests need neither a database nor a
-        // browser: `npm test`.
+        // Unit tests need neither a database nor a browser (`npm test`).
         resolve,
         test: {
           name: "unit",
@@ -29,23 +27,21 @@ export default defineConfig({
         },
       },
       {
-        // Tests against a real PostgreSQL with the small test catalogue from
-        // tests/support/catalog.ts: `npm run test:db`. See tests/support/db.ts.
+        // These tests run against a real PostgreSQL (`npm run test:db`).
         resolve,
         test: {
           name: "db",
           include: ["tests/db/**/*.db.test.ts"],
           globalSetup: ["tests/support/db-global-setup.ts"],
           setupFiles: ["tests/support/db-setup.ts"],
-          // All files share one database, and the sync test changes it.
+          // Files run one after another because they share one database that the sync test modifies.
           fileParallelism: false,
           testTimeout: 30_000,
           hookTimeout: 60_000,
         },
       },
       {
-        // Tests that run a script of scripts/ from start to end, which takes
-        // its time: `npm run test:scripts`.
+        // These tests run whole scripts from scripts/, hence the long timeouts (`npm run test:scripts`).
         resolve,
         test: {
           name: "scripts",

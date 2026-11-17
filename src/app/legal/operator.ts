@@ -1,9 +1,6 @@
 /**
- * Who runs this copy of ExoFinder.
- *
- * The legal notice and the privacy policy must name a person with a postal
- * address. The code is public, so these details are not part of it: whoever
- * puts a copy online sets them as environment variables (see .env.example).
+ * Details of whoever runs this copy of ExoFinder. The legal notice and the privacy policy must name a person
+ * with a postal address; because the code is public, these details come from environment variables (see .env.example).
  */
 export interface Operator {
   name: string;
@@ -17,20 +14,18 @@ export interface Operator {
   /** Name and address of the company whose servers deliver the site, if there is one. */
   hosting: string | null;
   /**
-   * Whether a data processing agreement (Art. 28 GDPR) with the hosting
-   * company exists. Only then may the privacy policy say so. Vercel's free
-   * Hobby plan, for example, has none.
+   * Whether a data processing agreement (Art. 28 GDPR) with the host exists. Only then may the privacy
+   * policy say so; Vercel's free Hobby plan, for example, has none.
    */
   hostingContract: boolean;
   /**
-   * Why the hosting company may process the data outside the European Union,
-   * for example a certification under the EU-U.S. Data Privacy Framework. Only
-   * shown together with `hosting`.
+   * Legal basis for the host processing data outside the EU, for example an EU-U.S. Data Privacy Framework
+   * certification. It is only shown together with `hosting`.
    */
   hostingTransfer: string | null;
   /** The company that receives and stores the operator's e-mails, if it is not the operator. */
   emailProvider: string | null;
-  /** After how many days the server deletes its log entries, if that is known. */
+  /** Days after which the server deletes its log entries, if known. */
   logDays: number | null;
 }
 
@@ -67,7 +62,7 @@ export function readOperator(env: Record<string, string | undefined>): OperatorD
   };
 }
 
-/** The details of this copy. Read when the pages are built. */
+/** Returns the operator details of this copy, read from the environment when the pages are built. */
 export function getOperator(): OperatorDetails {
   return readOperator(process.env);
 }

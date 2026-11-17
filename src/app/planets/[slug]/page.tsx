@@ -36,8 +36,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default function PlanetPage({ params }: Props) {
-  // The page frame is static. Everything that depends on the slug or on the
-  // database sits inside <Suspense> and streams in at request time.
+  // The page shell is static. Everything that depends on the slug or the database sits inside <Suspense>
+  // and streams in at request time.
   return (
     <main className="mx-auto w-full max-w-4xl flex-1 px-6 py-10">
       <Suspense fallback={<PageSkeleton />}>
@@ -51,7 +51,7 @@ async function PlanetContent({ params }: { params: Props["params"] }) {
   const { slug } = await params;
   const found = await getPlanet(slug);
   if (!found) {
-    // The planet may have been renamed: old URLs lead to the new page.
+    // The planet may have been renamed, so old URLs redirect to the new page.
     const currentSlug = await findPlanetSlugByAlias(slug);
     if (currentSlug) permanentRedirect(`/planets/${currentSlug}`);
     notFound();
