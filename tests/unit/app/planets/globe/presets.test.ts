@@ -71,6 +71,30 @@ describe("the base maps of the planets", () => {
     }
   });
 
+  it("name the largest storms of every banded one, where the map has them", async () => {
+    for (const [name, winds] of bands) {
+      expect(winds.storms.length, name).toBeLessThanOrEqual(6);
+      if (name !== "bands-hazy") expect(winds.storms.length, name).toBeGreaterThan(0);
+      const { data, info } = await sharp(file(name, "sm")).extractChannel(2).raw().toBuffer({ resolveWithObject: true });
+      for (const [lon, lat, size, spin] of winds.storms) {
+        expect(Math.abs(spin), name).toBe(1);
+        expect(size, name).toBeGreaterThan(0);
+        // The blue channel marks the storm at its centre.
+        const column = Math.min(info.width - 1, Math.floor((lon / (2 * Math.PI) + 0.5) * info.width));
+        const row = Math.min(info.height - 1, Math.floor((0.5 - lat / Math.PI) * info.height));
+        let strongest = 0;
+        for (let dy = -2; dy <= 2; dy++) {
+          for (let dx = -2; dx <= 2; dx++) {
+            const y = Math.min(info.height - 1, Math.max(0, row + dy));
+            const x = (column + dx + info.width) % info.width;
+            strongest = Math.max(strongest, data[y * info.width + x]);
+          }
+        }
+        expect(strongest, `${name} at ${lon}, ${lat}`).toBeGreaterThan(150);
+      }
+    }
+  });
+
   it("keep the storms of the gas giants apart from their belts", async () => {
     // Blue marks the storms: most of a map has none, some of it has.
     for (const [name] of bands) {

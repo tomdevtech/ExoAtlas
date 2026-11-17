@@ -68,4 +68,4 @@ The map shows only stars with known planets. Stars whose distance is not known c
 So that you can see them. With the real sizes and distances, every planet would be smaller than a pixel.
 
 **I am lost on the map.**
-Click **Sun** in the top right corner to fly back home, or **Whole galaxy** to see the whole Milky Way.
+Click **Sun** in the top right corner to fly back home, or **Whole galaxy** to see the whole Milky Way and turn it round its centre.

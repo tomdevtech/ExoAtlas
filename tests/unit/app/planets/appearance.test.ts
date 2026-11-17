@@ -332,6 +332,50 @@ describe("planetAppearance", () => {
     expect(giant(2400).glow?.strength).toBeGreaterThan(giant(1100).glow?.strength ?? 0);
   });
 
+  it("gives planets the storms that suit them", () => {
+    const names = Array.from({ length: 30 }, (_, index) => `weather-${index}-b`);
+    // Cyclones need a sea; the warmer the sea, the livelier they are.
+    for (const slug of names) {
+      const mild = planetAppearance(input({ slug })).globe;
+      expect(mild.storms.cyclones, slug).toBeGreaterThan(0);
+      expect(mild.storms.dust, slug).toBe(0);
+    }
+    const chilly = planetAppearance(input({ eqTempK: 255 })).globe;
+    const balmy = planetAppearance(input({ eqTempK: 345 })).globe;
+    expect(balmy.storms.cyclones).toBeGreaterThan(chilly.storms.cyclones);
+
+    // Dust needs air and dry ground: a cold dusty world has it, a bare rock not.
+    const dusty = names.map((slug) => planetAppearance(input({ slug, climateClass: "cold" })).globe);
+    expect(dusty.some((globe) => globe.storms.dust > 0)).toBe(true);
+    for (const globe of dusty) expect(globe.storms.cyclones).toBe(0);
+    const bare = planetAppearance(input({ climateClass: null })).globe;
+    expect(bare.storms).toEqual({ cyclones: 0, dust: 0, spin: 0, outbreaks: 0 });
+
+    // The storms of a gas giant turn, and it names where they are.
+    const giants = names.map((slug) => planetAppearance(input({ slug, planetClass: "gas_giant", eqTempK: 140 })).globe);
+    for (const globe of giants) {
+      expect(globe.giantStorms.length).toBeLessThanOrEqual(6);
+      expect(globe.storms.spin > 0).toBe(globe.giantStorms.length > 0);
+      for (const [lon, lat, size, spin] of globe.giantStorms) {
+        expect(Math.abs(lon)).toBeLessThanOrEqual(Math.PI);
+        expect(Math.abs(lat)).toBeLessThan(Math.PI / 2);
+        expect(size).toBeGreaterThan(0);
+        expect(Math.abs(spin)).toBe(1);
+      }
+    }
+    expect(giants.some((globe) => globe.storms.outbreaks > 0)).toBe(true);
+    expect(giants.some((globe) => globe.storms.outbreaks === 0)).toBe(true);
+    // The hottest giants have no clouds of water to break out.
+    for (const slug of names) {
+      const hot = planetAppearance(input({ slug, planetClass: "gas_giant", climateClass: "scorching", eqTempK: 2000 })).globe;
+      expect(hot.storms.outbreaks).toBe(0);
+    }
+
+    // Mars has its dust storms.
+    const mars = planetAppearance(input({ slug: "mars", source: "sol", planetClass: null, climateClass: null })).globe;
+    expect(mars.storms.dust).toBe(1);
+  });
+
   it("gives heavier planets lower mountains", () => {
     const small = planetAppearance(input({ radiusEarth: 0.8 })).globe;
     const large = planetAppearance(input({ radiusEarth: 1.9 })).globe;

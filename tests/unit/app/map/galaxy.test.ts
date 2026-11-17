@@ -21,11 +21,12 @@ describe("the picture of the galaxy", () => {
 
   // The scale above only holds for the picture it was measured on. These
   // notice when the file is swapped for another view of the galaxy.
-  for (const [name, size] of [["galaxy-sm", 2048], ["galaxy-lg", 4096]] as const) {
-    it(`${name}.jpg is square, with the bright core in its middle and nothing at its edges`, async () => {
-      const file = path.resolve("public/textures/sky", `${name}.jpg`);
+  {
+    it("galaxy.jpg is square, with the bright core in its middle and nothing at its edges", async () => {
+      const file = path.resolve("public/textures/sky/galaxy.jpg");
       const picture = await sharp(file).metadata();
-      expect([picture.width, picture.height]).toEqual([size, size]);
+      // The map reads it at 512 pixels; it has twice that.
+      expect([picture.width, picture.height]).toEqual([1024, 1024]);
 
       // Shrunk and blurred, the brightest place is the core of the galaxy.
       const small = 128;

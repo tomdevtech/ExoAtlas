@@ -263,6 +263,17 @@ describe("surfaceUniforms", () => {
     expect(surfaceUniforms({ ...giant, lightning: 0.7 }).uLightning).toBe(0.7);
     const lights = surfaceUniforms({ ...rocky, aurora: { color: "#ffffff", strength: 0.5 } }).uAurora;
     expect(lights).toEqual([1, 1, 1, 0.5]);
+    const stormy = { ...giant, storms: { cyclones: 0.1, dust: 0.2, spin: 0.3, outbreaks: 0.4 } };
+    expect(surfaceUniforms(stormy).uStormSpin).toBe(0.3);
+  });
+
+  it("hands the storms of a gas giant over as six groups of four, the unused ones empty", () => {
+    const giant = globe("some-b", "nasa");
+    const two = surfaceUniforms({ ...giant, giantStorms: [[1, 0.2, 0.1, 1], [-2, -0.3, 0.05, -1]] }).uGiantStorms;
+    expect(two).toHaveLength(24);
+    expect(two.slice(0, 8)).toEqual([1, 0.2, 0.1, 1, -2, -0.3, 0.05, -1]);
+    expect(two.slice(8).every((value) => value === 0)).toBe(true);
+    expect(surfaceUniforms({ ...giant, giantStorms: [] }).uGiantStorms.every((value) => value === 0)).toBe(true);
   });
 
   it("announces the extra maps of Earth and the ring map of Saturn", () => {

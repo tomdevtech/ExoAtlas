@@ -23,13 +23,13 @@ import {
   RingGeometry,
   Scene,
   SphereGeometry,
-  TextureLoader,
   Vector3,
   type IUniform,
   type Texture,
 } from "three";
 import { NOISE_SIZE, noiseVolume } from "@/app/planets/globe/noise";
 import { linearColor, seedOffset, type GlobeSpec } from "@/app/planets/globe/spec";
+import { stormUniforms } from "@/app/planets/globe/storms";
 import { surfaceDefines, surfaceUniforms, textureUrls } from "@/app/planets/globe/uniforms";
 import { starColor } from "../galaxy";
 import { layoutOrbits, orbitPoint, starSize, type OrbitLayout } from "../orbits";
@@ -48,10 +48,10 @@ import {
   STAR_FRAGMENT,
 } from "./shaders";
 import { createSky, type Sky } from "./sky";
+import { loadTexture } from "./picture";
 
-/** Loads each picture once, however many planets use it. */
+/** Loads each picture once, however many planets use it, decoded beside the page (picture.ts). */
 export class TextureStore {
-  private readonly loader = new TextureLoader();
   private readonly textures = new Map<string, Texture>();
   private readonly waiting = new Map<string, ((texture: Texture | null) => void)[]>();
   /** Stands in where a shader expects a picture and the planet has none. */
@@ -96,10 +96,9 @@ export class TextureStore {
       this.waiting.delete(url);
       for (const callback of queue) callback(result);
     };
-    const texture = this.loader.load(
+    const texture = loadTexture(
       url,
       () => settle(texture),
-      undefined,
       () => {
         // Forgotten again, so the next system that needs it tries once more.
         this.textures.delete(url);
@@ -297,7 +296,7 @@ export class SystemView {
       uLightObject: { value: new Vector3() },
       uCameraObject: { value: new Vector3() },
     };
-    for (const [name, value] of Object.entries(surfaceUniforms(spec))) uniforms[name] = { value };
+    for (const [name, value] of Object.entries({ ...surfaceUniforms(spec), ...stormUniforms(spec, 0) })) uniforms[name] = { value };
     // Only the code this planet needs is compiled (see surface.glsl.ts).
     const defines = { ...surfaceDefines(spec) };
 
@@ -525,6 +524,7 @@ export class SystemView {
       const focused = layout.index === this.focused;
       body.orbit.material.opacity = focused ? 0.7 : 0.3;
       body.ball.material.uniforms.uTime.value = seconds;
+      for (const [name, value] of Object.entries(stormUniforms(body.spec, seconds))) body.ball.material.uniforms[name].value = value;
       body.ball.material.uniforms.uDetail.value = focused ? 1 : 0;
     }
   }

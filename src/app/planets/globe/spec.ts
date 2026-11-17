@@ -38,6 +38,18 @@ export interface GlobeSpec {
   aurora: { color: string; strength: number } | null;
   /** How often lightning flashes in the storms of a gas planet at night, 0 for never. */
   lightning: number;
+  /**
+   * How lively the storms are, each 0 (none) to 1: cyclones over the sea of
+   * a rocky planet, dust storms on a dry one with air, the turning of the
+   * storms of a gas planet, and bright outbreaks of fresh cloud on it.
+   */
+  storms: { cyclones: number; dust: number; spin: number; outbreaks: number };
+  /**
+   * Only for `bands`: the largest storms of the preset (see presets.json), so
+   * that they can turn: longitude and latitude in radians, half height in
+   * radians of latitude, and 1 or -1 for the way they turn.
+   */
+  giantStorms: [number, number, number, number][];
   /** How deep the craters of a terrain preset show, 0 to 1. */
   craters: number;
   /** How strongly heights catch the light, 0 for a smooth ball. */

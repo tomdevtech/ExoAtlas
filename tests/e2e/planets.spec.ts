@@ -96,7 +96,7 @@ test.describe("planet page", () => {
     for (const path of [
       "/textures/presets/continents-sm.webp",
       "/textures/planets/earth-lg.jpg",
-      "/textures/sky/galaxy-sm.jpg",
+      "/textures/sky/galaxy.jpg",
     ]) {
       const response = await request.get(path);
       expect(response.status(), path).toBe(200);

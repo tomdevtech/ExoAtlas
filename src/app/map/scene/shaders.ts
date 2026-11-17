@@ -82,6 +82,7 @@ uniform vec3 uRight;     // reaches to the right and upwards at the distance 1
 uniform vec3 uUp;
 uniform float uFade;
 uniform float uOutside;  // 0 for a camera inside the disc, 1 for one outside
+uniform float uClouds;   // the share of the light of the sheet that the clouds of galaxyClouds.ts carry
 in vec2 vUv;
 out vec4 outColor;
 
@@ -94,9 +95,17 @@ const float BULGE_WIDTH = ${BULGE_WIDTH.toFixed(1)};
 // The dust lies in a sheet this thin around the plane.
 const float DUST_HEIGHT = 90.0;
 // Above and below this height there is next to nothing.
-const float HALF_HEIGHT = 1700.0;
-// The share of the light that lies in the thin sheet, away from the bulge.
-const float SHEET = 0.85;
+const float HALF_HEIGHT = 6000.0;
+// From outside the bulge is drawn as an oval this much lower than wide, and
+// the light of the picture there spread through its depth (the depth of
+// the oval through its centre, sqrt(pi) * BULGE_FLAT * BULGE_WIDTH).
+const float BULGE_FLAT = 0.62;
+const float BULGE_OVAL = BULGE_WIDTH * 1.35;
+const float BULGE_DEPTH = 1.7725 * BULGE_FLAT * BULGE_OVAL;
+// The share of the light that lies in the thin sheet, away from the bulge
+// (once the clouds are there, the share they carry); the rest is the smooth
+// light of the old disc, drawn as a soft glow.
+const float SHEET = 0.5;
 const int STEPS = 22;
 
 // Where a place of the galaxy is in the picture: towards the centre is up,
@@ -170,17 +179,23 @@ void main() {
   // the dark lane of a galaxy seen edge-on. From inside the disc there is no
   // sheet to look at from afar: there all the light is added up along the
   // line of sight.
+  // Seen nearly along the plane the sheet would be a line without height:
+  // there its light goes into the thick glow instead.
+  float sheetSeen = uOutside * smoothstep(0.03, 0.3, abs(direction.z));
+  // The levels of blur below are counted for a picture 4096 pixels wide; a
+  // smaller one reaches the same blur that many levels earlier.
+  float level0 = log2(float(textureSize(uMap, 0).x) / 4096.0);
   float meets = abs(direction.z) > 1e-5 ? -from.z / direction.z : -1.0;
-  if (uOutside > 0.0 && meets > start && meets < end) {
+  if (sheetSeen > 0.0 && meets > start && meets < end) {
     vec2 place = from.xy + direction.xy * meets;
     vec2 at = inPicture(place);
     vec3 seen = texture(uMap, at).rgb;
     float radius = length(place);
     float steep = max(abs(direction.z), 0.01);
-    float depth = dustAt(seen, textureLod(uMap, at, 5.5).rgb, radius) * 1.7725 * DUST_HEIGHT / steep;
+    float depth = dustAt(seen, textureLod(uMap, at, 5.5 + level0).rgb, radius) * 1.7725 * DUST_HEIGHT / steep;
     float through = depth > 1e-4 ? (1.0 - exp(-depth)) / depth : 1.0;
-    light = pow(seen, vec3(2.2)) * within(radius) * inSheet(radius) * uOutside
-      * pow(1.0 / max(steep, 0.25), 0.5) * through;
+    light = pow(seen, vec3(2.2)) * within(radius) * inSheet(radius) * sheetSeen
+      * pow(1.0 / max(steep, 0.25), 0.5) * through * (1.0 - uClouds);
   }
 
   // A different start for every pixel hides the steps: they turn into a fine
@@ -202,17 +217,48 @@ void main() {
     // version of it, or it would miss what lies between its samples. The
     // glow of the old stars is soft anyway.
     vec2 at = inPicture(g.xy);
-    float blur = max(log2(max(stride * texels, 1.0)), 3.0);
+    // From outside the picture is only read softly: what is sharp there are
+    // the clouds and clusters made after it, not the picture itself.
+    float blur = max(log2(max(stride * texels, 1.0)), mix(3.0, 5.5, uOutside * uClouds) + level0);
     vec3 seen = textureLod(uMap, at, blur).rgb;
-    vec3 around = textureLod(uMap, at, max(blur, 5.5)).rgb;
+    vec3 around = textureLod(uMap, at, max(blur, 5.5 + level0)).rgb;
     float radius = length(g.xy);
     float edge = within(radius);
 
     // The picture is the sum of the light from top to bottom. The glow is
     // spread over the height of the disc, which is thicker in the bulge.
-    float thick = DISC_HEIGHT + BULGE_HEIGHT * exp(-radius * radius / (BULGE_WIDTH * BULGE_WIDTH));
-    vec3 shine = pow(seen, vec3(2.2)) * exp(-abs(g.z) / thick) / (2.0 * thick) * edge;
-    light += shine * (1.0 - inSheet(radius) * uOutside) * clear * stride;
+    // Seen from outside the glow of the disc is spread higher: the thick
+    // disc of old stars, which the picture from above cannot show.
+    float inBulge = exp(-radius * radius / (BULGE_WIDTH * BULGE_WIDTH));
+    float thick = DISC_HEIGHT * mix(1.0, 5.0, uOutside) + BULGE_HEIGHT * (1.0 - uOutside) * inBulge;
+    // Far above the plane the glow falls off faster than the exponential.
+    float high = g.z / (2.5 * thick);
+    vec3 shine = pow(seen, vec3(2.2)) * exp(-abs(g.z) / thick - high * high) / (2.0 * thick) * edge;
+    // The glow carries what the sheet does not, and the part of the sheet not
+    // seen (sheetSeen) that the clouds of galaxyClouds.ts do not carry either.
+    float share = 1.0 - inSheet(radius) * (uOutside - (uOutside - sheetSeen) * (1.0 - uClouds));
+    vec3 glow = shine * share * (1.0 - inBulge * uOutside);
+    // Seen from outside the bulge is a body of its own, an oval. Spread up
+    // from the plane like the disc, its bright narrow core would stand above
+    // the disc like a pillar. So a place in it shines as the picture does at
+    // its distance from the centre in the oval: above the centre as brightly
+    // as the picture at that distance beside it, flattened by BULGE_FLAT.
+    float oval = length(vec3(g.xy, g.z / BULGE_FLAT));
+    float inOval = exp(-oval * oval / (BULGE_OVAL * BULGE_OVAL));
+    // Only where the bulge shines: beyond three of its widths it adds less
+    // than a thousandth, and four readings of the picture per step are saved.
+    if (uOutside > 0.0 && inOval > 0.001) {
+      // Read in four directions a quarter turn apart and averaged: read in
+      // one, the bar would cast wedges of light from the centre.
+      vec2 out1 = g.xy * (oval / max(radius, 1.0));
+      vec2 out2 = vec2(-out1.y, out1.x);
+      vec3 core = pow(textureLod(uMap, inPicture(out1), blur).rgb, vec3(2.2))
+        + pow(textureLod(uMap, inPicture(-out1), blur).rgb, vec3(2.2))
+        + pow(textureLod(uMap, inPicture(out2), blur).rgb, vec3(2.2))
+        + pow(textureLod(uMap, inPicture(-out2), blur).rgb, vec3(2.2));
+      glow += core * 0.25 * inOval / BULGE_DEPTH * uOutside;
+    }
+    light += glow * clear * stride;
 
     // The dust lies in a thin sheet around the plane. Seen from above, as
     // in the picture, it hardly counts; seen along the plane it hides what
@@ -235,6 +281,84 @@ void main() {
   vec3 color = pow(pressed, vec3(1.0 / 2.2));
   // A grain finer than one step of brightness keeps the faint outskirts from showing stripes.
   outColor = vec4(color * uFade + (jitter - 0.5) / 255.0, 1.0);
+}
+`;
+
+/**
+ * The galaxy as a body (galaxyClouds.ts): soft clouds of light at different
+ * heights, and dark clouds of dust in the plane. Each cloud of light carries
+ * an equal share of the light of the picture, spread over its disc, so that
+ * together they shine about as brightly as the picture, from any distance.
+ * Clouds close to the camera would fill the screen with blur: they fade out,
+ * and the stars around the camera (starfield.ts) take over.
+ */
+export const CLOUDS_VERTEX = /* glsl */ `
+in vec3 position;
+in vec3 color;
+in float radius;   // in parsecs
+in float share;    // of the light of the picture, or for dust how much it hides
+uniform mat4 modelViewMatrix;
+uniform mat4 projectionMatrix;
+uniform float uPixelsPerUnit;
+uniform float uPixelRatio;
+uniform float uGain;
+uniform float uFade;
+uniform float uDust;     // 1 for clouds of dust
+uniform vec3 uEye;       // the camera
+out vec3 vColor;
+out float vStrength;
+void main() {
+  vec4 eye = modelViewMatrix * vec4(position, 1.0);
+  gl_Position = projectionMatrix * eye;
+  float distance = max(length(eye.xyz), 1.0);
+  float pixels = radius * uPixelsPerUnit / distance;
+  gl_PointSize = clamp(pixels * 1.7, 1.0, 256.0 * uPixelRatio);
+  // A cloud keeps its brightness per area at any distance, as the picture
+  // does: its share of the light spread over its disc. One smaller than a
+  // pixel spreads it over that pixel instead.
+  float perPixel = distance / uPixelsPerUnit;
+  float area = max(3.14159 * radius * radius, perPixel * perPixel);
+  float near = smoothstep(radius * 8.0, radius * 20.0, distance);
+  vStrength = mix(share * uGain / area, share * uGain, uDust) * near * uFade;
+  // Round clouds of dust only suit a view from above. Seen along the plane
+  // they would stack into speckles; there the glow draws the dark lane.
+  float steep = abs(normalize(position - uEye).z);
+  vStrength *= mix(1.0, smoothstep(0.12, 0.4, steep), uDust);
+  // Seen along the plane, the dust hides most of the thin layer of the arms
+  // in it: the dark lane of a galaxy seen edge-on. The thick disc above and
+  // below shines on.
+  float inLane = exp(-abs(position.z) / 250.0) * (1.0 - uDust);
+  vStrength *= 1.0 - 0.96 * inLane * (1.0 - smoothstep(0.03, 0.3, steep));
+  vColor = color;
+  if (vStrength < 1e-5 || gl_PointSize * near < 0.5) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+}
+`;
+
+export const CLOUDS_FRAGMENT = /* glsl */ `${HEADER}
+in vec3 vColor;
+in float vStrength;
+out vec4 outColor;
+void main() {
+  vec2 d = gl_PointCoord * 2.0 - 1.0;
+  float r2 = dot(d, d);
+  if (r2 > 1.0) discard;
+  // A soft disc, faded out at the edge of its square; the factor keeps its
+  // sum about equal to that of a flat disc of the cloud's radius.
+  float soft = exp(-r2 * 2.2) * 1.6;
+  outColor = vec4(vColor * vStrength * soft, 1.0);
+}
+`;
+
+/** Dust takes away a share of the light behind it. */
+export const DUST_FRAGMENT = /* glsl */ `${HEADER}
+in vec3 vColor;
+in float vStrength;
+out vec4 outColor;
+void main() {
+  vec2 d = gl_PointCoord * 2.0 - 1.0;
+  float r2 = dot(d, d);
+  if (r2 > 1.0) discard;
+  outColor = vec4(0.0, 0.0, 0.0, clamp(vStrength * exp(-r2 * 3.0), 0.0, 0.85));
 }
 `;
 
@@ -296,6 +420,163 @@ void main() {
 }
 `;
 
+/**
+ * The stars between the stars with planets (starfield.ts). Each gives as much
+ * light as it has, thinned out with the square of its distance, so near and
+ * bright stars are large and sharp, far and faint ones small and dim. A class
+ * of stars fades out before the end of its reach, so stars never pop up.
+ */
+export const FIELD_VERTEX = /* glsl */ `
+in vec3 position;
+in vec3 color;
+in float light;    // in suns
+uniform mat4 modelViewMatrix;
+uniform mat4 projectionMatrix;
+uniform float uPixelRatio;
+uniform float uReach;
+uniform float uFade;
+out vec4 vColor;
+void main() {
+  vec4 eye = modelViewMatrix * vec4(position, 1.0);
+  gl_Position = projectionMatrix * eye;
+  float distance = max(length(eye.xyz), 1e-3);
+  // Dust in the plane of the galaxy dims what lies far away in it: light
+  // loses about half of itself every two kiloparsecs along the plane. Only
+  // the part of the way that runs inside the layer of dust counts: from
+  // above or below the disc, little of it.
+  vec3 camera = -transpose(mat3(modelViewMatrix)) * modelViewMatrix[3].xyz;
+  float inLayer = min(1.0, 320.0 / max(abs(camera.z - position.z), 1.0));
+  float dust = exp(-distance * inLayer / 2800.0 * exp(-abs(position.z) / 160.0));
+  // Light arriving here, compared with a faint star at the end of its reach.
+  // Only the nearest and brightest stand out; the rest are the faint grain
+  // that the glow of the galaxy is made of. Below about FAINTEST in
+  // starfieldView.ts a star is invisible.
+  float seen = light / (distance * distance) / 1e-4 * 0.07 * dust;
+  float edge = 1.0 - smoothstep(0.7 * uReach, uReach, distance);
+  float alpha = min(pow(seen, 0.85), 1.0) * edge * uFade;
+  // Brighter than that a star does not get whiter, it gets a larger glow.
+  gl_PointSize = clamp(1.3 + 1.6 * log2(1.0 + seen), 1.3, 16.0) * uPixelRatio;
+  vColor = vec4(color, alpha);
+  if (alpha < 0.004) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+}
+`;
+
+export const FIELD_FRAGMENT = /* glsl */ `${HEADER}
+in vec4 vColor;
+out vec4 outColor;
+void main() {
+  vec2 d = gl_PointCoord * 2.0 - 1.0;
+  float r2 = dot(d, d);
+  if (r2 > 1.0) discard;
+  float glow = exp(-r2 * 6.0);
+  float core = exp(-r2 * 40.0);
+  outColor = vec4((vColor.rgb * glow + vec3(core) * 0.6) * vColor.a, 1.0);
+}
+`;
+
+/** A cloud of gas or the glow of a cluster: a picture turned towards the camera. */
+export const LANDMARK_VERTEX = /* glsl */ `
+in vec3 position;
+in vec2 uv;
+uniform mat4 modelViewMatrix;
+uniform mat4 projectionMatrix;
+out vec2 vUv;
+void main() {
+  vUv = uv * 2.0 - 1.0;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+/**
+ * Glowing gas is pink from hydrogen, with blue light scattered by dust near
+ * the young stars in its middle and dark lanes of dust across it. A cluster
+ * is a soft glow of the stars too faint to see one by one.
+ */
+export const LANDMARK_FRAGMENT = /* glsl */ `${HEADER}
+uniform vec3 uColor;
+uniform float uKind;      // 0 cloud of gas, 1 young cluster, 2 globular cluster, 3 shell of a dying star, 4 remnant of a supernova, 5 small galaxy
+uniform float uSeed;
+uniform float uFade;
+in vec2 vUv;
+out vec4 outColor;
+
+// Without sin(): on many graphics cards sin() of large numbers loses its
+// precision, and the noise falls apart into square blocks.
+float hash(vec2 p) {
+  vec3 q = fract(vec3(p.xyx) * 0.1031);
+  q += dot(q, q.yzx + 33.33);
+  return fract((q.x + q.y) * q.z);
+}
+float noise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+float fbm(vec2 p) {
+  float sum = 0.0;
+  float amp = 0.5;
+  for (int i = 0; i < 5; i++) {
+    sum += amp * noise(p);
+    p = p * 2.03 + 17.1;
+    amp *= 0.5;
+  }
+  return sum;
+}
+
+void main() {
+  float r2 = dot(vUv, vUv);
+  if (r2 > 1.0) discard;
+  vec3 color;
+  if (uKind < 0.5) {
+    vec2 p = vUv * 2.6 + uSeed;
+    vec2 warp = vec2(fbm(p + 3.1), fbm(p + 8.7));
+    float gas = fbm(p + warp * 1.6);
+    float lanes = smoothstep(0.45, 0.7, fbm(p * 1.7 + warp + 31.0));
+    // A bright core, ragged lobes and faint outskirts far around it.
+    float shape = exp(-r2 * 7.0) * smoothstep(0.2, 0.7, gas + 0.3 * (1.0 - r2));
+    float outskirts = exp(-r2 * 2.2) * smoothstep(0.35, 0.8, gas) * 0.35;
+    float middle = exp(-r2 * 40.0);
+    vec3 ionised = mix(uColor, vec3(1.0, 0.55, 0.45), smoothstep(0.5, 0.8, gas) * 0.4);
+    color = (ionised * (shape + outskirts) * (1.0 - 0.75 * lanes) + vec3(0.5, 0.65, 1.0) * middle * 0.5) * 0.9;
+  } else if (uKind < 1.5) {
+    color = uColor * exp(-r2 * 5.0) * 0.22;
+  } else if (uKind < 2.5) {
+    color = uColor * exp(-r2 * 14.0) * 0.22 + uColor * exp(-r2 * 4.0) * 0.05;
+  } else if (uKind < 3.5) {
+    // A dying star has blown off its outer layers: a thin ring of gas, blue
+    // green inside, red at its rim, with the hot little star in the middle.
+    float r = sqrt(r2);
+    float lumps = fbm(vUv * 7.0 + uSeed);
+    float ring = exp(-pow((r - 0.55 - 0.08 * lumps) / 0.16, 2.0));
+    vec3 tint = mix(uColor, vec3(1.0, 0.35, 0.35), smoothstep(0.45, 0.75, r));
+    color = tint * ring * (0.6 + 0.6 * lumps) * 0.9 + uColor * exp(-r2 * 6.0) * 0.12 + vec3(0.9, 0.95, 1.0) * exp(-r2 * 900.0);
+  } else if (uKind < 4.5) {
+    // The shell of an exploded star: thin tangled filaments, bunched into
+    // arcs where the blast ran into denser gas, missing elsewhere.
+    float r = sqrt(r2);
+    float wobble = fbm(vUv * 3.0 + uSeed) - 0.5;
+    float shell = exp(-pow((r - 0.74 - 0.32 * wobble) / 0.035, 2.0))
+      + 0.6 * exp(-pow((r - 0.62 - 0.4 * wobble) / 0.025, 2.0));
+    float strands = smoothstep(0.45, 0.8, fbm(vUv * 11.0 + uSeed * 2.0));
+    float arcs = smoothstep(0.38, 0.62, fbm(vUv * 1.8 + uSeed + 4.0));
+    vec3 tint = mix(uColor, vec3(1.0, 0.45, 0.5), smoothstep(0.4, 0.7, fbm(vUv * 3.0 + 5.0)));
+    color = tint * shell * strands * arcs * 1.5;
+  } else {
+    // A small galaxy: a lopsided cloud of stars with a bar across it and
+    // pink knots where new stars are born.
+    vec2 p = vUv * 2.2 + uSeed;
+    float body = exp(-r2 * 2.6) * (0.55 + 0.9 * fbm(p));
+    vec2 b = vec2(vUv.x * 0.9 + vUv.y * 0.44, -vUv.x * 0.44 + vUv.y * 0.9);
+    float bar = exp(-pow(b.x / 0.55, 2.0) - pow(b.y / 0.14, 2.0)) * 0.7;
+    float knots = smoothstep(0.62, 0.78, fbm(vUv * 6.0 + uSeed * 3.0)) * exp(-r2 * 2.0);
+    color = (uColor * (body + bar) + vec3(1.0, 0.4, 0.55) * knots * 0.8) * 0.35;
+  }
+  // Fades out before the edge of its square, or the edge would show.
+  outColor = vec4(color * uFade * (1.0 - smoothstep(0.6, 1.0, r2)), 1.0);
+}
+`;
+
 // ---- The system view ---------------------------------------------------------
 
 /** Shared by the planets, the star and the haze: hands the point on the ball to the fragment shader. */
@@ -332,7 +613,8 @@ in vec3 vPosition;
 out vec4 outColor;
 void main() {
   vec3 n = normalize(vPosition);
-  float rock = 0.36 + 0.3 * fbm(n * 2.6 + uSeed.zyx + 40.0, 3);
+  gPixel = min(max(length(dFdx(n)), length(dFdy(n))), 0.5);
+  float rock = 0.36 + 0.3 * fbm(n * 2.6 + uSeed.zyx + 40.0, 3, 2.6);
   float sun = max(dot(n, normalize(uLightObject)), 0.0);
   outColor = vec4(toDisplay(vec3(rock, rock * 0.97, rock * 0.93) * uLight * sun), 1.0);
 }
@@ -409,8 +691,9 @@ void main() {
     surface = toLinear(sampleMap(uMapDay, p, 0.0).rgb) * 1.3;
   } else {
     // Bubbling gas and a few darker spots.
-    float cells = fbm(p * 11.0 + vec3(0.0, uTime * 0.05, 0.0) + uSeed, 4);
-    float spots = fbm(p * 2.6 + uSeed.zxy, 3);
+    gPixel = min(max(length(dFdx(p)), length(dFdy(p))), 0.5);
+    float cells = fbm(p * 11.0 + vec3(0.0, uTime * 0.05, 0.0) + uSeed, 4, 11.0);
+    float spots = fbm(p * 2.6 + uSeed.zxy, 3, 2.6);
     surface = uColor * (0.9 + cells * 0.7) * (1.0 - 0.4 * smoothstep(0.22, 0.34, spots));
   }
   float limb = 0.5 + 0.5 * pow(facing, 0.55);

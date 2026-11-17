@@ -1,5 +1,6 @@
 import { globeFragment, GLOBE_VERTEX } from "./globe.glsl";
 import { NOISE_SIZE, noiseVolume } from "./noise";
+import { stormUniforms } from "./storms";
 import {
   globeRadius,
   globeRotation,
@@ -67,6 +68,7 @@ export function poseUniforms(
     uLightView: lightDirection(yaw, pose.pitch),
     uFlatten: spec.flattening,
     uMoon: [moon[0], moon[1], moon[2], spec.moon?.size ?? 0],
+    ...stormUniforms(spec, pose.seconds),
     // The bands of a gas giant only drift where that is asked for.
     ...(pose.flow ? {} : { uFlow: 0 }),
   };
@@ -197,14 +199,15 @@ export class GlobeRenderer {
 
     gl.useProgram(entry.program);
     const location = (name: string) => this.location(entry, name);
-    // A number, a pair, three, four, or the nine of a rotation.
+    // A number, a pair, three, the nine of a rotation, or groups of four.
     const values = { ...surfaceUniforms(spec), ...poseUniforms(spec, pose, rect) };
     for (const [name, value] of Object.entries(values)) {
       if (typeof value === "number") gl.uniform1f(location(name), value);
       else if (value.length === 2) gl.uniform2fv(location(name), value);
       else if (value.length === 3) gl.uniform3fv(location(name), value);
-      else if (value.length === 4) gl.uniform4fv(location(name), value);
-      else gl.uniformMatrix3fv(location(name), false, value);
+      else if (value.length === 9) gl.uniformMatrix3fv(location(name), false, value);
+      // Four numbers, or a list of several groups of four.
+      else gl.uniform4fv(location(name), value);
     }
 
     const maps = [day, night, clouds, ring];
@@ -276,18 +279,7 @@ export class GlobeRenderer {
     this.noise = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_3D, this.noise);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    gl.texImage3D(
-      gl.TEXTURE_3D,
-      0,
-      gl.R16F,
-      NOISE_SIZE,
-      NOISE_SIZE,
-      NOISE_SIZE,
-      0,
-      gl.RED,
-      gl.FLOAT,
-      noiseVolume(),
-    );
+    gl.texImage3D(gl.TEXTURE_3D, 0, gl.R16F, NOISE_SIZE, NOISE_SIZE, NOISE_SIZE, 0, gl.RED, gl.FLOAT, noiseVolume());
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
@@ -417,7 +409,11 @@ export class GlobeRenderer {
     this.textures.set(url, entry);
 
     const image = new Image();
-    image.onload = () => {
+    image.src = url;
+    // Decoded beside the page first: handed over undecoded, the browser would
+    // decode it on the main thread during the upload, which stalls a phone.
+    // A map that cannot be loaded leaves the planet waiting, as before.
+    const upload = () => {
       // The renderer may be gone or the graphics card reset since the request.
       if (this.disposed || this.textures.get(url) !== entry) return;
       gl.activeTexture(gl.TEXTURE0);
@@ -440,7 +436,7 @@ export class GlobeRenderer {
       entry.ready = true;
       this.onChange();
     };
-    image.src = url;
+    image.decode().then(upload, () => {});
     return entry;
   }
 }

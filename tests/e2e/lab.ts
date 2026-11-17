@@ -36,8 +36,12 @@ interface Job {
   /** One triangle over everything without any buffer, or a square with positions and picture coordinates. */
   shape: "triangle" | "square";
   uniforms: Record<string, number | number[]>;
-  /** The pictures the shader reads, in the order of its texture units. `null` is an empty one. */
-  maps: { name: string; url: string | null; wraps: boolean }[];
+  /**
+   * The pictures the shader reads, in the order of its texture units. `null`
+   * is an empty one. With `size` the picture is shrunk to that many pixels
+   * square while it is decoded, as the map does with the galaxy.
+   */
+  maps: { name: string; url: string | null; wraps: boolean; size?: number }[];
   /** Whether the shader reads the noise of the planets, and from which texture unit. */
   noise: boolean;
   width: number;
@@ -111,17 +115,30 @@ async function drawInPage({ job, noise, noiseSize }: { job: Job; noise: string |
   }
   gl.useProgram(program);
 
-  for (const { url, wraps } of job.maps) {
+  for (const { url, wraps, size } of job.maps) {
     if (!url || lab.maps.has(url)) continue;
-    const image = new Image();
-    image.src = url;
-    await image.decode();
     const texture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
     gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    if (size) {
+      // Turned upside down while it is decoded: WebGL does not turn an ImageBitmap.
+      const blob = await (await fetch(url)).blob();
+      const bitmap = await createImageBitmap(blob, {
+        resizeWidth: size,
+        resizeHeight: size,
+        resizeQuality: "high",
+        imageOrientation: "flipY",
+      });
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bitmap);
+      bitmap.close();
+    } else {
+      const image = new Image();
+      image.src = url;
+      await image.decode();
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    }
     gl.generateMipmap(gl.TEXTURE_2D);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
@@ -135,8 +152,9 @@ async function drawInPage({ job, noise, noiseSize }: { job: Job; noise: string |
     if (typeof value === "number") gl.uniform1f(location, value);
     else if (value.length === 2) gl.uniform2fv(location, value);
     else if (value.length === 3) gl.uniform3fv(location, value);
-    else if (value.length === 4) gl.uniform4fv(location, value);
-    else gl.uniformMatrix3fv(location, false, value);
+    else if (value.length === 9) gl.uniformMatrix3fv(location, false, value);
+    // Four numbers, or a list of several groups of four.
+    else gl.uniform4fv(location, value);
   }
   job.maps.forEach(({ name, url }, unit) => {
     gl.activeTexture(gl.TEXTURE0 + unit);
@@ -181,11 +199,7 @@ let noiseAsText: string | undefined;
 async function draw(page: Page, job: Job): Promise<Picture> {
   // The noise is computed here, as the app computes it in the browser, and sent along once.
   if (job.noise) noiseAsText ??= Buffer.from(noiseVolume().buffer).toString("base64");
-  const text = await page.evaluate(drawInPage, {
-    job,
-    noise: job.noise ? (noiseAsText ?? null) : null,
-    noiseSize: NOISE_SIZE,
-  });
+  const text = await page.evaluate(drawInPage, { job, noise: job.noise ? (noiseAsText ?? null) : null, noiseSize: NOISE_SIZE });
   const upsideDown = Buffer.from(text, "base64");
   // WebGL counts rows from the bottom.
   const data = new Uint8Array(upsideDown.length);
@@ -255,7 +269,8 @@ export function drawGalaxy(page: Page, view: GalaxyView, size = 160): Promise<Pi
       uFade: 1,
       uOutside: view.outside ?? 1,
     },
-    maps: [{ name: "uMap", url: "/textures/sky/galaxy-sm.jpg", wraps: false }],
+    // Read as the map reads it (scene/galaxyView.ts, PICTURE_SIZE).
+    maps: [{ name: "uMap", url: "/textures/sky/galaxy.jpg", wraps: false, size: 512 }],
     noise: false,
     width: size,
     height: size,

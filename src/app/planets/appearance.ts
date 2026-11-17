@@ -464,6 +464,9 @@ function freeTurn(u1: number, u2: number, u3: number, mirror: number): Turn {
   ].map(round) as Turn;
 }
 
+/** A planet without weather that moves. */
+const NO_STORMS: GlobeSpec["storms"] = { cyclones: 0, dust: 0, spin: 0, outbreaks: 0 };
+
 /**
  * The globe of a look. `rest` holds what does not depend on the look. The
  * parts that only some planets have start switched off; the caller sets them.
@@ -481,6 +484,8 @@ function globe(
     glow: traits.glow ?? null,
     aurora: traits.aurora ?? null,
     lightning: 0,
+    storms: NO_STORMS,
+    giantStorms: [],
     craters: 0,
     relief: traits.relief ?? 1,
     bands: { ...(traits.bands ?? STRONG_BANDS), storms: 0 },
@@ -525,6 +530,24 @@ export function planetAppearance(input: AppearanceInput): Appearance {
 
   const sol = input.source === "sol" ? SOLAR_SYSTEM[input.slug] : undefined;
   if (sol) {
+    const solGlobe = globe(sol, {
+      kind: "map",
+      seed,
+      light: "#ffffff",
+      rings: sol.rings ? SATURN_RINGS : null,
+      tiltDeg: sol.tiltDeg,
+      spin: sol.spin ?? 1,
+      flattening: sol.flattening ?? 0,
+      flow: input.slug === "venus" ? 2 : sol.banded ? 1 : 0,
+      jets: sol.jets ?? NO_JETS,
+      turn: NO_TURN,
+      zones: 1,
+      maps: {
+        day: input.slug,
+        night: sol.night ? `${input.slug}-night` : null,
+        clouds: sol.cloudMap ? `${input.slug}-clouds` : null,
+      },
+    });
     return {
       base: sol.base,
       layers: sol.layers,
@@ -533,24 +556,8 @@ export function planetAppearance(input: AppearanceInput): Appearance {
       rings: sol.rings ?? false,
       starTint: null,
       seed,
-      globe: globe(sol, {
-        kind: "map",
-        seed,
-        light: "#ffffff",
-        rings: sol.rings ? SATURN_RINGS : null,
-        tiltDeg: sol.tiltDeg,
-        spin: sol.spin ?? 1,
-        flattening: sol.flattening ?? 0,
-        flow: input.slug === "venus" ? 2 : sol.banded ? 1 : 0,
-        jets: sol.jets ?? NO_JETS,
-        turn: NO_TURN,
-        zones: 1,
-        maps: {
-          day: input.slug,
-          night: sol.night ? `${input.slug}-night` : null,
-          clouds: sol.cloudMap ? `${input.slug}-clouds` : null,
-        },
-      }),
+      // Mars is the planet of dust storms; some of them wrap it whole.
+      globe: input.slug === "mars" ? { ...solGlobe, storms: { ...NO_STORMS, dust: 1 } } : solGlobe,
     };
   }
 
@@ -685,6 +692,14 @@ export function planetAppearance(input: AppearanceInput): Appearance {
         belts: [round(0.64 + 0.36 * chance("belts")), winds.phase],
         // Thunderstorms need clouds; the hottest giants have none of water.
         lightning: (tempK === null || tempK < 1500) && chance("lightning") < 0.35 ? round(0.4 + 0.6 * chance("lightning/rate")) : 0,
+        // The storms of the preset turn. Now and then fresh cloud wells up
+        // from below and is drawn out along its band, as on Saturn.
+        storms: {
+          ...NO_STORMS,
+          spin: winds.storms.length > 0 ? round(0.7 + 0.3 * chance("storms/spin")) : 0,
+          outbreaks: (tempK === null || tempK < 1500) && chance("outbreaks") < 0.45 ? round(0.5 + 0.5 * chance("outbreaks/rate")) : 0,
+        },
+        giantStorms: winds.storms.map(([lon, lat, size, spin]) => [lon, lat, size, spin] as [number, number, number, number]),
         moon: moon
           ? {
               size: round(0.04 + 0.06 * chance("moon/size")),
@@ -832,6 +847,16 @@ export function planetAppearance(input: AppearanceInput): Appearance {
       atmosphere: base.atmosphere && steamy ? { ...base.atmosphere, density: 1 } : base.atmosphere,
       glow,
       aurora,
+      storms: {
+        ...NO_STORMS,
+        // Cyclones draw their strength from warm sea: more of them the warmer it is.
+        cyclones: base.ocean ? round(0.45 + 0.5 * warmth) : 0,
+        // Wind lifts dust where there is air but no water to hold the ground.
+        dust:
+          !base.ocean && !icy && climate !== "scorching" && base.atmosphere && base.atmosphere.density >= 0.15 && !steamy
+            ? round(0.4 + 0.6 * chance("dust"))
+            : 0,
+      },
       // Between a little under half and most of the surface is sea.
       ocean: base.ocean && { ...base.ocean, level: levelAt(sea) },
       craters: round(Math.min(1, TERRAIN_CRATERS[preset] * (climate === "temperate" ? 0.4 : 1) * (made === "iron" ? 1.3 : 1))),

@@ -1,7 +1,9 @@
-import { LinearFilter, RepeatWrapping, TextureLoader, WebGLRenderer, type Texture } from "three";
+import { LinearFilter, RepeatWrapping, WebGLRenderer, type Texture } from "three";
 import type { MapStar, MapSystemPayload } from "../payload";
 import { GalaxyView, type Viewport } from "./galaxyView";
 import { LabelLayer } from "./labels";
+import { loadTexture } from "./picture";
+import { ShaderGate } from "./shaderGate";
 import { SystemView, TextureStore } from "./systemView";
 
 /** What the map tells the page around it. */
@@ -12,12 +14,14 @@ export interface MapEvents {
   onFocus(planet: number | null): void;
   /** Escape was pressed while the map had the keyboard. */
   onEscape(): void;
+  /** The camera started (true) or stopped circling the galactic centre. */
+  onOrbit?(orbiting: boolean): void;
 }
 
 const SKY_LARGE = "/textures/sky/milky-way-lg.jpg";
 const SKY_SMALL = "/textures/sky/milky-way-sm.jpg";
-const GALAXY_LARGE = "/textures/sky/galaxy-lg.jpg";
-const GALAXY_SMALL = "/textures/sky/galaxy-sm.jpg";
+/** The artist's impression of the galaxy (galaxy.ts). */
+const GALAXY_PICTURE = "/textures/sky/galaxy.jpg";
 /** How long the curtain takes to close or open. Its class `duration-320` must say the same. */
 const FADE_MS = 320;
 /** The mouse pointers of the map, as Tailwind classes. */
@@ -66,6 +70,8 @@ export class MapEngine {
   private readonly skyTexture: Texture;
   private readonly galaxy: GalaxyView;
   private system: SystemView | null = null;
+  /** Builds the shaders of a star system in the background (see shaderGate.ts). */
+  private readonly systemGate = new ShaderGate();
 
   private readonly viewport: Viewport = { width: 1, height: 1, pixelRatio: 1 };
   private readonly resizeObserver: ResizeObserver;
@@ -115,14 +121,15 @@ export class MapEngine {
     const raise = () => {
       if (!this.pendingSwap) this.closeCurtain(false);
     };
-    this.skyTexture = new TextureLoader().load(large ? SKY_LARGE : SKY_SMALL, raise, undefined, raise);
+    this.skyTexture = loadTexture(large ? SKY_LARGE : SKY_SMALL, raise, raise);
     this.skyTexture.generateMipmaps = false;
     this.skyTexture.minFilter = LinearFilter;
     this.skyTexture.magFilter = LinearFilter;
     this.skyTexture.wrapS = RepeatWrapping;
 
     this.textures = new TextureStore(Math.min(this.renderer.capabilities.getMaxAnisotropy(), 8));
-    this.galaxy = new GalaxyView(this.skyTexture, large ? GALAXY_LARGE : GALAXY_SMALL);
+    this.galaxy = new GalaxyView(this.skyTexture, GALAXY_PICTURE);
+    this.galaxy.onOrbitChange = (orbiting) => this.events.onOrbit?.(orbiting);
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
@@ -162,6 +169,11 @@ export class MapEngine {
 
   flyToOverview(instantly = false): void {
     this.galaxy.flyToOverview(instantly || this.reducedMotion);
+  }
+
+  /** Makes the galactic centre the fixed point the camera turns round, or lets it fly freely. */
+  setOrbit(on: boolean): void {
+    this.galaxy.setOrbit(on, this.reducedMotion);
   }
 
   /** Leaves the galaxy for one star system. `planet` is the planet to look at first, if any. */
@@ -227,7 +239,7 @@ export class MapEngine {
     this.labels.begin();
     if (this.system) {
       this.system.update(dt, this.seconds, this.viewport);
-      this.renderer.render(this.system.scene, this.system.camera);
+      this.systemGate.render(this.renderer, this.system.scene, this.system.camera);
       this.system.drawLabels(this.labels, this.viewport);
     } else {
       this.galaxy.update(dt, this.keys, this.viewport);

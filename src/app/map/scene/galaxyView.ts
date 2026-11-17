@@ -2,8 +2,10 @@ import {
   BufferAttribute,
   BufferGeometry,
   CustomBlending,
+  DataTexture,
   GLSL3,
   LinearFilter,
+  LinearMipmapLinearFilter,
   Matrix3,
   Matrix4,
   Mesh,
@@ -13,7 +15,6 @@ import {
   Points,
   RawShaderMaterial,
   Scene,
-  TextureLoader,
   Vector3,
   WebGLRenderTarget,
   type Texture,
@@ -31,6 +32,10 @@ import {
   SCREEN_VERTEX,
 } from "./shaders";
 import { createSky, type Sky } from "./sky";
+import { CLOUD_SHARE, GalaxyCloudsView } from "./galaxyCloudsView";
+import { loadPicture, type Picture } from "./picture";
+import { ShaderGate } from "./shaderGate";
+import { StarfieldView } from "./starfieldView";
 
 /** Size of the drawing area in CSS pixels, and how many device pixels one of them has. */
 export interface Viewport {
@@ -70,6 +75,15 @@ const HEIGHT_COUNTS = 4;
 const HOME = new Vector3(-9, -6.5, 4);
 const OVERVIEW = new Vector3(GALACTIC_CENTRE[0] - 15000, -13000, 21000);
 const CENTRE = new Vector3(...GALACTIC_CENTRE);
+/**
+ * The artist's impression is read at this many pixels square, for the stars,
+ * the clouds and the glow. The glow never reads it sharper than that: from
+ * afar the clouds carry the sharp picture, and its soft light is read from a
+ * blurred copy (see GALAXY_GLOW_FRAGMENT).
+ */
+const PICTURE_SIZE = 512;
+/** How near the centre and how far from it the camera may circle, in parsecs. */
+const ORBIT_RANGE: readonly [number, number] = [400, 120_000];
 /** How close a flight to a star ends, in parsecs. */
 const ARRIVAL_DISTANCE = 0.45;
 /** How many of the stars next to the camera get a name. */
@@ -86,7 +100,8 @@ const additive = { blending: CustomBlending, blendSrc: OneFactor, blendDst: OneF
 
 /**
  * The galaxy: the stars with planets at their real positions, the Milky Way
- * around them, and a camera that flies freely.
+ * around them, and a camera that flies freely, or circles the galactic centre
+ * as the camera of a star system circles its star (`setOrbit`).
  *
  * Lengths are parsecs, the Sun is at the origin and z points to the galactic
  * north. Near the Sun the sky is a photograph of the real Milky Way. A little
@@ -107,6 +122,10 @@ export class GalaxyView {
   private specialIndex = -1;
   private hosts: Points<BufferGeometry, RawShaderMaterial> | null = null;
   private readonly sky: Sky;
+  /** The stars without known planets, made around the camera (starfield.ts). */
+  private readonly field: StarfieldView;
+  /** The galaxy as a body of clouds at different heights, for the view from afar (galaxyClouds.ts). */
+  private readonly clouds: GalaxyCloudsView;
   /**
    * The galaxy is first drawn into a picture of its own and from there onto
    * the screen (see GLOW_PIXELS).
@@ -120,12 +139,16 @@ export class GalaxyView {
   /** What the picture of the glow was last drawn from: while nothing of it changes, the picture stays. */
   private drawnFrom = "";
   /**
-   * The artist's impression of the galaxy. It is only fetched when the camera
-   * leaves the neighbourhood of the Sun, where the photograph of the sky is
-   * enough. `arrived` runs from 0 to 1 once it is there, so the galaxy fades in.
+   * The artist's impression of the galaxy, for the glow. It is made from the
+   * picture read for the stars, and only when the camera leaves the
+   * neighbourhood of the Sun, where the photograph of the sky is enough.
+   * `arrived` runs from 0 to 1 once it is drawn, so the galaxy fades in.
    */
-  private picture: Texture | null = null;
+  private readonly picture: Promise<Picture>;
+  private glowMap: DataTexture | null = null;
   private arrived = 0;
+  /** Builds the shaders in the background, so the map does not stand still meanwhile. */
+  private readonly gate = new ShaderGate();
 
   private readonly position = HOME.clone();
   private yaw = 0;
@@ -133,6 +156,10 @@ export class GalaxyView {
   private readonly velocity = new Vector3();
   private dolly = 0;
   private flight: Flight | null = null;
+  /** The point the camera circles and looks at, or null while it flies freely. */
+  private pivot: Vector3 | null = null;
+  /** Told whenever the camera starts or stops circling. */
+  onOrbitChange: (orbiting: boolean) => void = () => {};
   /** Distance the camera covers per second at normal speed, in parsecs. */
   private pace = 1;
   private neighbours: { index: number; distance: number }[] = [];
@@ -140,15 +167,18 @@ export class GalaxyView {
   private readonly scratch = new Vector3();
 
   /** `pictureUrl` is where the artist's impression of the galaxy can be fetched. */
-  constructor(
-    skyTexture: Texture,
-    private readonly pictureUrl: string,
-  ) {
+  constructor(skyTexture: Texture, pictureUrl: string) {
     this.camera.up.set(0, 0, 1);
     this.lookAt(new Vector3(0, 0, 0));
 
     this.sky = createSky(skyTexture, new Matrix3());
     this.scene.add(this.sky.mesh);
+    // Read once, for the plan of the stars, the clouds and the glow.
+    this.picture = loadPicture(pictureUrl, PICTURE_SIZE);
+    const linear = this.picture.then((picture) => picture.linear);
+    this.field = new StarfieldView(linear, PICTURE_SIZE);
+    this.scene.add(this.field.group);
+    this.clouds = new GalaxyCloudsView(linear, PICTURE_SIZE, (clusters) => this.field.addClusters(clusters));
 
     const source = new Mesh(
       new PlaneGeometry(2, 2),
@@ -164,6 +194,7 @@ export class GalaxyView {
           uUp: { value: new Vector3() },
           uFade: { value: 0 },
           uOutside: { value: 1 },
+          uClouds: { value: 0 },
         },
         depthTest: false,
         depthWrite: false,
@@ -192,30 +223,40 @@ export class GalaxyView {
     screen.frustumCulled = false;
     screen.renderOrder = 1;
     this.scene.add(screen);
-    this.glow = { scene: new Scene().add(source), source, target, screen };
+    // The clouds of the galaxy are drawn into the same picture, after the
+    // glow: they are as soft, and the dust darkens the glow where it lies.
+    this.glow = { scene: new Scene().add(source, this.clouds.group), source, target, screen };
   }
 
   /** Draws the galaxy. Call after `update`. */
   render(renderer: WebGLRenderer, viewport: Viewport): void {
     const { scene, source, target, screen } = this.glow;
+    const scale = Math.min(1, Math.sqrt(GLOW_PIXELS / (viewport.width * viewport.height)));
+    const width = Math.max(1, Math.round(viewport.width * scale));
+    const height = Math.max(1, Math.round(viewport.height * scale));
+    if (target.width !== width || target.height !== height) target.setSize(width, height);
+    // Once its picture is there, the glow is built in the background, so it
+    // can fade in when it is ready (see `update`).
+    if (source.material.uniforms.uMap.value && !this.gate.isReady(source.material)) {
+      renderer.setRenderTarget(target);
+      this.gate.prepare(renderer, scene, this.camera);
+      renderer.setRenderTarget(null);
+    }
     screen.visible = source.material.uniforms.uFade.value > 0.001;
     if (screen.visible) {
-      const scale = Math.min(1, Math.sqrt(GLOW_PIXELS / (viewport.width * viewport.height)));
-      const width = Math.max(1, Math.round(viewport.width * scale));
-      const height = Math.max(1, Math.round(viewport.height * scale));
-      if (target.width !== width || target.height !== height) target.setSize(width, height);
       // The glow is the costly part of the picture. While the camera rests,
       // the one that is there is shown again.
-      const { uEye, uForward, uRight, uUp, uFade, uOutside } = source.material.uniforms;
-      const from = JSON.stringify([width, height, uEye.value, uForward.value, uRight.value, uUp.value, uFade.value, uOutside.value]);
+      const { uEye, uForward, uRight, uUp, uFade, uOutside, uClouds } = source.material.uniforms;
+      const from = JSON.stringify([width, height, uEye.value, uForward.value, uRight.value, uUp.value, uFade.value, uOutside.value, uClouds.value]);
       if (from !== this.drawnFrom) {
-        this.drawnFrom = from;
         renderer.setRenderTarget(target);
-        renderer.render(scene, this.camera);
+        const complete = this.gate.render(renderer, scene, this.camera);
         renderer.setRenderTarget(null);
+        // Drawn without what was still being built: drawn again next time.
+        this.drawnFrom = complete ? from : "";
       }
     }
-    renderer.render(this.scene, this.camera);
+    this.gate.render(renderer, this.scene, this.camera);
   }
 
   /** Hands over the stars with planets. Called once, when they have loaded. */
@@ -257,20 +298,49 @@ export class GalaxyView {
 
   // ---- Moving the camera -----------------------------------------------------
 
-  /** Turns the view, as if the sky were grabbed and pulled. Pixels in, angles out. */
+  /**
+   * Turns the view, as if the sky were grabbed and pulled; while circling,
+   * turns the galaxy as if it were grabbed. Pixels in, angles out.
+   */
   drag(dx: number, dy: number): void {
     this.flight = null;
+    if (this.pivot) {
+      this.circle(this.pivot, -dx * 0.005, dy * 0.005, 1);
+      return;
+    }
     this.yaw += dx * 0.0032;
     this.pitch = clamp(this.pitch + dy * 0.0032, -1.55, 1.55);
   }
 
-  /** Moves forwards (positive) or backwards. One notch of a mouse wheel is about 1. */
+  /** Moves forwards (positive) or backwards, or nearer to what it circles. One notch of a mouse wheel is about 1. */
   push(amount: number): void {
     this.flight = null;
     this.dolly = clamp(this.dolly + amount * 0.3, -3, 3);
   }
 
+  /** Whether the camera circles the galactic centre. */
+  get orbiting(): boolean {
+    return this.pivot !== null;
+  }
+
+  /**
+   * Makes the galactic centre the fixed point of the camera, which then turns
+   * round it, or lets the camera fly freely again. Circling starts with a
+   * turn towards the centre.
+   */
+  setOrbit(on: boolean, instantly = false): void {
+    if (on === this.orbiting) return;
+    this.pivot = on ? CENTRE.clone() : null;
+    if (on) {
+      // Out of the very middle first, where there is nothing to circle.
+      if (this.position.distanceTo(CENTRE) < ORBIT_RANGE[0]) this.position.set(CENTRE.x - ORBIT_RANGE[0] * 3, CENTRE.y, CENTRE.z + ORBIT_RANGE[0]);
+      this.fly(CENTRE, this.position.clone(), instantly);
+    }
+    this.onOrbitChange(on);
+  }
+
   flyToStar(index: number, instantly = false): void {
+    this.setOrbit(false);
     const star = this.starPosition(index, new Vector3());
     const away = this.position.clone().sub(star);
     if (away.lengthSq() < 1e-8) away.set(-1, -0.6, 0.4);
@@ -278,11 +348,36 @@ export class GalaxyView {
   }
 
   flyHome(instantly = false): void {
+    this.setOrbit(false);
     this.fly(new Vector3(0, 0, 0), HOME, instantly);
   }
 
+  /** Flies out to see the whole galaxy, and circles its centre from there. */
   flyToOverview(instantly = false): void {
     this.fly(CENTRE, OVERVIEW, instantly);
+    if (!this.pivot) {
+      this.pivot = CENTRE.clone();
+      this.onOrbitChange(true);
+    }
+  }
+
+  /**
+   * Moves the camera round `pivot`: `turn` and `tilt` in radians round the
+   * north pole of the galaxy and up or down, and the distance times `scale`.
+   * The camera keeps looking at the pivot.
+   */
+  private circle(pivot: Vector3, turn: number, tilt: number, scale: number): void {
+    const offset = this.scratch.copy(this.position).sub(pivot);
+    const distance = clamp(Math.max(offset.length(), 1) * scale, ORBIT_RANGE[0], ORBIT_RANGE[1]);
+    const azimuth = Math.atan2(offset.y, offset.x) + turn;
+    const elevation = clamp(Math.asin(clamp(offset.z / Math.max(offset.length(), 1), -1, 1)) + tilt, -1.5, 1.5);
+    const cos = Math.cos(elevation);
+    this.position.set(
+      pivot.x + distance * cos * Math.cos(azimuth),
+      pivot.y + distance * cos * Math.sin(azimuth),
+      pivot.z + distance * Math.sin(elevation),
+    );
+    this.lookAt(pivot);
   }
 
   private fly(focus: Vector3, to: Vector3, instantly: boolean): void {
@@ -328,20 +423,49 @@ export class GalaxyView {
     );
     const right = new Vector3(Math.sin(this.yaw), -Math.cos(this.yaw), 0);
 
-    const wish = new Vector3();
-    if (keys.has("KeyW") || keys.has("ArrowUp")) wish.add(forward);
-    if (keys.has("KeyS") || keys.has("ArrowDown")) wish.sub(forward);
-    if (keys.has("KeyD") || keys.has("ArrowRight")) wish.add(right);
-    if (keys.has("KeyA") || keys.has("ArrowLeft")) wish.sub(right);
-    if (keys.has("KeyE") || keys.has("Space")) wish.z += 1;
-    if (keys.has("KeyQ") || keys.has("KeyC")) wish.z -= 1;
-    if (wish.lengthSq() > 0) {
-      this.flight = null;
-      const fast = keys.has("ShiftLeft") || keys.has("ShiftRight") ? 6 : 1;
-      wish.normalize().multiplyScalar(this.pace * fast);
+    const shift = keys.has("ShiftLeft") || keys.has("ShiftRight");
+    if (this.pivot) {
+      const fast = shift ? 3 : 1;
+      // Circling: the keys turn round the pivot and move nearer or away.
+      const axis = (plus: string[], minus: string[]) =>
+        (plus.some((key) => keys.has(key)) ? 1 : 0) - (minus.some((key) => keys.has(key)) ? 1 : 0);
+      const sideways = axis(["KeyD", "ArrowRight"], ["KeyA", "ArrowLeft"]);
+      const upwards = axis(["KeyE", "Space"], ["KeyQ", "KeyC"]);
+      const nearer = axis(["KeyW", "ArrowUp"], ["KeyS", "ArrowDown"]);
+      if (sideways || upwards || nearer) this.flight = null;
+      if (this.flight) {
+        this.advanceFlight(this.flight, dt);
+      } else {
+        this.velocity.set(0, 0, 0);
+        const step = this.dolly * (1 - Math.exp(-dt * 9));
+        this.dolly -= step;
+        const turn = sideways * dt * 0.8 * fast;
+        const tilt = upwards * dt * 0.8;
+        const scale = Math.exp(-step * 0.7 - nearer * dt * 1.2 * fast);
+        // Left alone, the camera stays exactly where it is. Working its place
+        // out again from itself would shift it by a rounding error now and
+        // then, and each time the whole galaxy would be drawn again for nothing.
+        if (turn !== 0 || tilt !== 0 || Math.abs(scale - 1) > 1e-7) this.circle(this.pivot, turn, tilt, scale);
+      }
     }
 
-    if (this.flight) {
+    const wish = new Vector3();
+    if (!this.pivot) {
+      if (keys.has("KeyW") || keys.has("ArrowUp")) wish.add(forward);
+      if (keys.has("KeyS") || keys.has("ArrowDown")) wish.sub(forward);
+      if (keys.has("KeyD") || keys.has("ArrowRight")) wish.add(right);
+      if (keys.has("KeyA") || keys.has("ArrowLeft")) wish.sub(right);
+      if (keys.has("KeyE") || keys.has("Space")) wish.z += 1;
+      if (keys.has("KeyQ") || keys.has("KeyC")) wish.z -= 1;
+    }
+    if (wish.lengthSq() > 0) {
+      this.flight = null;
+      wish.normalize().multiplyScalar(this.pace * (shift ? 6 : 1));
+    }
+
+    if (this.pivot) {
+      // Moved above.
+    } else if (this.flight) {
       this.advanceFlight(this.flight, dt);
     } else {
       // Speed follows the keys softly, so starting and stopping do not jerk.
@@ -370,15 +494,31 @@ export class GalaxyView {
     const pixelsPerUnit = cssPixelsPerUnit * viewport.pixelRatio;
     // How far the view has left the one from the Sun.
     const away = Math.hypot(this.position.x, this.position.y, this.position.z * HEIGHT_COUNTS);
-    this.sky.setOpacity(1 - smoothstep(SKY_RANGE[0], SKY_RANGE[1], away));
+    const photographed = 1 - smoothstep(SKY_RANGE[0], SKY_RANGE[1], away);
+    this.sky.setOpacity(photographed);
+    this.field.update(this.camera, photographed, viewport.pixelRatio);
     const wanted = smoothstep(MODEL_RANGE[0], MODEL_RANGE[1], away);
     const glow = this.glow.source.material.uniforms;
-    if (wanted > 0 && !this.picture) {
-      this.picture = new TextureLoader().load(this.pictureUrl, (picture) => {
-        glow.uMap.value = picture;
-      });
+    if (wanted > 0 && !this.glowMap) {
+      this.glowMap = new DataTexture();
+      this.picture.then(
+        (picture) => {
+          if (!this.glowMap) return;
+          this.glowMap.image = { data: rowsFromBottom(picture), width: picture.size, height: picture.size };
+          this.glowMap.generateMipmaps = true;
+          this.glowMap.minFilter = LinearMipmapLinearFilter;
+          this.glowMap.magFilter = LinearFilter;
+          this.glowMap.needsUpdate = true;
+          glow.uMap.value = this.glowMap;
+        },
+        // Without the picture there is no model of the galaxy, only the sky.
+        () => {},
+      );
     }
-    if (glow.uMap.value) this.arrived = Math.min(1, this.arrived + dt / ARRIVAL_SECONDS);
+    // The galaxy fades in once it can be drawn.
+    if (glow.uMap.value && this.gate.isReady(this.glow.source.material)) {
+      this.arrived = Math.min(1, this.arrived + dt / ARRIVAL_SECONDS);
+    }
     const fade = wanted * this.arrived;
     // The line of sight of every pixel: forwards, plus so much to the right and upwards.
     const reach = Math.tan((this.camera.fov * Math.PI) / 360);
@@ -392,6 +532,12 @@ export class GalaxyView {
       smoothstep(GALAXY_EDGE * 0.8, GALAXY_EDGE, fromCentre),
     );
     glow.uOutside.value = outside;
+    // The clouds take over part of the light of the flat sheet, once they are there.
+    glow.uClouds.value = this.clouds.ready ? CLOUD_SHARE : 0;
+    // The picture of the glow has fewer pixels than the screen (GLOW_PIXELS).
+    const glowScale = Math.min(1, Math.sqrt(GLOW_PIXELS / (viewport.width * viewport.height)));
+    this.clouds.update(cssPixelsPerUnit * glowScale, 1, fade * outside, this.position);
+    this.field.showClusters(fade * outside);
     (glow.uEye.value as Vector3).copy(this.position);
     (glow.uRight.value as Vector3).set(view[0], view[1], view[2]).multiplyScalar(reach * this.camera.aspect);
     (glow.uUp.value as Vector3).set(view[4], view[5], view[6]).multiplyScalar(reach);
@@ -530,6 +676,12 @@ export class GalaxyView {
       if (name(neighbour.index, "faint")) named++;
     }
 
+    // Clouds of gas and clusters, when the camera comes near.
+    for (const landmark of this.field.namedLandmarks(this.camera)) {
+      const point = this.project(...landmark.position, viewport);
+      if (inside(point)) labels.put(landmark.name, point[0], point[1], "faint", 0);
+    }
+
     // Near the centre the special star there takes over the label.
     const specialShown = this.specialIndex >= 0 && shown.has(this.specialIndex);
     if (this.position.length() > 1500 && !specialShown) {
@@ -539,7 +691,8 @@ export class GalaxyView {
   }
 
   dispose(): void {
-    this.picture?.dispose();
+    this.glowMap?.dispose();
+    this.glowMap = null;
     this.glow.source.geometry.dispose();
     this.glow.source.material.dispose();
     this.glow.target.dispose();
@@ -547,6 +700,8 @@ export class GalaxyView {
     this.glow.screen.material.dispose();
     this.hosts?.geometry.dispose();
     this.hosts?.material.dispose();
+    this.field.dispose();
+    this.clouds.dispose();
     this.sky.dispose();
   }
 }
@@ -558,4 +713,16 @@ function clamp(value: number, low: number, high: number): number {
 function smoothstep(low: number, high: number, value: number): number {
   const t = clamp((value - low) / (high - low), 0, 1);
   return t * t * (3 - 2 * t);
+}
+
+/**
+ * The bytes of a picture with its rows turned around: a picture starts at the
+ * top, a texture of WebGL at the bottom.
+ */
+function rowsFromBottom(picture: Picture): Uint8Array {
+  const { size, bytes } = picture;
+  const row = size * 4;
+  const data = new Uint8Array(bytes.length);
+  for (let y = 0; y < size; y++) data.set(bytes.subarray((size - 1 - y) * row, (size - y) * row), y * row);
+  return data;
 }

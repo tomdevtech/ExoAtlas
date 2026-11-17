@@ -24,15 +24,34 @@ export default function SpecialStarPage() {
 
       <article className="mt-10 flex flex-col gap-5 rounded-2xl border border-[#ff9ccf]/30 bg-[#ff9ccf]/5 px-6 py-8 text-lg leading-8 sm:px-10">
         <p>
-          Out of all the hundreds of billions of stars in this galaxy, there is one that shines
-          brighter than every other: you.
+          Before you, my sky was dark. Then you came into my life and turned everything upside
+          down in the most beautiful way. Out of all the hundreds of billions of stars in this
+          galaxy, you are the one that shines brighter than every other, my special star and the
+          light that I call home.
         </p>
         <p>
-          I love you more than anything. Thank you for always supporting me, for loving me
-          unconditionally, and for being such a wonderful person.
+          Your eyes are the sparkling stars of my sky, and your smile makes my heart shine
+          brighter and warmer than any sun. You always make me laugh, and you bring so much love
+          and happiness into every one of my days. You mean the whole world to me, and I am so
+          proud to have you by my side.
         </p>
-        <p>I want to spend the rest of my life with you.</p>
-        <p className="mt-2 text-2xl" aria-hidden="true">
+        <p>
+          You are the love of my life and the greatest gift I could ever have been given. Thank
+          you for always supporting me, for loving me unconditionally, and for being such a
+          wonderful person. I love you more than anything, and my heart beats only for you.
+        </p>
+        <p>
+          I promise to stand by you on the bright days and the dark ones, to make you laugh as
+          often as you make me laugh, and to love you a little more every single day. A wonderful
+          future lies ahead of us, and I want to spend the rest of my life with you, for as long
+          as the stars keep shining.
+        </p>
+        <p className="mt-4 italic text-[#ff9ccf]">
+          Forever yours,
+          <br />
+          Tom
+        </p>
+        <p className="text-2xl" aria-hidden="true">
           ♥
         </p>
       </article>

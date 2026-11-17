@@ -31,9 +31,15 @@ export interface SurfaceUniforms {
   uBelts: Vec2;
   uAurora: Vec4;
   uLightning: number;
+  uStormSpin: number;
+  /** Six storms of four numbers each, unused ones all 0. */
+  uGiantStorms: number[];
 }
 
 const KIND = { map: 0, terrain: 1, bands: 2 } as const;
+
+/** How many storms of a gas planet the shader can turn (uGiantStorms). */
+export const GIANT_STORMS = 6;
 
 /**
  * The parts of surface.glsl.ts a planet needs, as values for #define. Every
@@ -103,6 +109,9 @@ export function surfaceUniforms(spec: GlobeSpec): SurfaceUniforms {
     uBelts: spec.belts,
     uAurora: spec.aurora ? [...linearColor(spec.aurora.color), spec.aurora.strength] : [0, 0, 0, 0],
     uLightning: spec.lightning,
+    // The storms that come and go depend on the time: see stormUniforms in storms.ts.
+    uStormSpin: spec.storms.spin,
+    uGiantStorms: Array.from({ length: GIANT_STORMS }, (_, index) => spec.giantStorms[index] ?? [0, 0, 0, 0]).flat(),
   };
 }
 

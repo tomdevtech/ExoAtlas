@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useEffectEvent, useMemo, useRef, useState, type FormEvent } from "react";
 import { isSpecialStar, SPECIAL_STAR } from "@/app/stars/my-special-star/star";
 import { formatNumber, parsecToLightYears } from "@/shared/format";
@@ -25,6 +26,12 @@ const TEXT_LINK = "text-sm text-accent underline-offset-4 underline decoration-c
 export default function MilkyWayMap() {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<MapEngine | null>(null);
+  /**
+   * The address as the router knows it. `window.location` is not enough: when
+   * the map's code is already loaded, its effects run before Next has written
+   * the new address, and a link like `/map?system=…` would be read as `/map`.
+   */
+  const searchParams = useSearchParams();
 
   const [stars, setStars] = useState<MapStar[] | null>(null);
   const [problem, setProblem] = useState<"webgl" | "stars" | null>(null);
@@ -37,6 +44,8 @@ export default function MilkyWayMap() {
   const [failed, setFailed] = useState(false);
   /** Index into `system.planets` of the planet the camera follows. */
   const [planet, setPlanet] = useState<number | null>(null);
+  /** Whether the camera circles the galactic centre instead of flying freely. */
+  const [orbiting, setOrbiting] = useState(false);
   const [paused, setPaused] = useState(
     () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
@@ -45,12 +54,15 @@ export default function MilkyWayMap() {
   const focusMap = () => containerRef.current?.focus({ preventScroll: true });
 
   async function enterSystem(slug: string, planetSlug: string | null = null) {
+    const engine = engineRef.current;
     setEntering(slug);
     setFailed(false);
     try {
       const response = await fetch(`/map/systems/${encodeURIComponent(slug)}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const payload = (await response.json()) as MapSystemPayload;
+      // The map was left (or hidden and started anew) while the system loaded.
+      if (!engine || engineRef.current !== engine) return;
       const index = planetSlug ? payload.planets.findIndex((p) => p.slug === planetSlug) : -1;
       const focus = index >= 0 ? index : null;
       engineRef.current?.showSystem(payload, focus, paused);
@@ -88,7 +100,8 @@ export default function MilkyWayMap() {
   });
 
   /** Goes to the place named in the address the page was opened with. */
-  const openLink = useEffectEvent((loaded: MapStar[], link: URLSearchParams) => {
+  const openLink = useEffectEvent((loaded: MapStar[]) => {
+    const link = searchParams;
     const engine = engineRef.current;
     if (!engine) return;
     const systemSlug = link.get("system");
@@ -115,6 +128,7 @@ export default function MilkyWayMap() {
       },
       onFocus: (index) => setPlanet(index),
       onEscape: () => handleEscape(),
+      onOrbit: (on) => setOrbiting(on),
     });
     if (!engine) {
       setProblem("webgl");
@@ -123,7 +137,6 @@ export default function MilkyWayMap() {
     engineRef.current = engine;
     container.focus({ preventScroll: true });
 
-    const link = new URLSearchParams(window.location.search);
     let cancelled = false;
     (async () => {
       try {
@@ -135,7 +148,7 @@ export default function MilkyWayMap() {
         const loaded = [...payload.stars, SPECIAL_STAR];
         engine.setStars(loaded);
         setStars(loaded);
-        openLink(loaded, link);
+        openLink(loaded);
       } catch {
         if (!cancelled) setProblem("stars");
       }
@@ -145,6 +158,16 @@ export default function MilkyWayMap() {
       cancelled = true;
       engineRef.current = null;
       engine.dispose();
+      // Next keeps a left page alive but hidden (React Activity) and runs this
+      // effect again when it comes back, with a new engine. The place must
+      // then come from the new address, not from the state of the last visit.
+      setStars(null);
+      setSelected(null);
+      setSystem(null);
+      setPlanet(null);
+      setEntering(null);
+      setFailed(false);
+      setOrbiting(false);
     };
   }, []);
 
@@ -281,6 +304,18 @@ export default function MilkyWayMap() {
               >
                 Whole galaxy
               </button>
+              <button
+                type="button"
+                className={BUTTON}
+                aria-pressed={orbiting}
+                title={orbiting ? "Fly freely again" : "Turn round the centre of the Milky Way"}
+                onClick={() => {
+                  engineRef.current?.setOrbit(!orbiting);
+                  focusMap();
+                }}
+              >
+                {orbiting ? "Fly freely" : "Orbit centre"}
+              </button>
             </div>
           )}
         </div>
@@ -289,12 +324,16 @@ export default function MilkyWayMap() {
           <p className="hidden max-w-md sm:block">
             {system
               ? "Drag to turn · scroll to zoom · click a planet to follow it · Esc returns to the galaxy. Sizes and distances are not to scale."
-              : "Drag to look around · W A S D to fly, E and Q for up and down, Shift for speed · scroll to move forwards · click a star to select it, double-click to fly there."}
+              : orbiting
+                ? "Drag to turn round the centre · scroll or W and S to zoom · A D and E Q to circle · click a star to select it, double-click to fly there."
+                : "Drag to look around · W A S D to fly, E and Q for up and down, Shift for speed · scroll to move forwards · click a star to select it, double-click to fly there."}
           </p>
           <p className="max-w-md sm:hidden">
             {system
               ? "Drag to turn, pinch to zoom, tap a planet. Not to scale."
-              : "Drag to look around, pinch to fly, tap a star."}
+              : orbiting
+                ? "Drag to turn round the centre, pinch to zoom, tap a star."
+                : "Drag to look around, pinch to fly, tap a star."}
           </p>
           <p className="pointer-events-auto sm:shrink-0 sm:text-right">
             Sky:{" "}

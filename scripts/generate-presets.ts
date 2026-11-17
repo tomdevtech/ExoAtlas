@@ -769,14 +769,27 @@ interface Winds {
   equator: number;
   narrowness: number;
   phase: number;
+  /**
+   * The largest storms, so the shader can let them turn: longitude and
+   * latitude of the centre in radians, half its height in radians of
+   * latitude (it is 1.7 times as wide in longitude), and 1 if it turns
+   * anticlockwise seen from above with north up, -1 if clockwise.
+   */
+  storms: [number, number, number, number][];
 }
+
+/** A storm as the simulation placed it, before rounding: see `Winds.storms`. */
+type Storm = [lon: number, lat: number, size: number, spin: number];
+
+/** How many storms a preset names for the shader. */
+const NAMED_STORMS = 6;
 
 /**
  * The winds a band preset is simulated with, for the shader: it lets them
  * blow on, so the clouds drift the way they were drawn out. Only their shape
  * counts there, so the fastest latitude gets a speed of about 1.
  */
-function winds(b: Bands, phase: number): Winds {
+function winds(b: Bands, phase: number, storms: Storm[]): Winds {
   const fastest = JET_STRENGTH + Math.abs(b.equator);
   const round = (value: number) => Math.round(value * 1000) / 1000;
   return {
@@ -785,6 +798,10 @@ function winds(b: Bands, phase: number): Winds {
     equator: round(b.equator / fastest),
     narrowness: EQUATOR_NARROWNESS,
     phase: round(phase),
+    storms: [...storms]
+      .sort((a, c) => c[2] - a[2])
+      .slice(0, NAMED_STORMS)
+      .map(([lon, lat, size, spin]) => [round(lon), round(lat), round(size), spin]),
   };
 }
 
@@ -815,21 +832,27 @@ const BANDS: Bands[] = [
  * drawn. In one that changes, it is stretched and folded into the festoons
  * and ragged plumes of a real giant.
  */
-function buildBands(b: Bands): { pixels: Uint8Array; phase: number } {
+function buildBands(b: Bands): { pixels: Uint8Array; phase: number; storms: Storm[] } {
   const rand = random(b.seed);
   const noise = new Noise(b.seed * 3 + 1);
 
   // Wind along the latitudes, by row. Positive blows east.
-  const jet = new Float32Array(H);
   const phase = rand() * 6.28;
-  for (let y = 0; y < H; y++) {
-    const s = Math.sin((0.5 - (y + 0.5) / H) * Math.PI);
-    const calm = 1 - Math.pow(Math.abs(s), 6);
-    jet[y] =
-      (Math.sin(s * b.jets + phase) * JET_STRENGTH + b.equator * Math.exp(-s * s * EQUATOR_NARROWNESS)) *
-      calm *
-      b.wind;
-  }
+  const windAt = (s: number) =>
+    (Math.sin(s * b.jets + phase) * JET_STRENGTH + b.equator * Math.exp(-s * s * EQUATOR_NARROWNESS)) *
+    (1 - Math.pow(Math.abs(s), 6)) *
+    b.wind;
+  const jet = new Float32Array(H);
+  for (let y = 0; y < H; y++) jet[y] = windAt(Math.sin((0.5 - (y + 0.5) / H) * Math.PI));
+  // How fast the wind changes at a share of the height of the map, measured
+  // on the rows of the full-size map whatever the size of this run, so the
+  // whirls land in the same places in a small trial run.
+  const SHEAR_ROWS = 1024;
+  const shearAt = (where: number) => {
+    const row = Math.floor(SHEAR_ROWS * where);
+    const at = (y: number) => windAt(Math.sin((0.5 - (Math.min(SHEAR_ROWS - 1, Math.max(0, y)) + 0.5) / SHEAR_ROWS) * Math.PI));
+    return at(row + 3) - at(row - 3);
+  };
 
   // Everything but the jets is a stream function on a coarser grid: gas flows
   // along its contour lines, so nothing piles up or thins out.
@@ -837,16 +860,19 @@ function buildBands(b: Bands): { pixels: Uint8Array; phase: number } {
   const GH = 512;
   const steady = new Float32Array(GW * GH);
   const storms = new Float32Array(GW * GH);
+  const named: Storm[] = [];
   const whirl = (size: number, turns: number, marks: boolean) => {
     // Whirls sit where the wind changes fastest and roll with it.
     let row = 0;
     let shear = 0;
+    let at = 0;
     for (let tries = 0; tries < 3; tries++) {
-      const y = Math.floor(H * (0.12 + 0.76 * rand()));
-      const s = jet[Math.min(H - 1, y + 3)] - jet[Math.max(0, y - 3)];
+      const where = 0.12 + 0.76 * rand();
+      const s = shearAt(where);
       if (Math.abs(s) > Math.abs(shear)) {
         shear = s;
-        row = y;
+        row = Math.floor(H * where);
+        at = where;
       }
     }
     const gx = rand() * GW;
@@ -855,6 +881,12 @@ function buildBands(b: Bands): { pixels: Uint8Array; phase: number } {
     const sy = size;
     // This strength turns the centre `turns` times during the simulation.
     const strength = turns * 2 * Math.PI * sx * sy * Math.sign(shear || 1);
+    // Gas circles a whirl of positive strength anticlockwise: east of the
+    // centre it flows north, north of it west. Its place is taken from the
+    // unrounded row, so it does not depend on the size of the run.
+    if (marks) {
+      named.push([(gx / GW - 0.5) * 2 * Math.PI, (0.5 - at) * Math.PI, (sy / GH) * Math.PI, Math.sign(strength)]);
+    }
     const reachX = Math.ceil(sx * 3.2);
     const reachY = Math.ceil(sy * 3.2);
     for (let dy = -reachY; dy <= reachY; dy++) {
@@ -998,7 +1030,7 @@ function buildBands(b: Bands): { pixels: Uint8Array; phase: number } {
       out[here * 3 + 2] = Math.round(255 * Math.min(1, storms[gi]));
     }
   }
-  return { pixels: out, phase };
+  return { pixels: out, phase, storms: named };
 }
 
 // ---- Output ------------------------------------------------------------------
@@ -1094,9 +1126,9 @@ async function main() {
   for (const b of BANDS) {
     if (KIND === "terrain" || (ONLY && !ONLY.includes(b.name))) continue;
     const started = Date.now();
-    const { pixels, phase } = buildBands(b);
+    const { pixels, phase, storms } = buildBands(b);
     await save(b.name, pixels, false);
-    meta.bands[b.name] = winds(b, phase);
+    meta.bands[b.name] = winds(b, phase, storms);
     console.log(`${b.name}: ${((Date.now() - started) / 1000).toFixed(1)} s`);
   }
 

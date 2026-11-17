@@ -120,7 +120,9 @@ void main() {
       float towards = dot(uMoon.xyz, uLightView);
       float miss = length(uMoon.xyz - towards * uLightView);
       float lit = towards < 0.0 ? smoothstep(0.92, 1.06, miss) : 1.0;
-      float rock = 0.36 + 0.3 * fbm(n * 2.6 + uSeed.zyx + 40.0, 3);
+      // Its own pixel size: the moon is smaller than the planet.
+      gPixel = moonPixel;
+      float rock = 0.36 + 0.3 * fbm(n * 2.6 + uSeed.zyx + 40.0, 3, 2.6);
       moon = vec4(
         vec3(rock, rock * 0.97, rock * 0.93) * uLight * max(dot(n, uLightView), 0.0) * lit,
         clamp((1.0 - mr) / moonPixel + 0.5, 0.0, 1.0));
