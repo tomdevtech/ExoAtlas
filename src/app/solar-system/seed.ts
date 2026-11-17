@@ -5,12 +5,10 @@ import { searchKey } from "@/shared/slug";
 import { SOLAR_SYSTEM_PLANETS, SUN } from "./data";
 
 /**
- * Writes the Sun and its planets to the database and returns the number of
- * planets.
+ * Writes the Sun and its planets to the database and returns the number of planets.
  *
- * The NASA catalogue only contains exoplanets. These rows therefore carry the
- * source `sol`, and the sync leaves them alone. The function may run any
- * number of times: it overwrites the rows that are already there.
+ * The NASA catalogue only contains exoplanets, so these rows carry the source `sol` and the sync leaves them
+ * alone. The function may run any number of times because it overwrites existing rows.
  */
 export async function seedSolarSystem(): Promise<number> {
   await getDb().transaction(async (tx) => {
@@ -39,8 +37,7 @@ export async function seedSolarSystem(): Promise<number> {
           densityCalculated: false,
           // The black-body temperature is a calculated quantity, not a measurement.
           eqTempCalculated: true,
-          // Sunlight thins out with the square of the distance. Earth, at
-          // 1 AU, is the unit.
+          // Sunlight falls off with the square of the distance, relative to Earth at 1 AU.
           insolation: Number((1 / measured.semiMajorAxisAu ** 2).toPrecision(3)),
           insolationCalculated: true,
         }),

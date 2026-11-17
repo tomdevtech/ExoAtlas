@@ -1,15 +1,12 @@
 import { formatNumber } from "@/shared/format";
 
 const HEIGHT = 140;
-/** Twice this must fit between the top edge and the baseline, which is 28 px above the bottom. */
+/** Twice this radius must fit between the top edge and the baseline, which is 28 px above the bottom. */
 const MAX_RADIUS = 52;
 const MIN_RADIUS = 1.5;
 const EARTH_COLOR = "#3b76c4";
 
-/**
- * Earth and the planet side by side, drawn to scale. The larger of the two
- * fills the height, the other shrinks accordingly.
- */
+/** Earth and the planet side by side, drawn to scale. The larger of the two fills the height. */
 export function SizeComparison({
   name,
   radiusEarth,

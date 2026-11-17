@@ -28,11 +28,16 @@ The map needs a browser with WebGL 2. All current versions of Chrome, Edge, Fire
 The buttons in the top right corner bring you to two fixed places:
 
 - **Sun** flies back to our Sun.
-- **Whole galaxy** flies far out, so you see the whole Milky Way from above.
+- **Whole galaxy** flies far out, so you see the whole Milky Way from above. From there the centre of the galaxy stays in the middle of the view: drag to turn the galaxy round it, scroll to come nearer or go further away, as in a star system.
+- **Orbit centre** makes the centre of the Milky Way that fixed point from wherever you are. Click **Fly freely** to fly on your own again; flying to a star or to the Sun does that too.
 
 ![The whole Milky Way from above](images/map-galaxy.png)
 
-The galaxy is an artist's impression, because we cannot look at the Milky Way from outside: Robert Hurt drew it for NASA from what the surveys of its stars and gas show. The positions of the stars are measured.
+Nobody can look at the Milky Way from outside, so its shape comes from an artist's impression that Robert Hurt drew for NASA from what the surveys of its stars and gas show. From afar the map does not show that picture itself: it builds the galaxy after it from clouds of stars, glowing gas, star clusters and dust, with a thin layer of arms, a thick glowing disc and a bulge in the middle. Its height is drawn larger than it is, so that you can see it as a body. The positions of the stars with planets are measured.
+
+When you fly away from the Sun, more stars appear around you: red dwarfs close by, stars like the Sun a little further, bright giants far away. They are not real stars from a catalogue. The map computes them from how crowded the Milky Way is at that place, so the arms are full of stars and the space between them is emptier. Only the stars with planets are real.
+
+Some famous sights are marked when you come near them: glowing clouds of gas such as the Orion Nebula, the shells of dying stars such as the Ring Nebula, young star clusters such as the Pleiades, old globular clusters such as Omega Centauri, and far outside the Milky Way the two Magellanic Clouds, small galaxies that circle ours.
 
 ## Find a star
 

@@ -1,13 +1,12 @@
 import { test as base, expect, type Locator } from "@playwright/test";
 
 /**
- * `test` with one addition: a test fails when the page logs an error, throws
- * an uncaught exception or breaks the Content Security Policy. That catches
- * hydration errors, failed requests and anything the policy blocks, even when
- * the page still looks right.
+ * Extends `test` so that a test fails when the page logs an error, throws an
+ * uncaught exception or violates the Content Security Policy. This catches
+ * hydration errors and blocked requests even when the page still looks right.
  */
 export const test = base.extend<{
-  /** Console errors matching this are expected, for example a 404 on purpose. Matches nothing by default. */
+  /** Console errors matching this pattern are expected, for example a deliberate 404. It matches nothing by default. */
   allowedErrors: RegExp;
   pageProblems: string[];
 }>({
@@ -40,9 +39,9 @@ export const test = base.extend<{
 export { expect };
 
 /**
- * Types into a field that only works once React has hydrated the page, and
- * waits for `until` to show up. Text typed before hydration is lost when React
- * takes over the field, so the typing is repeated until it takes effect.
+ * Types into a field that only works after hydration and waits for `until`.
+ * Text typed before hydration is lost when React takes over the field, so the
+ * typing is retried until it takes effect.
  */
 export async function typeUntil(field: Locator, text: string, until: Locator) {
   await expect(async () => {
@@ -52,7 +51,7 @@ export async function typeUntil(field: Locator, text: string, until: Locator) {
   }).toPass({ timeout: 30_000 });
 }
 
-/** Waits until the 3D model of a planet is drawn: its buttons appear only then. */
+/** Waits until the 3D planet is drawn, which is when its buttons appear. */
 export async function waitForGlobe(page: import("@playwright/test").Page) {
   await expect(page.getByRole("button", { name: "Reset" })).toBeVisible({ timeout: 45_000 });
 }

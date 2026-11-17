@@ -9,6 +9,7 @@
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run --project unit",
+    "audit:tools": "tsx scripts/audit-tools.ts",
     "test:db": "vitest run --project db",
     "test:scripts": "vitest run --project scripts",
     "test:coverage": "vitest run --project unit --coverage",

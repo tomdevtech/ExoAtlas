@@ -3,12 +3,9 @@ import type { GlobeSpec } from "./spec";
 import { surfaceDefines } from "./uniforms";
 
 /**
- * Keeps all the small planet images of a page moving.
- *
- * A browser allows only a handful of WebGL canvases per page, and a list shows
- * dozens of planets. So one hidden WebGL canvas draws them all, one after the
- * other, and each result is copied into the plain canvas of its image. Only
- * images that are on screen are drawn.
+ * Keeps all the small planet images on a page moving. Browsers allow only a handful of WebGL
+ * contexts per page, but a list shows dozens of planets. So one hidden WebGL canvas draws every
+ * visible image in turn, and each result is copied into the image's own 2D canvas.
  */
 
 interface Card {
@@ -20,9 +17,9 @@ interface Card {
   drawn: boolean;
 }
 
-/** Sharper than this is not visible at the size of the images and costs time. */
+/** A sharper picture is not visible at the size of the images and only costs time. */
 const MAX_PIXEL_RATIO = 2;
-/** The planets turn slowly, so 30 pictures per second are enough. */
+/** The planets turn slowly, so 30 frames per second are enough. */
 const FRAME_MS = 33;
 
 const cards = new Map<HTMLCanvasElement, Card>();
@@ -36,9 +33,8 @@ let interval = FRAME_MS;
 let still = false;
 
 /**
- * Starts drawing the planet into the canvas and returns a function that stops
- * it. `onDrawn` is called once the first picture is there. Does nothing in a
- * browser without WebGL 2.
+ * Starts drawing the planet into the canvas and returns a function that stops it. `onDrawn` is
+ * called once the first frame is there. Does nothing in a browser without WebGL 2.
  */
 export function mountCard(
   canvas: HTMLCanvasElement,
@@ -66,7 +62,7 @@ function start(): void {
   renderer = GlobeRenderer.create(surface, "sm", schedule);
   if (!renderer) return;
 
-  // People who asked for less motion get a picture that stands still.
+  // People who asked for less motion get a still image.
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   still = reducedMotion.matches;
   reducedMotion.addEventListener("change", (event) => {
@@ -105,11 +101,11 @@ function tick(now: number): void {
     const started = performance.now();
     const seconds = still ? 0 : now / 1000;
     for (const card of waiting) draw(card, seconds);
-    // Leave three quarters of the time to the rest of the page.
+    // Three quarters of the frame time are left to the rest of the page.
     interval = Math.min(500, Math.max(FRAME_MS, (performance.now() - started) * 4));
   }
 
-  // A picture that stands still is done once every image has been drawn.
+  // With reduced motion the work is done once every image has been drawn.
   if (!still || waiting.some((card) => !card.drawn)) schedule();
 }
 
@@ -133,7 +129,7 @@ function draw(card: Card, seconds: number): void {
   const ready = renderer.draw(card.spec, { seconds }, { x: 0, y: 0, width: size, height: size });
   if (!ready) return;
   context.clearRect(0, 0, size, size);
-  // WebGL counts rows from the bottom, the image from the top.
+  // WebGL counts rows from the bottom, but the 2D canvas counts them from the top.
   context.drawImage(surface, 0, surface.height - size, size, size, 0, 0, size, size);
   if (!card.drawn) {
     card.drawn = true;

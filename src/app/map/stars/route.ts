@@ -2,10 +2,8 @@ import { toMapStar, type MapStarsPayload } from "../payload";
 import { getMapStars } from "../queries";
 
 /**
- * GET /map/stars answers with every star that has a position, as JSON.
- *
- * The map loads this once when it opens. The catalogue changes at most once a
- * day, so browsers may keep the answer for an hour.
+ * Returns every star with a known position as JSON. The catalogue changes at most
+ * once a day, so browsers may cache the response for an hour.
  */
 export async function GET() {
   try {

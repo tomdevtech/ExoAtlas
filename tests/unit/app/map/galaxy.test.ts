@@ -5,29 +5,29 @@ import { GALACTIC_CENTRE, GALAXY_EDGE, GALAXY_PICTURE_WIDTH, starColor } from "@
 
 describe("the picture of the galaxy", () => {
   it("has the galactic centre in its middle and the Sun where the artist drew it", () => {
-    // The shader reads the picture at 0.5 + x / width, counted from the centre (see GALAXY_GLOW_FRAGMENT).
+    // The shader samples the picture at 0.5 + x / width, measured from the centre (see GALAXY_GLOW_FRAGMENT).
     const sun = 0.5 + (0 - GALACTIC_CENTRE[0]) / GALAXY_PICTURE_WIDTH;
     expect(sun).toBeCloseTo(0.5 - 0.191, 6);
-    // 43,000 parsecs across: the disc of stars is some 30,000 wide, and the picture leaves room around it.
+    // The picture is about 43,000 parsecs across, because the stellar disc is some 30,000 wide and the picture leaves room around it.
     expect(GALAXY_PICTURE_WIDTH).toBeGreaterThan(40_000);
     expect(GALAXY_PICTURE_WIDTH).toBeLessThan(46_000);
   });
 
   it("ends inside the picture", () => {
     expect(GALAXY_EDGE).toBeLessThan(GALAXY_PICTURE_WIDTH / 2);
-    // The Sun is well inside.
     expect(GALACTIC_CENTRE[0]).toBeLessThan(GALAXY_EDGE / 2);
   });
 
   // The scale above only holds for the picture it was measured on. These
-  // notice when the file is swapped for another view of the galaxy.
-  for (const [name, size] of [["galaxy-sm", 2048], ["galaxy-lg", 4096]] as const) {
-    it(`${name}.jpg is square, with the bright core in its middle and nothing at its edges`, async () => {
-      const file = path.resolve("public/textures/sky", `${name}.jpg`);
+  // tests notice when the file is replaced by another view of the galaxy.
+  {
+    it("galaxy.jpg is square, with the bright core in its middle and nothing at its edges", async () => {
+      const file = path.resolve("public/textures/sky/galaxy.jpg");
       const picture = await sharp(file).metadata();
-      expect([picture.width, picture.height]).toEqual([size, size]);
+      // The map loads it at 512 pixels, so the file has twice that resolution.
+      expect([picture.width, picture.height]).toEqual([1024, 1024]);
 
-      // Shrunk and blurred, the brightest place is the core of the galaxy.
+      // After downscaling and blurring, the brightest spot must be the core of the galaxy.
       const small = 128;
       const { data } = await sharp(file).resize(small, small).blur(2).greyscale().raw().toBuffer({ resolveWithObject: true });
       let brightest = 0;
@@ -35,13 +35,13 @@ describe("the picture of the galaxy", () => {
       expect(Math.abs((brightest % small) - small / 2)).toBeLessThanOrEqual(3);
       expect(Math.abs(Math.floor(brightest / small) - small / 2)).toBeLessThanOrEqual(3);
 
-      // The corners and the middle of each edge are black: the galaxy does not run out of the picture.
+      // The corners and edge midpoints must be black, so that the galaxy does not run out of the picture.
       const at = (x: number, y: number) => data[y * small + x];
       const last = small - 1;
       for (const [x, y] of [[0, 0], [last, 0], [0, last], [last, last], [64, 0], [64, last], [0, 64], [last, 64]]) {
         expect(at(x, y), `at ${x}, ${y}`).toBeLessThan(12);
       }
-      // Where the Sun is, 19.1 % below the middle, the disc of the galaxy shines.
+      // The disc must shine where the Sun is, 19.1 % below the middle.
       expect(at(64, Math.round(small * (0.5 + 0.191)))).toBeGreaterThan(40);
     });
   }

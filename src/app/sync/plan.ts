@@ -78,23 +78,22 @@ function samePlanet(old: ExistingPlanet, incoming: CatalogPlanet): boolean {
   if (a !== null && b !== null && a > 0 && b > 0) {
     if (Math.abs(a - b) / Math.max(a, b) < SAME_PERIOD_TOLERANCE) return true;
   }
-  // The letter at the end ("b", "c" …) survives a rename.
+  // The letter at the end ("b", "c" …) usually survives a rename.
   return lastWord(old.name) === lastWord(incoming.name);
 }
 
 /**
- * Compares what is stored with the new catalogue and decides what to write.
- * The function does not touch the database, so it can be tested without one.
+ * Compares the stored data with the new catalogue and decides what to write. It does not touch the database,
+ * so it can be tested without one.
  *
- * NASA assigns no permanent identifier. When a name vanishes and a new one
- * appears at the same place in the same run, we treat that as a rename: the
- * entry keeps its id and its history.
+ * NASA assigns no permanent identifiers. When a name vanishes and a new one appears at the same place in the
+ * same run, it is treated as a rename, so the entry keeps its id and its history.
  */
 export function planSync(
   existing: {
     stars: ExistingStar[];
     planets: ExistingPlanet[];
-    /** Further slugs that are taken, for example those of the solar system. */
+    /** Further slugs that are already taken, for example those of the solar system. */
     reservedSlugs?: { stars: string[]; planets: string[] };
   },
   incoming: Catalog,
@@ -108,8 +107,6 @@ export function planSync(
     counts: { added: 0, updated: 0, unchanged: 0, removed: 0, renamed: 0 },
   };
 
-  // --- Stars ----------------------------------------------------------------
-
   const starSlugs = new Set([
     ...existing.stars.map((s) => s.slug),
     ...(existing.reservedSlugs?.stars ?? []),
@@ -119,7 +116,7 @@ export function planSync(
   const starsById = new Map(existing.stars.map((s) => [s.id, s]));
   const vanishedStars = existing.stars.filter((s) => !incomingStarNames.has(s.name));
   const claimedStars = new Set<number>();
-  /** Name in the new catalogue → id of the stored star. New stars are missing here. */
+  /** Maps each name in the new catalogue to the id of the stored star. New stars are not in it. */
   const starIdByIncomingName = new Map<string, number>();
 
   for (const star of incoming.stars) {
@@ -159,8 +156,6 @@ export function planSync(
       });
     }
   }
-
-  // --- Planets --------------------------------------------------------------
 
   const planetSlugs = new Set([
     ...existing.planets.map((p) => p.slug),
@@ -221,8 +216,7 @@ export function planSync(
       }
     }
 
-    // The derived classes can change without new measurements, namely when
-    // the rules in classify.ts were adjusted.
+    // The derived classes can change without new measurements when the rules in classify.ts were adjusted.
     const derivedChanged =
       current.planetClass !== planet.planetClass ||
       current.climateClass !== planet.climateClass ||
@@ -248,10 +242,7 @@ export function planSync(
   return plan;
 }
 
-/**
- * Guard against a broken or incomplete response from NASA. Returns a reason
- * when the run should rather stop, otherwise `null`.
- */
+/** Guards against a broken or incomplete NASA response. Returns the reason to stop the run, or null. */
 export function implausible(
   plan: SyncPlan,
   activeBefore: number,

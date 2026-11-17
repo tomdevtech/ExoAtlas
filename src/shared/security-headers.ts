@@ -1,14 +1,11 @@
 /**
- * HTTP headers that every answer carries. next.config.ts sets them, the tests
- * in tests/unit/shared/security-headers.test.ts and tests/e2e/security.spec.ts check them.
+ * HTTP headers sent with every response. next.config.ts applies them, and tests/unit/shared/security-headers.test.ts
+ * and tests/e2e/security.spec.ts check them.
  *
- * The Content Security Policy only lets the browser load scripts, styles,
- * images, fonts and data from this site, and forbids other sites to show
- * ExoFinder in a frame. Next.js puts small inline scripts into every page that
- * carry the data of the page, so scripts need 'unsafe-inline'. A policy with
- * nonces would avoid that, but would force every page to be rendered on each
- * request and lose the prerendered frames (see the Next.js guide
- * content-security-policy.md).
+ * The Content Security Policy only allows scripts, styles, images, fonts and data from this site and forbids
+ * framing by other sites. Scripts need 'unsafe-inline' because Next.js inlines small data scripts into every page.
+ * Nonces would avoid that, but they force every page to render per request and lose prerendering
+ * (see the Next.js guide content-security-policy.md).
  */
 
 export interface Header {
@@ -25,8 +22,8 @@ export function contentSecurityPolicy(dev: boolean): string {
     // The planet models and the map draw into canvases and read textures as blobs.
     "img-src": ["'self'", "blob:", "data:"],
     "font-src": ["'self'"],
-    // The search suggestions and the map fetch JSON from this site. In
-    // development the dev server reloads the page over a WebSocket.
+    // The search suggestions and the map fetch JSON from this site. In development the dev server
+    // reloads the page over a WebSocket.
     "connect-src": ["'self'", ...(dev ? ["ws:"] : [])],
     "worker-src": ["'self'", "blob:"],
     "media-src": ["'self'"],
@@ -53,7 +50,7 @@ export function securityHeaders(dev: boolean): Header[] {
       value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
     },
     { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
-    // Browsers only take this from answers over HTTPS. On localhost it does nothing.
+    // Browsers only honour this header over HTTPS, so on localhost it has no effect.
     { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
   ];
 }

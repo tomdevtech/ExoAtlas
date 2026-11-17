@@ -1,4 +1,4 @@
-/** What GET /health answers. Deliberately small: nothing in it helps an attacker. */
+/** The response of GET /health. It is deliberately small so that nothing in it helps an attacker. */
 export interface HealthReport {
   status: "ok" | "error";
   database: "ok" | "unreachable";
@@ -9,7 +9,7 @@ export interface HealthReport {
 /** A database that hangs counts as down after this long. */
 export const DATABASE_TIMEOUT_MS = 3_000;
 
-/** The running commit on Vercel. Locally there is none. */
+/** The short commit of the running deployment on Vercel, or null when running locally. */
 export function currentCommit(
   env: Record<string, string | undefined> = process.env,
 ): string | null {
@@ -18,8 +18,8 @@ export function currentCommit(
 }
 
 /**
- * Asks the database for a sign of life. Never throws: a failure, or no answer
- * within `timeoutMs`, makes the report say "error".
+ * Asks the database for a sign of life. It never throws; a failure or no answer within `timeoutMs`
+ * makes the report say "error".
  */
 export async function checkHealth(
   ping: () => Promise<unknown>,

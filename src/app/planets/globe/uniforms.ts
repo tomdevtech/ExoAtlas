@@ -31,16 +31,22 @@ export interface SurfaceUniforms {
   uBelts: Vec2;
   uAurora: Vec4;
   uLightning: number;
+  uStormSpin: number;
+  /** Six storms of four numbers each; unused ones are all 0. */
+  uGiantStorms: number[];
 }
 
 const KIND = { map: 0, terrain: 1, bands: 2 } as const;
 
+/** How many gas-planet storms the shader can turn (uGiantStorms). */
+export const GIANT_STORMS = 6;
+
 /**
- * The parts of surface.glsl.ts a planet needs, as values for #define. Every
- * combination is a program of its own, so a planet only compiles its own code.
+ * The parts of surface.glsl.ts a planet needs, as #define values. Every combination is a separate
+ * program, so a planet only compiles the code it uses, which compiles much faster.
  */
 export interface SurfaceDefines {
-  /** 0 map, 1 terrain preset, 2 band preset. */
+  /** 0 for a map, 1 for a terrain preset, 2 for a band preset. */
   KIND: 0 | 1 | 2;
   /** 1 when heights catch the light. */
   RELIEF: 0 | 1;
@@ -49,12 +55,12 @@ export interface SurfaceDefines {
 export function surfaceDefines(spec: GlobeSpec): SurfaceDefines {
   return {
     KIND: KIND[spec.kind],
-    // Terrain always has heights, bands never. Maps of gas planets have none either.
+    // Terrain always has relief and bands never do. Maps of gas planets have none either.
     RELIEF: spec.kind === "terrain" || (spec.kind === "map" && spec.relief > 0) ? 1 : 0,
   };
 }
 
-/** Every combination that surfaceDefines can return. */
+/** Every combination that surfaceDefines can return, so all programs can be built in advance. */
 export const ALL_SURFACE_DEFINES: SurfaceDefines[] = [
   { KIND: 0, RELIEF: 1 },
   { KIND: 0, RELIEF: 0 },
@@ -62,19 +68,18 @@ export const ALL_SURFACE_DEFINES: SurfaceDefines[] = [
   { KIND: 2, RELIEF: 0 },
 ];
 
-/** The #define lines for a shader, which also serve as the name of its program. */
+/** The #define lines for a shader. They also serve as the key of its program. */
 export function defineLines(defines: SurfaceDefines): string {
   return `#define KIND ${defines.KIND}\n#define RELIEF ${defines.RELIEF}\n`;
 }
 
-/** Translates the description of a planet into the numbers the shader reads. */
 export function surfaceUniforms(spec: GlobeSpec): SurfaceUniforms {
   return {
     uSeed: seedOffset(spec.seed),
     uColLow: linearColor(spec.palette[0]),
     uColMid: linearColor(spec.palette[1]),
     uColHigh: linearColor(spec.palette[2]),
-    // A level far below every height means: no ocean.
+    // A sea level far below every height means there is no ocean.
     uOcean: spec.ocean ? [...linearColor(spec.ocean.color), spec.ocean.level] : [0, 0, 0, -10],
     uIce: spec.ice,
     uCloud: spec.clouds ? [...linearColor(spec.clouds.color), spec.clouds.cover] : [1, 1, 1, 0],
@@ -103,13 +108,16 @@ export function surfaceUniforms(spec: GlobeSpec): SurfaceUniforms {
     uBelts: spec.belts,
     uAurora: spec.aurora ? [...linearColor(spec.aurora.color), spec.aurora.strength] : [0, 0, 0, 0],
     uLightning: spec.lightning,
+    // The storms that come and go depend on time, so stormUniforms in storms.ts provides them.
+    uStormSpin: spec.storms.spin,
+    uGiantStorms: Array.from({ length: GIANT_STORMS }, (_, index) => spec.giantStorms[index] ?? [0, 0, 0, 0]).flat(),
   };
 }
 
 /**
- * Where the files of a planet's maps are. The small ones are for lists, the
- * large ones for the 3D model. `night` is the map of the lights at night, or
- * for a `terrain` its second preset: the shader reads both from the same place.
+ * The URLs of a planet's textures. The small ones are for lists, the large ones for the 3D view.
+ * `night` holds the city lights, or for a `terrain` its second preset, because the shader reads both
+ * from the same slot.
  */
 export function textureUrls(
   spec: GlobeSpec,

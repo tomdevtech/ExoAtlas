@@ -21,7 +21,7 @@ describe("search", () => {
   it("ranks whole numbers before names that merely start with the query", async () => {
     const { hits } = await search("kepler 22", 10);
     const found = names(hits);
-    // The star itself, then its planet, then Kepler-220 and its planet.
+    // An exact match ranks first, so the star and its planet come before Kepler-220.
     expect(found.slice(0, 2)).toEqual(["Kepler-22", "Kepler-22 b"]);
     expect(found.indexOf("Kepler-220 b")).toBeGreaterThan(found.indexOf("Kepler-22 b"));
     expect(found).not.toContain("Kepler-12 b");
@@ -62,8 +62,8 @@ describe("search", () => {
 });
 
 describe("search with hostile input", () => {
-  // The search reduces every query to a-z and 0-9 before it reaches SQL. None
-  // of these may cause an error or match everything.
+  // The search reduces every query to a-z and 0-9 before it reaches SQL, so none
+  // of these inputs may cause an error or match everything.
   const hostile = [
     "' OR 1=1 --",
     "'; DROP TABLE planets; --",
@@ -83,17 +83,17 @@ describe("search with hostile input", () => {
 
   it.each(hostile)("handles %j", async (query) => {
     const { hits } = await search(query, 50);
-    // The catalogue has more than 20 entries; matching all of them would mean
-    // the input changed the query.
+    // The catalogue has more than 20 entries, so matching all of them would mean
+    // that the input changed the query.
     expect(hits.length).toBeLessThan(20);
   });
 
   it("cuts off very long queries", async () => {
-    // 30,000 characters reach the database as 80. The similarity search may
-    // still find the Kepler names in "keplerkepler…", but nothing breaks.
+    // A query of 30,000 characters reaches the database as 80. The similarity
+    // search may still find Kepler names in "keplerkepler…", but nothing breaks.
     const result = await search("kepler".repeat(5_000), 10);
     expect(result.hits.length).toBeLessThanOrEqual(10);
-    // What lies beyond the first 80 characters plays no part.
+    // Anything beyond the first 80 characters must be ignored.
     const tail = await search(`${"z".repeat(80)}kepler-22 b`, 10);
     expect(tail.hits.map((hit) => (hit.kind === "planet" ? hit.planet.name : hit.star.name))).not.toContain(
       "Kepler-22 b",
@@ -102,8 +102,8 @@ describe("search with hostile input", () => {
 
   it("still finds the planet when junk surrounds the name", async () => {
     const { hits } = await search("<b>kepler-22 b</b>", 10);
-    // "<b>" and "</b>" become "b" and "b", so the key is "bkepler22bb": no hit,
-    // but no error either.
+    // The tags reduce to "b" and "b", so the key is "bkepler22bb", which finds
+    // nothing but must not cause an error either.
     expect(Array.isArray(hits)).toBe(true);
     const plain = await search("kepler-22 b'; --", 10);
     expect(names(plain.hits)[0]).toBe("Kepler-22 b");

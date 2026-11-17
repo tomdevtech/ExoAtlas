@@ -1,6 +1,5 @@
 /**
- * Writes the three channels of a preset side by side as one grey picture, to
- * look at what the simulation made.
+ * Writes the three channels of a preset texture stacked as one greyscale image.
  *
  *   tsx scripts/preview-presets.ts <name> <output.jpg>
  */

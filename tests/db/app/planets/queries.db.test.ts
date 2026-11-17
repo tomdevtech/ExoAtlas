@@ -14,7 +14,7 @@ import {
 } from "@/app/planets/queries";
 import { getDb } from "@/db/client";
 
-/** Exoplanets of the test catalogue plus the eight planets of the solar system. */
+/** The active planets are the test catalogue's exoplanets plus the eight planets of the solar system. */
 const ALL_ACTIVE = ACTIVE_EXOPLANETS + 8;
 
 describe("measuredDensity", () => {
@@ -29,7 +29,7 @@ describe("measuredDensity", () => {
         (6, 8.0, null, false, false, false),
         (7, 8.0, 0.0, false, false, false))
       select ${measuredDensity(sql`t`)} as density from t order by n`);
-    // Eight Earth masses in a ball twice as wide are as dense as Earth.
+    // Eight Earth masses in a sphere twice as wide are exactly as dense as Earth.
     expect(rows.map((row) => row.density)).toEqual([1, null, null, null, null, null, null]);
   });
 
@@ -37,7 +37,7 @@ describe("measuredDensity", () => {
     const [cancri] = (await listPlanets("55 cnc", 1)).planets;
     expect(cancri.densityEarth).toBeCloseTo(7.99 / 1.88 ** 3, 6);
     expect((await getPlanet("55-cnc-e"))?.densityEarth).toBeCloseTo(7.99 / 1.88 ** 3, 6);
-    // No mass, no density.
+    // Without a measured mass there is no density.
     expect((await getPlanet("kepler-22-b"))?.densityEarth).toBeNull();
   });
 });
@@ -70,7 +70,7 @@ describe("listPlanets", () => {
     expect((await listPlanets("TRAPPIST-1 e", 1)).planets.map((p) => p.name)).toEqual([
       "TRAPPIST-1 e",
     ]);
-    // "Sun" is the name of the star, none of its planets carries it.
+    // "Sun" is only the name of the star, so all eight planets are found through their host.
     expect((await listPlanets("sun", 1)).total).toBe(8);
   });
 

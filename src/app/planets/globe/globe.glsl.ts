@@ -2,25 +2,21 @@ import { SURFACE_GLSL } from "./surface.glsl";
 import { defineLines, type SurfaceDefines } from "./uniforms";
 
 /**
- * The program that draws one planet into a square of the canvas, for the
- * moving images and the 3D model on the planet pages.
- *
- * There is no geometry: one triangle covers the whole area, and for each pixel
- * the fragment shader works out which point of the ball lies behind it. That
- * gives a perfectly round edge at any size. The view has no perspective, as
- * through a telescope.
+ * Vertex shader that draws one planet into a rectangle of the canvas. A single triangle covers the
+ * rectangle, and the fragment shader works out which point of the sphere lies behind each pixel.
+ * This gives a perfectly round edge at any size; the view is orthographic, as through a telescope.
  */
 export const GLOBE_VERTEX = /* glsl */ `#version 300 es
 void main() {
-  // One triangle that reaches over the whole area, without any buffer.
+  // One triangle covers the whole rectangle, so no vertex buffer is needed.
   vec2 corner = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
   gl_Position = vec4(corner * 2.0 - 1.0, 0.0, 1.0);
 }
 `;
 
-/** The fragment shader for one combination of surface parts (see surfaceDefines). */
+/** Returns the fragment shader for one combination of surface parts (see surfaceDefines). */
 export function globeFragment(defines: SurfaceDefines): string {
-  // #version has to be the very first line.
+  // GLSL requires #version on the very first line.
   return `#version 300 es\n${defineLines(defines)}${GLOBE_FRAGMENT_BODY}`;
 }
 
@@ -29,28 +25,28 @@ precision highp float;
 precision highp int;
 precision highp sampler2D;
 ${SURFACE_GLSL}
-uniform vec2 uCenter;      // centre of the planet in pixels
-uniform float uRadius;     // radius of the planet in pixels
-uniform mat3 uViewToObj;   // turns the viewer's coordinates into the planet's
-uniform vec3 uLightView;   // direction to the star as the viewer sees it
-uniform float uFlatten;    // how much shorter the planet is from pole to pole than across
-uniform vec4 uMoon;        // centre of the moon as the viewer sees it, in planet radii, and its radius (0: no moon)
+uniform vec2 uCenter;      // planet centre in pixels
+uniform float uRadius;     // planet radius in pixels
+uniform mat3 uViewToObj;   // view space to planet space
+uniform vec3 uLightView;   // direction to the star in view space
+uniform float uFlatten;    // polar flattening
+uniform vec4 uMoon;        // moon centre in view space (planet radii) and radius (0: no moon)
 
 out vec4 outColor;
 
-// Puts a layer over what is already there.
+// Composites a layer with the given opacity over what is already there.
 void over(inout vec4 below, vec3 color, float opacity) {
   below = vec4(color * opacity + below.rgb * (1.0 - opacity), opacity + below.a * (1.0 - opacity));
 }
 
 void main() {
-  // The pixel in planet radii: x to the right, y up, the viewer looks along -z.
+  // The pixel position in planet radii, with x to the right and y up; the viewer looks along -z.
   vec2 d = (gl_FragCoord.xy - uCenter) / uRadius;
   float pixel = 1.0 / uRadius;
   vec4 result = vec4(0.0);
 
-  // A giant that turns fast is flattened at its poles. Seen from the side it
-  // is an ellipse, shorter along its axis; r is 1 on its edge.
+  // A fast-spinning giant is flattened at its poles, so seen from the side it is an ellipse. r is 1
+  // on its edge.
   vec3 axis = vec3(uViewToObj[0][1], uViewToObj[1][1], uViewToObj[2][1]);
   float squeeze = 1.0 / ((1.0 - uFlatten) * (1.0 - uFlatten)) - 1.0;
   float depthTerm = 1.0 + squeeze * axis.z * axis.z;
@@ -65,7 +61,7 @@ void main() {
     over(result, uAtmo.rgb * uLight, fade * lit * uAtmo.a * 0.55);
   }
 
-  // The rings lie in the plane through the centre, at right angles to the axis.
+  // The rings lie in the equatorial plane through the centre.
   vec4 ring = vec4(0.0);
   float ringZ = 0.0;
   if (uRing.z > 0.5 && abs(axis.z) > 0.02) {
@@ -73,9 +69,9 @@ void main() {
     vec3 point = vec3(d, ringZ);
     ring = ringSample(length(point), pixel / max(abs(axis.z), 0.2));
     if (ring.a > 0.0) {
-      // Seen at a flat angle the view passes through more of the rings.
+      // At a grazing angle the line of sight passes through more of the rings.
       ring.a = 1.0 - pow(1.0 - ring.a, 1.0 / max(abs(axis.z), 0.15));
-      // The planet throws a shadow on the rings behind it.
+      // The planet casts a shadow on the rings behind it.
       float towards = dot(point, uLightView);
       float hit = towards * towards - (dot(point, point) - 1.0);
       float shadow = towards < 0.0 ? smoothstep(0.0, 0.03, hit) : 0.0;
@@ -84,19 +80,19 @@ void main() {
     }
   }
 
-  // The ball itself. It is computed two pixels beyond the edge as well, so the
-  // differences between neighbouring pixels are defined everywhere on it.
+  // The sphere is shaded two pixels beyond its edge as well, so the differences between
+  // neighbouring pixels are defined everywhere on it.
   float cover = clamp((1.0 - r) / pixel + 0.5, 0.0, 1.0);
   float ballZ = 0.0;
   vec3 ball = vec3(0.0);
   if (r < 1.0 + 2.5 * pixel) {
     vec2 dc = d * min(1.0, 0.9995 / max(r, 1e-6));
-    // Where the line of sight meets the flattened ball.
+    // Finds where the line of sight meets the flattened sphere.
     float along = dot(dc, axis.xy);
     float halfway = squeeze * along * axis.z;
     float rest = dot(dc, dc) + squeeze * along * along - 1.0;
     ballZ = (-halfway + sqrt(max(halfway * halfway - depthTerm * rest, 0.0))) / depthTerm;
-    // The surface is computed on a ball, so the point is stretched back to one.
+    // The surface is defined on a sphere, so the point is stretched back onto one.
     vec3 onBall = uViewToObj * vec3(dc, ballZ);
     onBall.y /= 1.0 - uFlatten;
     ball = shadePlanet(
@@ -105,7 +101,6 @@ void main() {
       uViewToObj * vec3(0.0, 0.0, 1.0));
   }
 
-  // The moon: a small ball of grey rock.
   vec4 moon = vec4(0.0);
   float moonZ = 0.0;
   if (uMoon.w > 0.0) {
@@ -116,11 +111,14 @@ void main() {
       vec2 mc = md * min(1.0, 0.9995 / max(mr, 1e-6));
       vec3 n = vec3(mc, sqrt(1.0 - dot(mc, mc)));
       moonZ = uMoon.z + n.z * uMoon.w;
-      // Behind the planet, as seen from the star, the moon is in its shadow.
+      // Behind the planet, as seen from the star, the moon lies in its shadow.
       float towards = dot(uMoon.xyz, uLightView);
       float miss = length(uMoon.xyz - towards * uLightView);
       float lit = towards < 0.0 ? smoothstep(0.92, 1.06, miss) : 1.0;
-      float rock = 0.36 + 0.3 * fbm(n * 2.6 + uSeed.zyx + 40.0, 3);
+      // The moon is smaller than the planet, so it needs its own pixel size for the noise
+      // filtering.
+      gPixel = moonPixel;
+      float rock = 0.36 + 0.3 * fbm(n * 2.6 + uSeed.zyx + 40.0, 3, 2.6);
       moon = vec4(
         vec3(rock, rock * 0.97, rock * 0.93) * uLight * max(dot(n, uLightView), 0.0) * lit,
         clamp((1.0 - mr) / moonPixel + 0.5, 0.0, 1.0));

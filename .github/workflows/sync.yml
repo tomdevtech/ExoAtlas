@@ -1,13 +1,11 @@
 name: Sync with NASA
 
-# Compares the catalogue with the NASA Exoplanet Archive once a day and writes
-# the changes to the production database. Needs the repository secret
-# PRODUCTION_DATABASE_URL (Settings → Secrets and variables → Actions).
-# Can also be started by hand under Actions → "Sync with NASA" → Run workflow.
+# Syncs the production database with the NASA Exoplanet Archive once a day.
+# It needs the repository secret PRODUCTION_DATABASE_URL.
 
 on:
   schedule:
-    - cron: "17 3 * * *" # every day at 03:17 UTC
+    - cron: "17 3 * * *"
   workflow_dispatch:
     inputs:
       seed-solar-system:
@@ -22,7 +20,8 @@ on:
 permissions:
   contents: read
 
-# Never two syncs at the same time. A run that is waiting replaces an older waiting one.
+# Two syncs must never write at the same time, so a new run waits instead of
+# cancelling the running one. A newer waiting run replaces an older waiting one.
 concurrency:
   group: sync
   cancel-in-progress: false

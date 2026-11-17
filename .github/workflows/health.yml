@@ -1,16 +1,12 @@
 name: Health check
 
-# Asks the live site once an hour whether it is up and reaches its database
-# (GET /health). A failed run turns red and GitHub sends an e-mail. A simple
-# watch without any extra service; an uptime service checks more often (see
-# docs/DEPLOYMENT.md, "Health check and monitoring").
-#
-# Needs the repository variable PRODUCTION_URL, for example
-# https://exofinder.example.org. Without it the workflow does nothing.
+# Checks every hour that the live site and its database are up (GET /health).
+# A failed run makes GitHub send an e-mail. It needs the repository variable
+# PRODUCTION_URL and does nothing without it.
 
 on:
   schedule:
-    - cron: "7 * * * *" # every hour at minute 7
+    - cron: "7 * * * *"
   workflow_dispatch:
 
 permissions:

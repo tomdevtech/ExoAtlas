@@ -1,10 +1,9 @@
 /**
- * Our solar system: the Sun and its eight planets.
+ * The Sun and its eight planets.
  *
- * Values: NASA Planetary Fact Sheet, https://nssdc.gsfc.nasa.gov/planetary/factsheet/
- * Radius and mass relative to Earth, distance in astronomical units. The
- * equilibrium temperature is the black-body temperature from the fact sheet of
- * each planet.
+ * Source: NASA Planetary Fact Sheet, https://nssdc.gsfc.nasa.gov/planetary/factsheet/
+ * Radius and mass are relative to Earth and distances are in astronomical units. The equilibrium temperature
+ * is the black-body temperature from each planet's fact sheet.
  */
 
 export const SUN = {
@@ -26,13 +25,13 @@ export interface SolarSystemPlanet {
   slug: string;
   radiusEarth: number;
   massEarth: number;
-  /** g/cm³ */
+  /** Density in g/cm³. */
   density: number;
   semiMajorAxisAu: number;
   orbitalPeriodDays: number;
   eccentricity: number;
   eqTempK: number;
-  /** Only for the planets that were discovered with a telescope. */
+  /** Only set for the planets that were discovered with a telescope. */
   discoveryYear: number | null;
 }
 

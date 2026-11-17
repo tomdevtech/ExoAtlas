@@ -6,10 +6,9 @@ import { isSlug, searchKey } from "@/shared/slug";
 import { PAGE_SIZE, clampPage, type ListSort } from "./paging";
 
 /**
- * The density of a planet compared with Earth, as part of a query, only
- * where NASA measured both its mass and its radius. A density that was merely
- * calculated from the size says nothing about what the planet is made of.
- * `table` is the name the planets table has in the query.
+ * SQL expression for the density relative to Earth, set only where NASA measured both mass and radius,
+ * because a density derived from the radius alone says nothing about composition. `table` is the alias
+ * of the planets table in the query.
  */
 export function measuredDensity(table: SQL = sql`${planets}`): SQL<number | null> {
   return sql<number | null>`case
@@ -19,7 +18,7 @@ export function measuredDensity(table: SQL = sql`${planets}`): SQL<number | null
   end`;
 }
 
-/** What a list entry and its small image need to know about a planet. */
+/** The columns a list entry and its thumbnail need. */
 export const planetSummaryColumns = {
   slug: planets.slug,
   name: planets.name,
@@ -44,7 +43,7 @@ export interface PlanetSummary {
   climateClass: "frozen" | "cold" | "temperate" | "hot" | "scorching" | null;
   radiusEarth: number | null;
   eqTempK: number | null;
-  /** Compared with Earth, and only if mass and radius were measured. */
+  /** Relative to Earth, and only set when mass and radius were both measured. */
   densityEarth: number | null;
   orbitalPeriodDays: number | null;
   starName: string;
@@ -52,8 +51,8 @@ export interface PlanetSummary {
 }
 
 /**
- * A planet with its star, or `null`. Wrapped in `cache` because the page title
- * and the page content both ask for it within one request.
+ * Returns a planet with its star, or null. It is wrapped in `cache` because the page metadata and the
+ * page body both request it within one request.
  */
 export const getPlanet = cache(async (slug: string) => {
   if (!isSlug(slug)) return null;
@@ -66,7 +65,7 @@ export const getPlanet = cache(async (slug: string) => {
   return row ?? null;
 });
 
-/** The current slug of a planet that used to be reachable under `slug`. */
+/** Returns the current slug of a planet that used to be reachable under `slug`. */
 export async function findPlanetSlugByAlias(slug: string): Promise<string | null> {
   if (!isSlug(slug)) return null;
   const [row] = await getDb()
@@ -78,7 +77,7 @@ export async function findPlanetSlugByAlias(slug: string): Promise<string | null
   return row?.slug ?? null;
 }
 
-/** All planets of a star from the inside out, including removed ones. */
+/** Returns all planets of a star from the inside out, including removed ones. */
 export async function getPlanetsOfStar(starId: number): Promise<PlanetSummary[]> {
   return getDb()
     .select(planetSummaryColumns)
@@ -88,7 +87,7 @@ export async function getPlanetsOfStar(starId: number): Promise<PlanetSummary[]>
     .orderBy(asc(planets.orbitalPeriodDays), asc(planets.semiMajorAxisAu), asc(planets.name));
 }
 
-/** Planets by slug, in the order of `slugs`. Slugs that do not exist are left out. */
+/** Returns planets in the order of `slugs`. Slugs that do not exist are skipped. */
 export async function getPlanetsBySlug(slugs: string[]): Promise<PlanetSummary[]> {
   if (slugs.length === 0) return [];
   const rows = await getDb()
@@ -100,34 +99,31 @@ export async function getPlanetsBySlug(slugs: string[]): Promise<PlanetSummary[]
   return slugs.flatMap((slug) => bySlug.get(slug) ?? []);
 }
 
-/** Longer filter texts are cut off. No name in the catalogue comes close to this. */
+/** Longer filter texts are cut off; no name in the catalogue comes close to this length. */
 const MAX_FILTER_LENGTH = 80;
 
-/** An entry of the list of all planets: what its image needs, plus the year the list can sort by. */
+/** A row of the planet list: the summary plus the discovery year the list can sort by. */
 export interface PlanetListEntry extends PlanetSummary {
-  /** Missing for the six planets that were known before anybody kept records. */
+  /** Null for the six planets that were known before anybody kept records. */
   discoveryYear: number | null;
 }
 
 export interface PlanetListPage {
   planets: PlanetListEntry[];
-  /** How many planets match the filter in total, on all pages. */
+  /** Number of planets matching the filter across all pages. */
   total: number;
-  /** The page that was read. Differs from the page asked for when that one does not exist. */
+  /** The page actually read. It differs from the requested page when that page does not exist. */
   page: number;
 }
 
 /**
- * One page of the list of all known planets.
+ * Returns one page of the active planets.
  *
- * `sort` is either by name, or by year of discovery with the newest first.
- * The catalogue records the year only, so planets of the same year follow
- * each other by name, and planets without a year come last.
+ * `sort` orders by name or by discovery year, newest first. The catalogue records only the year, so planets
+ * of the same year are ordered by name, and planets without a year come last.
  *
- * `filter` keeps the planets whose name, or the name of their star, contains
- * the text. It is reduced to the same form as `search_name`, so "kepler 22"
- * and "Kepler-22" find the same planets. Planets that left the catalogue are
- * not listed.
+ * `filter` matches the planet or star name. It is reduced to the `search_name` form, so "kepler 22" and
+ * "Kepler-22" find the same planets.
  */
 export async function listPlanets(
   filter: string,
@@ -175,7 +171,7 @@ export async function listPlanets(
   return { planets: rows, total, page: current };
 }
 
-/** Former names of a planet. */
+/** Returns the former names of a planet, oldest first. */
 export async function getPlanetFormerNames(planetId: number): Promise<string[]> {
   const rows = await getDb()
     .select({ name: planetAliases.name })

@@ -1,21 +1,16 @@
 /**
- * Puts the previous production deployment back live on Vercel. The workflow
- * .github/workflows/deploy-check.yml runs it when the smoke test of a new
- * production deployment fails:
+ * Rolls Vercel production back to the previous deployment (run by deploy-check.yml).
  *
  *   FAILED_DEPLOYMENT_URL=https://exofinder-abc123.vercel.app npm run deploy:rollback
  *
- * Needs VERCEL_TOKEN, VERCEL_ORG_ID and VERCEL_PROJECT_ID (see
- * docs/DEPLOYMENT.md). The logic lives in src/deploy/rollback.ts.
- *
- * Only the code goes back. The database stays as the new deployment's
- * migrations left it, which the old code must cope with (see "Migrations" in
- * docs/DEPLOYMENT.md).
+ * It also needs VERCEL_TOKEN, VERCEL_ORG_ID and VERCEL_PROJECT_ID. Only the code is
+ * rolled back; migrations stay applied, so old code must cope with the new schema
+ * (see docs/DEPLOYMENT.md).
  */
 import { spawnSync } from "node:child_process";
 import { pickRollbackTarget } from "@/deploy/rollback";
 
-/** A fixed version, so a new release of the CLI cannot change what happens here. */
+/** The CLI version is pinned so a new release cannot change the rollback behaviour. */
 const VERCEL_CLI = "vercel@65.9.0";
 
 function required(name: string): string {
@@ -36,7 +31,7 @@ function vercel(args: string[], token: string): string {
   return result.stdout;
 }
 
-/** The CLI may print a notice before the JSON. */
+/** Parses CLI JSON output, skipping any notice printed before it. */
 function parseJson(output: string): unknown {
   const start = output.search(/[[{]/);
   if (start < 0) throw new Error(`No JSON in the output of the Vercel CLI:\n${output}`);

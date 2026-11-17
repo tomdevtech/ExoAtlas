@@ -1,14 +1,11 @@
 import { nasaRow } from "@tests/support/sync-fixtures";
 
 /**
- * A small catalogue in the format of the NASA Exoplanet Archive. The database
- * tests and the browser tests run on it instead of the real catalogue with its
- * several thousand planets.
- *
- * It holds the planets the start page features, a few names that test the
- * search and the natural order ("Kepler-12 b" before "Kepler-129 b"), a star
- * without a known distance (it cannot be placed on the map) and one planet
- * that NASA withdraws in the second sync run.
+ * A small catalogue in the NASA Exoplanet Archive format for the database and
+ * browser tests. It holds the featured planets, names that test search and
+ * natural order ("Kepler-12 b" before "Kepler-129 b"), a star without a known
+ * distance (so it cannot be placed on the map) and one planet that NASA
+ * withdraws in the second sync run.
  */
 
 interface Host {
@@ -157,7 +154,7 @@ function planet(h: Host, values: PlanetValues) {
   return nasaRow({ ...h, pl_dens: null, ...values });
 }
 
-/** The planets of TRAPPIST-1, from the inside out. */
+/** These are the planets of TRAPPIST-1, from the inside out. */
 const TRAPPIST_PLANETS: [string, number, number, number, number, number][] = [
   // letter, period (days), semi-major axis (AU), radius, mass, eq. temperature
   ["b", 1.51088, 0.01154, 1.116, 1.374, 400],
@@ -169,7 +166,7 @@ const TRAPPIST_PLANETS: [string, number, number, number, number, number][] = [
   ["h", 18.7729, 0.06189, 0.755, 0.326, 173],
 ];
 
-/** All rows of the first sync run. */
+/** These are all rows of the first sync run. */
 export const FIXTURE_ROWS = [
   ...TRAPPIST_PLANETS.map(([letter, period, axis, radius, mass, eqt]) =>
     planet(TRAPPIST, {
@@ -287,10 +284,10 @@ export const FIXTURE_ROWS = [
   }),
 ];
 
-/** The rows of the second sync run: NASA no longer lists Retracted-1 b. */
+/** These are the rows of the second sync run, in which NASA no longer lists Retracted-1 b. */
 export const FIXTURE_ROWS_AFTER_RETRACTION = FIXTURE_ROWS.filter(
   (row) => row.pl_name !== "Retracted-1 b",
 );
 
-/** Number of exoplanets that are active after both runs. */
+/** This is the number of exoplanets that are still active after both runs. */
 export const ACTIVE_EXOPLANETS = FIXTURE_ROWS_AFTER_RETRACTION.length;

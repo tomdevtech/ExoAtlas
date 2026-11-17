@@ -7,17 +7,14 @@ const SIZE = 200;
 const CENTER = SIZE / 2;
 
 /**
- * Noise values cluster around 0.5. Raising the threshold above 0.5 makes a
- * layer cover less of the surface. The factor was tuned by eye.
+ * Noise values cluster around 0.5, so a threshold above 0.5 makes a layer cover less of the surface.
+ * The factor was tuned by eye.
  */
 function threshold(coverage: number): number {
   return 0.5 + (0.5 - coverage) * 0.42;
 }
 
-/**
- * Turns noise into a mask: transparent below the threshold, opaque above it,
- * with a short ramp in between so the edges stay soft.
- */
+/** Turns noise into an alpha mask with a short ramp at the threshold, so the edges stay soft. */
 function maskMatrix(layer: Layer): string {
   const steepness = 14;
   const offset = -steepness * threshold(layer.coverage);
@@ -25,16 +22,12 @@ function maskMatrix(layer: Layer): string {
 }
 
 /**
- * The image of a planet, computed from its appearance. It is an illustration
- * derived from measured values, not a photograph.
+ * The image of a planet, computed from its appearance. It is an illustration derived from measured values,
+ * not a photograph.
  *
- * The page arrives with a still image drawn as SVG. In the browser a turning,
- * lit globe fades in on top of it (globe/Globe.tsx).
- *
- * How the still image works:
- * Each layer is a flat colour that shows only where a noise pattern is above
- * a threshold. Round noise gives patches (continents, clouds), stretched noise
- * gives bands (gas giants). A shadow on top makes the disc look like a sphere.
+ * The server renders a still SVG, and in the browser a lit, rotating globe fades in on top (globe/Globe.tsx).
+ * In the still image each layer is a flat colour that shows only where a noise pattern exceeds a threshold:
+ * round noise gives patches, stretched noise gives bands, and a shadow on top makes the disc look like a sphere.
  */
 export function PlanetImage({
   appearance,
@@ -46,17 +39,17 @@ export function PlanetImage({
   appearance: Appearance;
   /** Width and height in CSS pixels. */
   size?: number;
-  /** Text for screen readers. Leave it out when the name stands next to the image. */
+  /** Accessible name for screen readers. Leave it out when the name is shown next to the image. */
   label?: string;
   className?: string;
-  /** Pass false where something else draws the moving planet on top. */
+  /** Pass false where something else draws the animated planet on top. */
   animated?: boolean;
 }) {
-  // Ids must be unique per image because several images share one page.
+  // Ids must be unique per image because several images can share one page.
   const id = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const { base, layers, banded, atmosphere, starTint, rings, seed } = appearance;
-  // Ringed planets are drawn smaller so the rings fit into the picture, and a
-  // planet with a moon as small as its moving image, which has to fit the moon in.
+  // Ringed planets are drawn smaller so the rings fit. A planet with a moon matches the size of its
+  // animated globe, which has to leave room for the moon.
   const radius = rings ? 50 : 100 * globeRadius(appearance.globe);
   const frequency = banded ? "0.003 0.055" : "0.016";
 
@@ -96,7 +89,7 @@ export function PlanetImage({
           </filter>
         ))}
 
-        {/* Light comes from the upper left, the lower right lies in shadow. */}
+        {/* Light comes from the upper left, so the lower right lies in shadow. */}
         <radialGradient id={`${id}-shadow`} cx="34%" cy="32%" r="78%">
           <stop offset="0%" stopColor="#000" stopOpacity="0" />
           <stop offset="45%" stopColor="#000" stopOpacity="0.08" />

@@ -2,7 +2,7 @@ export const CALCULATED =
   "<a refstr=CALCULATED_VALUE href=/docs/pscp_calc.html target=_blank>Calculated Value</a>";
 export const PAPER = "<a refstr=X href=https://example.org target=ref>Sample et al. 2020</a>";
 
-/** A row as NASA delivers it. Single values can be overridden. */
+/** Returns a row as NASA delivers it, with single values overridable. */
 export function nasaRow(overrides: Record<string, unknown> = {}) {
   return {
     pl_name: "Test b",

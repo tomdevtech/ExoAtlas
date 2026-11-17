@@ -1,19 +1,8 @@
 #!/usr/bin/env bash
-# Checks the HTTPS setup of the live site from the outside: security headers,
-# redirects, protocols and certificates.
-#
+# Checks security headers, redirects, TLS protocols and certificates of the live site.
 #   bash scripts/check-tls.sh www.exofinder.space
-#
-# Needs bash, curl and OpenSSL 3. GitHub Actions runs it once a month
-# (.github/workflows/tls.yml); see docs/DEPLOYMENT.md, "TLS check".
-#
-# The TLS setup itself comes from Vercel, not from this code, so a push does
-# not change it. What a push can change, the headers, is also checked by the
-# smoke test after every deployment.
-#
-# It makes about a dozen requests. More, in a short time, can make Vercel's
-# DDoS protection challenge the address the check runs from; the script then
-# says so instead of reporting missing headers.
+# It needs bash, curl and OpenSSL 3, and reads MIN_CERT_DAYS (default 21).
+# Keep the request count low, because many requests can trigger Vercel's DDoS challenge.
 
 set -uo pipefail
 
@@ -25,7 +14,6 @@ failures=0
 ok() { echo "ok    $*"; }
 fail() {
   echo "FAIL  $*"
-  # Shown as an error in the summary of a GitHub Actions run.
   if [ -n "${GITHUB_ACTIONS:-}" ]; then echo "::error::$*"; fi
   failures=$((failures + 1))
 }
@@ -33,7 +21,6 @@ fail() {
 echo "Checking $host (apex $apex), certificates must be valid for $min_days more days"
 echo
 
-# 1. Security headers on the start page.
 headers=$(curl -sS -D - -o /dev/null --max-time 30 "https://$host/" 2>&1 | tr -d '\r')
 header() { grep -i "^$1:" <<<"$headers" | head -1; }
 status=$(head -1 <<<"$headers")
@@ -66,7 +53,7 @@ else
   expect_header permissions-policy "camera=()"
 fi
 
-# 2. Every way in ends on https://<host>/ with status 200.
+# Every entry point must end on https://<host>/ with status 200.
 for start in "http://$host/" "http://$apex/" "https://$apex/"; do
   if [ "$start" = "https://$host/" ]; then continue; fi
   result=$(curl -sSL -o /dev/null -w '%{http_code} %{url_effective}' --max-redirs 5 --max-time 30 "$start" 2>&1)
@@ -77,10 +64,9 @@ for start in "http://$host/" "http://$apex/" "https://$apex/"; do
   fi
 done
 
-# 3. Protocols. A handshake counts only when it agreed on a cipher: OpenSSL
-# also prints the attempted protocol when the server refuses it.
-# SECLEVEL=0 lets OpenSSL 3 still offer TLS 1.0 and 1.1, so that refusing
-# them is the server's decision, not ours.
+# A handshake only counts when a cipher was agreed, because OpenSSL prints the
+# protocol even when the server refuses it. SECLEVEL=0 lets OpenSSL 3 still offer
+# TLS 1.0 and 1.1, so that refusing them is the server's decision.
 handshake() {
   echo | timeout 30 openssl s_client -connect "$host:443" -servername "$host" "-$1" \
     -cipher 'DEFAULT:@SECLEVEL=0' 2>&1
@@ -104,7 +90,6 @@ for version in tls1 tls1_1; do
   fi
 done
 
-# 4. Certificates: trusted, for the right name, valid long enough.
 for name in $(printf '%s\n' "$host" "$apex" | sort -u); do
   cert=$(echo | timeout 30 openssl s_client -connect "$name:443" -servername "$name" -verify_return_error 2>/dev/null |
     openssl x509 2>/dev/null)

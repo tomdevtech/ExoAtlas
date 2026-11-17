@@ -28,9 +28,9 @@ type SearchParams = Props["searchParams"];
 const numberFormat = new Intl.NumberFormat("en-US");
 
 export default function PlanetListPage({ searchParams }: Props) {
-  // The frame is static. Filter, order and page number come from the address,
-  // which is only known at request time, so the field and the list stream in. They
-  // wait separately: the field keeps its place while a new list loads.
+  // The page shell is static. Filter, sort order and page come from the URL, which is only known at
+  // request time, so the field and the list stream in. They suspend separately so the field keeps its
+  // place while a new list loads.
   return (
     <main className="group mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-6 py-10">
       <h1 className="text-3xl font-semibold tracking-tight">All planets</h1>
@@ -49,7 +49,7 @@ async function Filter({ searchParams }: { searchParams: SearchParams }) {
   return <PlanetFilter initial={parseFilter(q)} sort={parseSort(sort)} />;
 }
 
-/** The columns of a row. The header above the list uses the same widths. */
+/** Column classes of a row. The header above the list uses the same widths. */
 const STAR_COLUMN = "hidden w-52 shrink-0 truncate sm:block";
 const YEAR_COLUMN = "w-20 shrink-0 text-right tabular-nums";
 
@@ -74,7 +74,7 @@ async function PlanetList({ searchParams }: { searchParams: SearchParams }) {
   const count = `${numberFormat.format(total)} ${total === 1 ? "planet" : "planets"}`;
 
   return (
-    // Dims while the filter field waits for the server (PlanetFilter sets data-pending).
+    // The list dims while the filter field waits for the server (PlanetFilter sets data-pending).
     <section className="flex flex-col gap-5 transition-opacity group-has-[[data-pending]]:opacity-50">
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
         <p className="text-sm text-muted">
@@ -88,7 +88,7 @@ async function PlanetList({ searchParams }: { searchParams: SearchParams }) {
 
       <div>
         <div className="flex items-center gap-3 border-b border-line pb-2 text-xs tracking-wide text-muted uppercase">
-          {/* As wide as the image, so "Planet" stands above the names. */}
+          {/* This spacer is as wide as the image, so "Planet" lines up with the names. */}
           <span className="w-7 shrink-0" />
           <span className="min-w-0 flex-1">Planet</span>
           <span className={STAR_COLUMN}>Star</span>
@@ -97,7 +97,7 @@ async function PlanetList({ searchParams }: { searchParams: SearchParams }) {
         <ul>
           {planets.map((planet) => (
             <li key={planet.slug} className="border-b border-line/50">
-              {/* 200 links on one page: none of them fetches its target ahead of the click. */}
+              {/* With 200 links per page, prefetching is off so no link loads its target before a click. */}
               <Link
                 href={`/planets/${planet.slug}`}
                 prefetch={false}
@@ -127,10 +127,7 @@ const SORTS: { sort: ListSort; label: string }[] = [
   { sort: "discovery", label: "Discovery year" },
 ];
 
-/**
- * Switches between the two orders: by name, or by year of discovery with the
- * newest first. A new order starts on page 1 and keeps the filter.
- */
+/** Switches between sorting by name and by discovery year, newest first. A new order starts on page 1 and keeps the filter. */
 function SortSwitch({ filter, sort }: { filter: string; sort: ListSort }) {
   return (
     <nav aria-label="Sort order" className="flex items-center gap-2 text-sm">
@@ -165,7 +162,7 @@ function SortSwitch({ filter, sort }: { filter: string; sort: ListSort }) {
 const PAGER_ITEM = "flex h-8 min-w-8 items-center justify-center rounded-md px-2 text-sm";
 const PAGER_LINK = `${PAGER_ITEM} border border-line text-muted transition-colors hover:border-accent/60 hover:text-foreground`;
 
-/** Previous, the page numbers and next. Renders nothing when everything fits on one page. */
+/** Previous and next links with the page numbers in between. Renders nothing when everything fits on one page. */
 function Pager({
   filter,
   sort,

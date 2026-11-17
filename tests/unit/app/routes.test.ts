@@ -1,7 +1,7 @@
 /**
- * What the JSON endpoints answer when the database fails. The answer must not
- * reveal anything about the failure: no message, no stack, no connection
- * details. The details go to the server log only.
+ * When the database fails, the JSON endpoints must not reveal anything about
+ * the failure (no message, stack or connection details). The details go to
+ * the server log only.
  */
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -22,7 +22,7 @@ vi.mock("@/app/map/queries", () => ({
   }),
 }));
 
-// connection() only works inside a request that Next.js handles.
+// connection() only works inside a request that Next.js handles, so it is stubbed here.
 vi.mock("next/server", async (importOriginal) => ({
   ...(await importOriginal<typeof import("next/server")>()),
   connection: async () => {},
@@ -54,7 +54,6 @@ describe("JSON endpoints when the database fails", () => {
     expect(text).not.toContain("hunter2");
     expect(text).not.toContain("ECONNREFUSED");
     expect(text).not.toMatch(/at .+\.(ts|js):\d+/);
-    // The details reach the server log.
     expect(log).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ message: SECRET }));
     return JSON.parse(text);
   }

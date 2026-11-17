@@ -5,8 +5,8 @@ import { starAliases, stars } from "@/db/schema";
 import { isSlug } from "@/shared/slug";
 
 /**
- * A star by slug, or `null`. Wrapped in `cache` because the page title and the
- * page content both ask for it within one request.
+ * Returns a star by slug, or null. It is wrapped in `cache` because the page metadata and the page body both
+ * request it within one request.
  */
 export const getStar = cache(async (slug: string) => {
   if (!isSlug(slug)) return null;
@@ -14,7 +14,7 @@ export const getStar = cache(async (slug: string) => {
   return star ?? null;
 });
 
-/** The current slug of a star that used to be reachable under `slug`. */
+/** Returns the current slug of a star that used to be reachable under `slug`. */
 export async function findStarSlugByAlias(slug: string): Promise<string | null> {
   if (!isSlug(slug)) return null;
   const [row] = await getDb()
@@ -26,7 +26,7 @@ export async function findStarSlugByAlias(slug: string): Promise<string | null> 
   return row?.slug ?? null;
 }
 
-/** Former names of a star. */
+/** Returns the former names of a star, oldest first. */
 export async function getStarFormerNames(starId: number): Promise<string[]> {
   const rows = await getDb()
     .select({ name: starAliases.name })

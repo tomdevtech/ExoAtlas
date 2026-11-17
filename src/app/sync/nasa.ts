@@ -4,7 +4,7 @@ import { equatorialToGalactic } from "@/app/stars/coordinates";
 
 const TAP_URL = "https://exoplanetarchive.ipac.caltech.edu/TAP/sync";
 
-/** The columns we read from `pscomppars`. The table has more than 700. */
+/** The columns read from `pscomppars`, which has more than 700. */
 const COLUMNS = [
   "pl_name",
   "hostname",
@@ -85,7 +85,7 @@ export interface CatalogStar extends StarData {
   name: string;
 }
 
-/** The NASA catalogue in our own format. */
+/** The NASA catalogue converted to the app's own format. */
 export interface Catalog {
   stars: CatalogStar[];
   planets: CatalogPlanet[];
@@ -135,7 +135,7 @@ function toPlanet(row: RawRow, name: string, hostName: string): CatalogPlanet {
   });
 }
 
-/** The most common value. On a tie the one that occurs first wins. */
+/** Returns the most common value. On a tie the one that occurs first wins. */
 function mostCommon<T>(values: (T | null)[]): T | null {
   const counts = new Map<T, number>();
   let best: T | null = null;
@@ -171,7 +171,7 @@ function toStar(name: string, rows: RawRow[]): CatalogStar {
     name,
     hip: pick((r) => text(r.hip_name)),
     hd: pick((r) => text(r.hd_name)),
-    // Prefer the newer Gaia release, fall back to the older one.
+    // Prefer the newer Gaia DR3 id and fall back to DR2.
     gaiaId: pick((r) => text(r.gaia_dr3_id) ?? text(r.gaia_dr2_id)),
     ra,
     dec,
@@ -186,9 +186,8 @@ function toStar(name: string, rows: RawRow[]): CatalogStar {
 }
 
 /**
- * Validates NASA's response and converts it to our format. Throws when the
- * response does not look as expected. The sync then stops without changing
- * anything.
+ * Validates NASA's response and converts it to the app's format. It throws when the response looks wrong,
+ * so the sync stops without changing anything.
  */
 export function buildCatalog(response: unknown): Catalog {
   if (!Array.isArray(response)) {
@@ -207,7 +206,7 @@ export function buildCatalog(response: unknown): Catalog {
       }
       return { row, name, hostName };
     })
-    // A fixed order, so the result does not depend on how NASA sorts its rows.
+    // Sort by name so the result does not depend on how NASA orders its rows.
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 
   for (const { row, name, hostName } of rows) {

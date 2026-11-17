@@ -8,15 +8,14 @@ import type { Suggestion } from "./suggest/route";
 
 /** Shorter input gets no suggestions. Matches MIN_QUERY_LENGTH on the server. */
 const MIN_LENGTH = 2;
-/** Wait this long after the last key press before asking the server. */
+/** Delay after the last key press before the server is asked. */
 const DEBOUNCE_MS = 150;
 
 /**
  * The search field with live suggestions.
  *
- * Typing asks /search/suggest for the best matches. Enter without a selected
- * suggestion submits the form, which leads to /search?q=…. The form also works
- * before JavaScript has loaded.
+ * Typing fetches the best matches from /search/suggest. Enter without a selected suggestion submits the form
+ * to /search?q=…, which also works before JavaScript has loaded.
  */
 export function SearchBox({
   size = "md",
@@ -42,7 +41,7 @@ export function SearchBox({
     request.current?.abort();
   }
 
-  // Nothing may arrive after the component is gone.
+  // Abort pending requests on unmount so that no late response updates the component.
   useEffect(() => cancelPending, []);
 
   function handleInput(value: string) {
@@ -106,7 +105,7 @@ export function SearchBox({
     <div
       className={`relative ${className}`}
       onBlur={(event) => {
-        // Close when the focus leaves the field and the list.
+        // Close only when the focus leaves both the field and the list.
         if (!event.currentTarget.contains(event.relatedTarget)) close();
       }}
     >

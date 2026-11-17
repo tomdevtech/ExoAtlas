@@ -11,7 +11,7 @@ export function LegalPage({
   title: string;
   /** The German name of the page, for visitors who look for that word. */
   subtitle: string;
-  /** Required details that are not set (see operator.ts). The page then says so instead of hiding it. */
+  /** Required details that are not set (see operator.ts). The page then shows a warning instead of hiding the gap. */
   missing: string[];
   children: ReactNode;
 }) {
@@ -63,7 +63,7 @@ export function OperatorAddress({ operator }: { operator: Operator }) {
   );
 }
 
-/** The ways to reach the operator. */
+/** Contact details of the operator. Renders nothing when none are set. */
 export function OperatorContact({ operator }: { operator: Operator }) {
   const { email, phone } = operator;
   if (email === "" && phone === null) return null;

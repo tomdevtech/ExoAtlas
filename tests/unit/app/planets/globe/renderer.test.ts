@@ -53,7 +53,7 @@ describe("poseUniforms", () => {
     const held = globe({ locked: 1, spin: 0 });
     const early = poseUniforms(held, { seconds: 10 }, rect);
     const late = poseUniforms(held, { seconds: 30 }, rect);
-    // The planet does not turn, but the light moves across the picture.
+    // A locked planet does not turn, but its sway still moves the light across the picture.
     expect(late.uLightView).not.toEqual(early.uLightView);
     const free = globe();
     expect(poseUniforms(free, { seconds: 30 }, rect).uLightView).toEqual(poseUniforms(free, { seconds: 10 }, rect).uLightView);
@@ -62,7 +62,7 @@ describe("poseUniforms", () => {
   it("holds the bands of a gas planet unless they are asked to drift", () => {
     const spec = globe({ flow: 1 });
     expect(poseUniforms(spec, { seconds: 0 }, rect).uFlow).toBe(0);
-    // Asked for, the value of the planet itself stays in force.
+    // When flow is requested, the planet's own value stays in force.
     expect(poseUniforms(spec, { seconds: 0, flow: true }, rect)).not.toHaveProperty("uFlow");
   });
 

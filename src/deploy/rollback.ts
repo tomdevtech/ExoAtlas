@@ -1,11 +1,9 @@
 /**
- * Picks the production deployment to roll back to, from the output of
- * `vercel list --environment production --json`. Used by
- * scripts/rollback-production.ts when the smoke test of a new production
- * deployment fails.
+ * Picks the production deployment to roll back to from `vercel list --environment production --json`.
+ * scripts/rollback-production.ts uses it when the smoke test of a new production deployment fails.
  */
 
-/** One deployment as the Vercel CLI lists it. Only the fields we read. */
+/** A deployment as the Vercel CLI lists it, with only the fields read here. */
 interface ListedDeployment {
   url?: unknown;
   uid?: unknown;
@@ -16,7 +14,7 @@ interface ListedDeployment {
   readyState?: unknown;
 }
 
-/** "https://exofinder-abc.vercel.app/" and "exofinder-abc.vercel.app" are the same deployment. */
+/** Normalises a deployment URL to its host, so "https://exofinder-abc.vercel.app/" and "exofinder-abc.vercel.app" match. */
 export function deploymentHost(url: string): string {
   return url.trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "").toLowerCase();
 }
@@ -30,8 +28,8 @@ function deploymentsOf(output: unknown): ListedDeployment[] {
 }
 
 /**
- * The newest ready production deployment other than the failed one, as its
- * host name, or `null` when there is none (the failed one is the first).
+ * Returns the host of the newest ready production deployment other than the failed one, or null when there is
+ * none (for example when the failed one is the first).
  */
 export function pickRollbackTarget(output: unknown, failedUrl: string): string | null {
   const failed = deploymentHost(failedUrl);

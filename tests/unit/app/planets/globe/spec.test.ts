@@ -32,7 +32,7 @@ function globe(slug: string, source: "nasa" | "sol" = "sol"): GlobeSpec {
   }).globe;
 }
 
-/** Applies a rotation of nine numbers, row by row, to a direction. */
+/** Applies a 3x3 rotation, given row by row, to a direction. */
 function turn(matrix: number[], [x, y, z]: number[]): number[] {
   return [
     matrix[0] * x + matrix[1] * y + matrix[2] * z,
@@ -92,7 +92,7 @@ describe("moonPosition", () => {
 
   it("lays the orbit above the equator of the planet", () => {
     const spec = { ...globe("earth"), moon };
-    // The axis as the viewer sees it is the middle column of the rotation.
+    // The axis as the viewer sees it is the middle column of the rotation matrix.
     const rotation = globeRotation(spec, 0);
     const axis = [rotation[1], rotation[4], rotation[7]];
     const position = moonPosition(spec, 7)!;
@@ -109,12 +109,12 @@ describe("lockedSway", () => {
     const free = globe("some-b", "nasa");
     const held = { ...free, locked: 1 };
     expect(lockedSway(free, 13)).toBe(0);
-    // The clouds of a gas planet circle it whether it is held or not: nothing to swing around.
+    // The clouds of a gas planet circle it whether it is locked or not, so there is nothing to sway.
     expect(lockedSway({ ...held, kind: "bands" }, 13)).toBe(0);
     const angles = Array.from({ length: 200 }, (_, second) => lockedSway(held, second));
     expect(Math.max(...angles)).toBeGreaterThan(0.6);
     expect(Math.min(...angles)).toBeLessThan(-0.6);
-    // Never so far that the viewer looks at the night side only.
+    // The sway must never go so far that the viewer sees only the night side.
     for (const angle of angles) expect(Math.abs(angle)).toBeLessThan(1);
   });
 });
@@ -192,10 +192,10 @@ describe("surfaceDefines", () => {
   });
 
   it("leaves out relief where a planet has no heights", () => {
-    // A map takes its heights from the picture, where it shows ground.
+    // A real map takes its heights from the picture when it shows ground.
     expect(surfaceDefines({ ...globe("earth"), relief: 0.8 }).RELIEF).toBe(1);
     expect(surfaceDefines(globe("jupiter")).RELIEF).toBe(0);
-    // A terrain preset is nothing but heights, gas has no ground.
+    // A terrain preset always holds heights, while gas has no ground at all.
     expect(surfaceDefines({ ...globe("some-b", "nasa"), relief: 0 }).RELIEF).toBe(1);
     expect(surfaceDefines({ ...gas(), relief: 1 }).RELIEF).toBe(0);
   });
@@ -231,7 +231,7 @@ describe("surfaceUniforms", () => {
     expect(uniforms.uRing[2]).toBe(0);
     expect(uniforms.uAurora[3]).toBe(0);
     expect(uniforms.uMapFlags).toEqual([0, 0, 0, 0]);
-    // Nothing to turn: the second preset keeps the place of the first.
+    // Without a second preset the turn is the identity matrix.
     expect(uniforms.uMapTurn2).toEqual([1, 0, 0, 0, 1, 0, 0, 0, 1]);
   });
 
@@ -256,13 +256,24 @@ describe("surfaceUniforms", () => {
     expect(surfaceUniforms(rocky).uTerrain).toEqual(rocky.terrain);
     expect(surfaceUniforms(rocky).uMapTurn).toEqual(rocky.turn);
     expect(surfaceUniforms(rocky).uMapTurn2).toEqual(rocky.second?.turn);
-    // The second preset takes the place of the map of the night.
+    // The second preset uses the texture slot of the night map, which flag 0 signals.
     expect(surfaceUniforms(rocky).uMapFlags[0]).toBe(1);
     expect(surfaceUniforms(rocky).uZones).toBe(rocky.zones);
     expect(surfaceUniforms({ ...rocky, locked: 1 }).uLocked).toBe(1);
     expect(surfaceUniforms({ ...giant, lightning: 0.7 }).uLightning).toBe(0.7);
     const lights = surfaceUniforms({ ...rocky, aurora: { color: "#ffffff", strength: 0.5 } }).uAurora;
     expect(lights).toEqual([1, 1, 1, 0.5]);
+    const stormy = { ...giant, storms: { cyclones: 0.1, dust: 0.2, spin: 0.3, outbreaks: 0.4 } };
+    expect(surfaceUniforms(stormy).uStormSpin).toBe(0.3);
+  });
+
+  it("hands the storms of a gas giant over as six groups of four, the unused ones empty", () => {
+    const giant = globe("some-b", "nasa");
+    const two = surfaceUniforms({ ...giant, giantStorms: [[1, 0.2, 0.1, 1], [-2, -0.3, 0.05, -1]] }).uGiantStorms;
+    expect(two).toHaveLength(24);
+    expect(two.slice(0, 8)).toEqual([1, 0.2, 0.1, 1, -2, -0.3, 0.05, -1]);
+    expect(two.slice(8).every((value) => value === 0)).toBe(true);
+    expect(surfaceUniforms({ ...giant, giantStorms: [] }).uGiantStorms.every((value) => value === 0)).toBe(true);
   });
 
   it("announces the extra maps of Earth and the ring map of Saturn", () => {

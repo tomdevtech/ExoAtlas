@@ -5,7 +5,7 @@ import { isSlug } from "@/shared/slug";
 import { measuredDensity } from "@/app/planets/queries";
 import type { StarRow, SystemPlanetRow, SystemStarRow } from "./payload";
 
-/** All stars that can be placed on the map: those with a known position. */
+/** Returns all stars with a known position, nearest first. */
 export async function getMapStars(): Promise<StarRow[]> {
   const rows = await getDb()
     .select({
@@ -27,7 +27,7 @@ export async function getMapStars(): Promise<StarRow[]> {
   );
 }
 
-/** A star and its active planets from the inside out, or `null` when the star does not exist. */
+/** Returns a star and its active planets ordered by period, or `null` if the slug is invalid or unknown. */
 export async function getMapSystem(
   slug: string,
 ): Promise<{ star: SystemStarRow; planets: SystemPlanetRow[] } | null> {

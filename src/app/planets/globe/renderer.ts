@@ -1,5 +1,6 @@
 import { globeFragment, GLOBE_VERTEX } from "./globe.glsl";
 import { NOISE_SIZE, noiseVolume } from "./noise";
+import { stormUniforms } from "./storms";
 import {
   globeRadius,
   globeRotation,
@@ -23,9 +24,9 @@ export interface GlobePose {
   /** The viewer's position around the planet, in radians. */
   yaw?: number;
   pitch?: number;
-  /** 1 shows the whole planet. */
+  /** A zoom of 1 shows the whole planet. */
   zoom?: number;
-  /** Lets the bands of gas giants drift. Off for the small images in lists. */
+  /** Lets the bands of gas giants drift. It is off for the small images in lists. */
   flow?: boolean;
 }
 
@@ -43,9 +44,8 @@ interface LoadedTexture {
 }
 
 /**
- * The values for the uniforms of globe.glsl.ts that depend on how the planet
- * is seen and where on the canvas it is drawn. Together with surfaceUniforms()
- * and the textures they are all a picture needs.
+ * The uniforms of globe.glsl.ts that depend on the pose and on where the planet is drawn. Together
+ * with surfaceUniforms() and the textures they are everything a frame needs.
  */
 export function poseUniforms(
   spec: GlobeSpec,
@@ -57,51 +57,47 @@ export function poseUniforms(
   const moon = moonPosition(spec, pose.seconds, yaw, pose.pitch) ?? [0, 0, 0];
   return {
     uTime: pose.seconds,
-    // Zoomed in, the clouds and the fine grain get more detail.
+    // Zooming in adds detail to the clouds and the fine grain.
     uDetail: Math.min(3, Math.max(0, Math.log2(zoom))),
     uCenter: [rect.x + rect.width / 2, rect.y + rect.height / 2],
     uRadius: (Math.min(rect.width, rect.height) / 2) * globeRadius(spec) * zoom,
-    // The rotation is stored row by row and WebGL reads column by column. Read
-    // that way it is the opposite rotation, which is the one the shader needs.
+    // The rotation is stored row by row, but WebGL reads it column by column. Read that way it is the
+    // inverse rotation, which is the one the shader needs.
     uViewToObj: globeRotation(spec, pose.seconds, yaw, pose.pitch),
     uLightView: lightDirection(yaw, pose.pitch),
     uFlatten: spec.flattening,
     uMoon: [moon[0], moon[1], moon[2], spec.moon?.size ?? 0],
-    // The bands of a gas giant only drift where that is asked for.
+    ...stormUniforms(spec, pose.seconds),
     ...(pose.flow ? {} : { uFlow: 0 }),
   };
 }
 
-/** One program, for one combination of surface parts. */
+/** One program, built for one combination of surface parts. */
 interface Program {
   program: WebGLProgram | null;
-  /** Kept while the program is being built, for their error messages. */
+  /** The shaders are kept while the program is being built, so their error logs can be read. */
   shaders: WebGLShader[];
   state: "building" | "ready" | "failed";
   locations: Map<string, WebGLUniformLocation | null>;
 }
 
-/** Texture units: the four maps of surface.glsl.ts, then the noise. */
+/** Texture units: the four maps of surface.glsl.ts come first, then the noise. */
 const MAP_UNITS = ["uMapDay", "uMapNight", "uMapClouds", "uRingMap"] as const;
 const NOISE_UNIT = MAP_UNITS.length;
-/** How often a disposed renderer looks whether a program it still has to delete is built. */
+/** How often a disposed renderer checks whether a program it still has to delete has finished building. */
 const DROP_POLL_MS = 200;
 
 /**
- * Draws planets with WebGL 2. One renderer can draw any number of different
- * planets into different parts of its canvas.
- *
- * Each combination of surface parts (see surfaceDefines) has a program of its
- * own. Programs are built in the background: some drivers (Direct3D on
- * Windows) need a noticeable time for it, and asking too early would freeze
- * the page. Until a planet's program is ready, `draw` returns false and the
- * still image stays.
+ * Draws planets with WebGL 2, any number of them into different parts of one canvas. Each
+ * combination of surface parts has its own program. Programs are built in the background because
+ * some drivers (Direct3D on Windows) take noticeable time, and asking for the result too early would
+ * freeze the page. Until a planet's program is ready, `draw` returns false and the still image stays.
  */
 export class GlobeRenderer {
   private readonly gl: WebGL2RenderingContext;
   private readonly textureSize: "sm" | "lg";
   private readonly onChange: () => void;
-  /** Tells whether the driver has finished building a program, without waiting for it. */
+  /** Lets the renderer ask whether the driver has finished a program without waiting for it. */
   private readonly parallelCompile: { COMPLETION_STATUS_KHR: number } | null;
   private programs = new Map<string, Program>();
   private textures = new Map<string, LoadedTexture>();
@@ -110,9 +106,8 @@ export class GlobeRenderer {
   private disposed = false;
 
   /**
-   * Returns nothing when the browser has no WebGL 2. `onChange` is called when
-   * a map has arrived or the graphics card was reset, so a picture that stands
-   * still can be drawn again.
+   * Returns null when the browser has no WebGL 2. `onChange` is called when a texture has arrived or
+   * the context was restored, so a paused image can be drawn again.
    */
   static create(
     canvas: HTMLCanvasElement,
@@ -144,15 +139,14 @@ export class GlobeRenderer {
     return this.parallelCompile !== null;
   }
 
-  /** Starts building the program for these surface parts, if it is not there yet. */
+  /** Starts building the program for these surface parts if it does not exist yet. */
   prepare(defines: SurfaceDefines): void {
     this.program(defines);
   }
 
   /**
-   * Whether the planet's program is ready, without waiting. Starts building it
-   * if necessary. Browsers without KHR_parallel_shader_compile have to wait
-   * here once.
+   * Whether the planet's program is ready, starting to build it if necessary. Browsers without
+   * KHR_parallel_shader_compile have to wait here once.
    */
   ready(spec: GlobeSpec): boolean {
     const entry = this.program(surfaceDefines(spec));
@@ -160,8 +154,8 @@ export class GlobeRenderer {
   }
 
   /**
-   * Whether a program is still being built. Meanwhile the size of the canvas
-   * must not change: that waits for the driver and freezes the page.
+   * Whether a program is still being built. The canvas size must not change meanwhile, because that
+   * waits for the driver and freezes the page.
    */
   busy(): boolean {
     let building = false;
@@ -172,9 +166,8 @@ export class GlobeRenderer {
   }
 
   /**
-   * Draws the planet into the rectangle. Returns false when nothing could be
-   * drawn yet, for example because the program is still being built or the
-   * maps of the surface are still loading.
+   * Draws the planet into the rectangle. Returns false when nothing could be drawn yet, for example
+   * because the program is still being built or the textures are still loading.
    */
   draw(spec: GlobeSpec, pose: GlobePose, rect: GlobeRect): boolean {
     const gl = this.gl;
@@ -197,14 +190,14 @@ export class GlobeRenderer {
 
     gl.useProgram(entry.program);
     const location = (name: string) => this.location(entry, name);
-    // A number, a pair, three, four, or the nine of a rotation.
     const values = { ...surfaceUniforms(spec), ...poseUniforms(spec, pose, rect) };
     for (const [name, value] of Object.entries(values)) {
       if (typeof value === "number") gl.uniform1f(location(name), value);
       else if (value.length === 2) gl.uniform2fv(location(name), value);
       else if (value.length === 3) gl.uniform3fv(location(name), value);
-      else if (value.length === 4) gl.uniform4fv(location(name), value);
-      else gl.uniformMatrix3fv(location(name), false, value);
+      else if (value.length === 9) gl.uniformMatrix3fv(location(name), false, value);
+      // Everything else is a vec4 or an array of vec4.
+      else gl.uniform4fv(location(name), value);
     }
 
     const maps = [day, night, clouds, ring];
@@ -236,24 +229,24 @@ export class GlobeRenderer {
   }
 
   private onContextLost = (event: Event) => {
-    // Without this the browser would not give the context back.
+    // Without preventDefault the browser would not restore the context.
     event.preventDefault();
     this.programs.clear();
   };
 
   private onContextRestored = () => {
-    // Everything that lived on the graphics card is gone and is built again.
+    // Everything that lived on the GPU is gone and has to be created again.
     this.textures.clear();
     this.programs.clear();
     this.setup();
     this.onChange();
   };
 
-  /** The textures every planet uses, and the fixed drawing state. */
+/** Creates the textures every planet uses and sets the fixed drawing state. */
   private setup(): void {
     const gl = this.gl;
 
-    // Stands in for the maps a planet does not have.
+    // This blank texture stands in for the maps a planet does not have.
     this.blank = gl.createTexture();
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.blank);
@@ -271,23 +264,12 @@ export class GlobeRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
-    // The noise of the clouds and the fine grain (noise.ts). Half floats are
-    // precise enough and can be filtered on every WebGL 2 device.
+    // The noise for the clouds and the fine grain (noise.ts). Half floats are precise enough and can
+    // be filtered on every WebGL 2 device.
     this.noise = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_3D, this.noise);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    gl.texImage3D(
-      gl.TEXTURE_3D,
-      0,
-      gl.R16F,
-      NOISE_SIZE,
-      NOISE_SIZE,
-      NOISE_SIZE,
-      0,
-      gl.RED,
-      gl.FLOAT,
-      noiseVolume(),
-    );
+    gl.texImage3D(gl.TEXTURE_3D, 0, gl.R16F, NOISE_SIZE, NOISE_SIZE, NOISE_SIZE, 0, gl.RED, gl.FLOAT, noiseVolume());
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
@@ -295,15 +277,15 @@ export class GlobeRenderer {
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.REPEAT);
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.REPEAT);
 
-    // The shader writes colours already multiplied by their opacity.
+    // Blending stays off because the shader writes colours already multiplied by their opacity.
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.BLEND);
   }
 
   /**
-   * The program for these surface parts. A new one is only started here:
-   * nothing asks the driver whether it succeeded, since such a question waits
-   * until the driver is done. `check` asks later.
+   * Returns the program for these surface parts, starting a build if needed. It does not ask the
+   * driver whether the build succeeded, because that question waits until the driver is done;
+   * `check` asks later.
    */
   private program(defines: SurfaceDefines): Program | null {
     const key = defineLines(defines);
@@ -342,7 +324,7 @@ export class GlobeRenderer {
     return shader;
   }
 
-  /** Whether the program is ready. Returns false without waiting while it is still being built. */
+  /** Whether the program is ready. It returns false without waiting while the program is still being built. */
   private check(entry: Program): boolean {
     if (entry.state !== "building") return entry.state === "ready";
     const gl = this.gl;
@@ -381,10 +363,9 @@ export class GlobeRenderer {
       for (const shader of shaders) gl.deleteShader(shader);
       gl.deleteProgram(program);
     };
-    // A program deleted while the driver is still building it makes the
-    // browser log "Program object expected" warnings, so it goes once it is
-    // done. In development this happens on every planet page, because React
-    // mounts the viewer twice and the first renderer is disposed at once.
+    // Deleting a program while the driver is still building it makes the browser log "Program object
+    // expected" warnings, so it is deleted once the build is done. In development this happens on
+    // every planet page, because React mounts the viewer twice.
     const extension = this.parallelCompile;
     if (!program || entry.state !== "building" || !extension) {
       remove();
@@ -407,7 +388,7 @@ export class GlobeRenderer {
     return location;
   }
 
-  /** Starts loading a map on first use. `wraps` is for maps that go around the planet. */
+  /** Starts loading a texture on first use. `wraps` repeats it horizontally, for maps that go around the planet. */
   private texture(url: string, wraps: boolean): LoadedTexture {
     const existing = this.textures.get(url);
     if (existing) return existing;
@@ -417,12 +398,16 @@ export class GlobeRenderer {
     this.textures.set(url, entry);
 
     const image = new Image();
-    image.onload = () => {
-      // The renderer may be gone or the graphics card reset since the request.
+    image.src = url;
+    // The image is decoded off the main thread first. Uploading an undecoded image would decode it on
+    // the main thread during the upload, which stalls phones. A texture that fails to load leaves
+    // the planet waiting.
+    const upload = () => {
+      // The renderer may have been disposed or the context restored since the request started.
       if (this.disposed || this.textures.get(url) !== entry) return;
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, entry.texture);
-      // Images start at the top, WebGL starts at the bottom.
+      // Images start at the top, while WebGL textures start at the bottom.
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
       gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
@@ -432,7 +417,7 @@ export class GlobeRenderer {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wraps ? gl.REPEAT : gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      // Keeps the map sharp towards the edge of the planet, where it is seen at a flat angle.
+      // Anisotropic filtering keeps the map sharp near the edge of the planet, where it is seen at a grazing angle.
       const anisotropic = gl.getExtension("EXT_texture_filter_anisotropic");
       if (anisotropic) {
         gl.texParameterf(gl.TEXTURE_2D, anisotropic.TEXTURE_MAX_ANISOTROPY_EXT, 8);
@@ -440,7 +425,7 @@ export class GlobeRenderer {
       entry.ready = true;
       this.onChange();
     };
-    image.src = url;
+    image.decode().then(upload, () => {});
     return entry;
   }
 }

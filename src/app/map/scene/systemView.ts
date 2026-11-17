@@ -23,13 +23,13 @@ import {
   RingGeometry,
   Scene,
   SphereGeometry,
-  TextureLoader,
   Vector3,
   type IUniform,
   type Texture,
 } from "three";
 import { NOISE_SIZE, noiseVolume } from "@/app/planets/globe/noise";
 import { linearColor, seedOffset, type GlobeSpec } from "@/app/planets/globe/spec";
+import { stormUniforms } from "@/app/planets/globe/storms";
 import { surfaceDefines, surfaceUniforms, textureUrls } from "@/app/planets/globe/uniforms";
 import { starColor } from "../galaxy";
 import { layoutOrbits, orbitPoint, starSize, type OrbitLayout } from "../orbits";
@@ -48,15 +48,15 @@ import {
   STAR_FRAGMENT,
 } from "./shaders";
 import { createSky, type Sky } from "./sky";
+import { loadTexture } from "./picture";
 
-/** Loads each picture once, however many planets use it. */
+/** Loads each texture only once, however many planets use it, and decodes it off the main thread. */
 export class TextureStore {
-  private readonly loader = new TextureLoader();
   private readonly textures = new Map<string, Texture>();
   private readonly waiting = new Map<string, ((texture: Texture | null) => void)[]>();
-  /** Stands in where a shader expects a picture and the planet has none. */
+  /** A placeholder for shader texture slots that a planet does not use. */
   readonly blank: Texture;
-  /** The noise of the clouds and the fine grain (planets/globe/noise.ts). */
+  /** The 3D noise volume used for clouds and fine surface detail. */
   readonly noise: Data3DTexture;
 
   constructor(private readonly anisotropy: number) {
@@ -66,7 +66,7 @@ export class TextureStore {
     this.noise = new Data3DTexture(noiseVolume(), NOISE_SIZE, NOISE_SIZE, NOISE_SIZE);
     this.noise.format = RedFormat;
     this.noise.type = FloatType;
-    // Half floats are precise enough and can be filtered on every WebGL 2 device.
+    // Half floats are precise enough, and unlike full floats they can be filtered on every WebGL 2 device.
     this.noise.internalFormat = "R16F";
     this.noise.minFilter = LinearFilter;
     this.noise.magFilter = LinearFilter;
@@ -79,8 +79,8 @@ export class TextureStore {
   }
 
   /**
-   * `onDone` is called with the picture when it is there, at once if it
-   * already is, and with `null` when it could not be loaded.
+   * Returns the texture for `url`. `onDone` is called once the texture has loaded (immediately if it
+   * already has), or with `null` if loading failed.
    */
   get(url: string, onDone: (texture: Texture | null) => void = () => {}): Texture {
     const known = this.textures.get(url);
@@ -96,12 +96,11 @@ export class TextureStore {
       this.waiting.delete(url);
       for (const callback of queue) callback(result);
     };
-    const texture = this.loader.load(
+    const texture = loadTexture(
       url,
       () => settle(texture),
-      undefined,
       () => {
-        // Forgotten again, so the next system that needs it tries once more.
+        // A failed texture is removed from the cache so that the next system that needs it tries again.
         this.textures.delete(url);
         texture.dispose();
         settle(null);
@@ -124,11 +123,11 @@ interface Body {
   layout: OrbitLayout;
   name: string;
   spec: GlobeSpec;
-  /** Whether the large maps have been asked for (see `sharpen`). */
+  /** Whether the high-resolution maps have been requested (see `sharpen`). */
   sharp: boolean;
-  /** Moves along the orbit. */
+  /** The group that moves along the orbit. */
   anchor: Group;
-  /** Turns around the tilted axis. */
+  /** The planet mesh, which spins around the tilted axis. */
   ball: Mesh<SphereGeometry, RawShaderMaterial>;
   ring: Mesh<RingGeometry, RawShaderMaterial> | null;
   haze: Mesh<SphereGeometry, RawShaderMaterial> | null;
@@ -143,24 +142,21 @@ export type SystemHit = { kind: "planet"; index: number } | { kind: "star" };
 const SPIN_RATE = (Math.PI * 2) / 40;
 const ORBIT_SEGMENTS = 256;
 const SUN_MAP = "/textures/planets/sun-lg.jpg";
-/** Angle between the line planet–star and the direction to the camera when a planet is first followed. */
+/** The angle in radians between the planet–star line and the camera direction when a planet is first followed. */
 const DAYLIGHT_OFFSET = 0.9;
-/** A followed planet takes at least this many seconds for one orbit. */
+/** While the camera follows a planet, time slows so that one orbit takes at least this many seconds. */
 const FOLLOWED_PERIOD = 90;
 
 /**
- * One star with its planets on their orbits.
- *
- * Lengths have no real unit here: the star has a radius of about 1, the
- * orbits are squeezed together and the planets enlarged (see orbits.ts). The
- * orbits lie in the plane y = 0. The planets use the same shader as the 3D
- * model on their pages, so they look the same in both places.
+ * Renders one star with its planets on their orbits. Lengths are in arbitrary display units: the star
+ * has a radius of about 1, orbits are compressed and planets enlarged (see orbits.ts), and the orbits
+ * lie in the plane y = 0. The planets use the same shader as the 3D model on their detail pages.
  */
 export class SystemView {
   readonly scene = new Scene();
   readonly camera = new PerspectiveCamera(45, 1, 0.02, 4000);
 
-  /** Index of the planet the camera follows, in the order of the payload, or null for the whole system. */
+  /** The payload index of the planet the camera follows, or null when showing the whole system. */
   focused: number | null = null;
   paused = false;
 
@@ -170,21 +166,21 @@ export class SystemView {
   private readonly sky: Sky;
   private readonly ballGeometry = new SphereGeometry(1, 96, 48);
   private readonly starRadius: number;
-  /** Radius of the largest orbit. */
+  /** The radius of the largest orbit, used to fit the overview. */
   private readonly extent: number;
 
   private clock = 0;
-  /** How fast the orbits run: 1 normally, less while the camera follows a quick planet. */
+  /** The orbit speed factor, which is 1 normally and lower while the camera follows a fast planet. */
   private rate = 1;
   private azimuth = 0.6;
-  /** What is left of the turn from the previous direction of view to the current one. */
+  /** The remaining rotation from the previous view direction, which decays so that focus changes glide. */
   private swing = 0;
   private elevation = 0.48;
   private distance = 10;
   private distanceGoal = 10;
   private fitted = false;
   private readonly target = new Vector3();
-  /** What is left of the way from the previous target to the current one. */
+  /** The remaining offset from the previous target, which decays so that focus changes glide. */
   private readonly lag = new Vector3();
   private readonly scratch = new Vector3();
 
@@ -196,7 +192,7 @@ export class SystemView {
     const { star, planets } = payload;
     const seed = hashText(star.slug);
 
-    // The plane of the orbits is tilted against the Milky Way, as in the solar system.
+    // The orbital plane is tilted against the Milky Way, as it is in the solar system.
     const tilt = (60 * Math.PI) / 180;
     const c = Math.cos(tilt);
     const s = Math.sin(tilt);
@@ -204,7 +200,6 @@ export class SystemView {
     this.sky.setOpacity(0.55);
     this.scene.add(this.sky.mesh);
 
-    // The star.
     this.starRadius = starSize(star.radiusSun);
     const display = starColor(star.teffK);
     const linear = display.map((channel) => channel ** 2.2);
@@ -247,7 +242,6 @@ export class SystemView {
     this.glow.scale.setScalar(glowSize);
     this.scene.add(this.glow);
 
-    // The planets.
     const layouts = layoutOrbits(planets, star, seed);
     for (const layout of layouts) {
       this.bodies.push(this.createBody(layout));
@@ -263,8 +257,8 @@ export class SystemView {
     const { textures } = this;
     const planet = this.payload.planets[layout.index];
     const spec = planet.globe;
-    // On its orbit a planet is a few dozen pixels wide: the small maps are
-    // enough until the camera follows it (see `sharpen`).
+    // On its orbit a planet is only a few dozen pixels wide, so the small maps are enough until the
+    // camera follows it (see `sharpen`).
     const urls = textureUrls(spec, "sm");
 
     const anchor = new Group();
@@ -272,8 +266,8 @@ export class SystemView {
     axis.rotation.z = (-spec.tiltDeg * Math.PI) / 180;
     anchor.add(axis);
 
-    // The planet stays hidden until its maps have loaded, instead of flashing
-    // black. A map that cannot be loaded does not keep it hidden for ever.
+    // The planet stays hidden until its maps have loaded so that it does not flash black. A map that
+    // fails to load also counts as done, so the planet never stays hidden for ever.
     let pending = 1;
     const loaded = () => {
       pending--;
@@ -297,8 +291,8 @@ export class SystemView {
       uLightObject: { value: new Vector3() },
       uCameraObject: { value: new Vector3() },
     };
-    for (const [name, value] of Object.entries(surfaceUniforms(spec))) uniforms[name] = { value };
-    // Only the code this planet needs is compiled (see surface.glsl.ts).
+    for (const [name, value] of Object.entries({ ...surfaceUniforms(spec), ...stormUniforms(spec, 0) })) uniforms[name] = { value };
+    // The defines ensure that only the shader code this planet needs is compiled.
     const defines = { ...surfaceDefines(spec) };
 
     const ball = new Mesh(
@@ -311,7 +305,7 @@ export class SystemView {
         uniforms,
       }),
     );
-    // A giant that turns fast is flattened at its poles.
+    // Fast-spinning giants are flattened at the poles.
     ball.scale.set(layout.size, layout.size * (1 - spec.flattening), layout.size);
     axis.add(ball);
 
@@ -324,8 +318,8 @@ export class SystemView {
           vertexShader: RING_VERTEX,
           fragmentShader: RING_FRAGMENT,
           defines,
-          // The same values as the planet, so the rings read the same maps and light.
-          // Only the directions are their own: the disc does not spin with the ball.
+          // The rings share the planet's uniforms so they use the same maps and lighting. Only the light
+          // and camera directions are separate, because the disc does not spin with the planet.
           uniforms: {
             ...uniforms,
             uLightObject: { value: new Vector3() },
@@ -336,7 +330,7 @@ export class SystemView {
           depthWrite: false,
         }),
       );
-      // The disc is built upright; laid flat it is in the plane of the equator.
+      // RingGeometry is built upright, so it is laid flat into the equatorial plane.
       ring.rotation.x = -Math.PI / 2;
       ring.scale.setScalar(layout.size);
       axis.add(ring);
@@ -387,11 +381,10 @@ export class SystemView {
         }),
       );
       moon.scale.setScalar(layout.size * spec.moon.size);
-      // Its orbit lies above the equator of the planet.
+      // The moon is attached to the tilted axis so that its orbit lies in the planet's equatorial plane.
       axis.add(moon);
     }
 
-    // The orbit as a closed line.
     const points = new Float32Array((ORBIT_SEGMENTS + 1) * 3);
     for (let i = 0; i <= ORBIT_SEGMENTS; i++) {
       const [x, y] = orbitPoint(
@@ -428,14 +421,14 @@ export class SystemView {
   }
 
   /**
-   * Replaces the small maps of a planet by the large ones, each as soon as it
-   * has loaded. Happens once, when the camera first follows the planet.
+   * Replaces a planet's small maps with the large ones, each as soon as it has loaded. This happens once,
+   * when the camera first follows the planet.
    */
   private sharpen(body: Body): void {
     if (body.sharp) return;
     body.sharp = true;
     const urls = textureUrls(body.spec, "lg");
-    // The rings share these uniforms with the ball, so they change with it.
+    // The rings share these uniforms with the planet, so they are updated as well.
     const { uniforms } = body.ball.material;
     const swap = (name: string, url: string | null) => {
       if (!url) return;
@@ -448,32 +441,30 @@ export class SystemView {
     swap("uMapClouds", urls.clouds);
   }
 
-  // ---- Moving the camera -----------------------------------------------------
-
-  /** Turns the camera around what it looks at. */
+  /** Orbits the camera around its target. */
   drag(dx: number, dy: number): void {
     this.azimuth += dx * 0.005;
     this.elevation = clamp(this.elevation + dy * 0.005, -1.45, 1.45);
   }
 
-  /** Moves closer (positive) or away. One notch of a mouse wheel is about 1. */
+  /** Moves the camera closer for positive amounts and away for negative ones. One mouse wheel notch is about 1. */
   push(amount: number): void {
     const body = this.focusedBody();
     const nearest = body ? body.layout.size * 2.2 : this.starRadius * 2.4;
     this.distanceGoal = clamp(this.distanceGoal * Math.exp(-amount * 0.2), nearest, this.extent * 9);
   }
 
-  /** Follows a planet, or shows the whole system for `null`. */
+  /** Follows a planet, or shows the whole system when `index` is null. */
   focus(index: number | null): void {
     const before = this.focusPoint(new Vector3());
     this.focused = index;
     const body = this.focusedBody();
-    // Keep looking at the old place and glide over, instead of jumping.
+    // The old target is kept as a decaying offset so the camera glides over instead of jumping.
     this.lag.add(before).sub(this.focusPoint(this.scratch));
     if (body) {
       this.sharpen(body);
-      // Look from the side of the star, a little off the line to it: most of
-      // the planet is in daylight and the star does not block the view.
+      // The camera looks from the star's side, slightly off the line to it, so that most of the planet
+      // is in daylight and the star does not block the view.
       const turned = this.azimuth + this.swing;
       const { x, z } = body.anchor.position;
       this.azimuth = Math.atan2(-z, -x) + DAYLIGHT_OFFSET;
@@ -493,12 +484,12 @@ export class SystemView {
     return body ? out.copy(body.anchor.position) : out.set(0, 0, 0);
   }
 
-  /** The distance from which the whole system fits on the screen. */
+  /** Returns the camera distance at which the whole system fits on the screen. */
   private overviewDistance(aspect: number): number {
     return this.extent * 2.7 * Math.max(1, 1 / aspect);
   }
 
-  /** Puts every planet where it is on its orbit, and turns it. */
+  /** Positions every planet on its orbit and updates its rotation and shader time. */
   private placeBodies(seconds: number): void {
     for (const body of this.bodies) {
       const { layout } = body;
@@ -509,9 +500,8 @@ export class SystemView {
         layout.phase + (this.clock / layout.period) * 2 * Math.PI,
       );
       body.anchor.position.set(x, 0, -y);
-      // A rocky planet that always shows its star the same side turns once per
-      // orbit. The others spin at their own pace, and so do the clouds of a
-      // gas planet that is held: its winds carry them around.
+      // A tidally locked rocky planet rotates once per orbit. All other planets spin at their own pace,
+      // including locked gas giants, whose winds carry the clouds around.
       body.ball.rotation.y =
         body.spec.locked > 0.5 && body.spec.kind === "terrain"
           ? Math.atan2(-x, y)
@@ -525,14 +515,15 @@ export class SystemView {
       const focused = layout.index === this.focused;
       body.orbit.material.opacity = focused ? 0.7 : 0.3;
       body.ball.material.uniforms.uTime.value = seconds;
+      for (const [name, value] of Object.entries(stormUniforms(body.spec, seconds))) body.ball.material.uniforms[name].value = value;
       body.ball.material.uniforms.uDetail.value = focused ? 1 : 0;
     }
   }
 
-  /** Advances the system by `dt` seconds. `seconds` keeps running while the orbits are paused. */
+  /** Advances the system by `dt` seconds. `seconds` is the animation time, which keeps running while the orbits are paused. */
   update(dt: number, seconds: number, viewport: Viewport): void {
-    // A planet close to its star races around it. While the camera follows
-    // one, time slows down until that planet takes a calm while per orbit.
+    // Planets close to their star orbit very fast, so while the camera follows one, time slows down
+    // until an orbit takes at least FOLLOWED_PERIOD seconds.
     const followed = this.focusedBody();
     const calm = followed ? Math.min(1, followed.layout.period / FOLLOWED_PERIOD) : 1;
     this.rate += (calm - this.rate) * (1 - Math.exp(-dt * 3));
@@ -541,7 +532,7 @@ export class SystemView {
     const angleBefore = followed ? Math.atan2(followed.anchor.position.z, followed.anchor.position.x) : 0;
     this.placeBodies(seconds);
     if (followed) {
-      // Turn with the planet around the star, so its day side stays in view.
+      // The camera turns with the planet around the star so that its day side stays in view.
       const angle = Math.atan2(followed.anchor.position.z, followed.anchor.position.x);
       this.azimuth += wrapAngle(angle - angleBefore);
     }
@@ -573,7 +564,7 @@ export class SystemView {
     this.glow.quaternion.copy(this.camera.quaternion);
     this.scene.updateMatrixWorld();
 
-    // Each shader calculates in the coordinates of its own object.
+    // Each shader works in its object's local space, so the light and camera positions are converted.
     const origin = new Vector3();
     const place = (object: Mesh<BufferGeometry, RawShaderMaterial>) => {
       const { uLightObject, uCameraObject } = object.material.uniforms;
@@ -590,9 +581,7 @@ export class SystemView {
     this.star.material.uniforms.uTime.value = seconds;
   }
 
-  // ---- Planets on the screen -------------------------------------------------
-
-  /** Centre and radius of a ball on the screen in CSS pixels, or null behind the camera. */
+  /** Returns a sphere's screen centre and radius in CSS pixels, or null if it is behind the camera. */
   private project(position: Vector3, radius: number, viewport: Viewport): [number, number, number] | null {
     const point = this.scratch.copy(position).project(this.camera);
     if (point.z > 1 || point.z < -1) return null;
@@ -604,7 +593,7 @@ export class SystemView {
     ];
   }
 
-  /** What is under the point (x, y) in CSS pixels. */
+  /** Returns the planet or star under the point (x, y) in CSS pixels, if any. */
   pick(x: number, y: number, viewport: Viewport): SystemHit | null {
     let best: SystemHit | null = null;
     let bestOffset = Infinity;
@@ -658,13 +647,13 @@ function clamp(value: number, low: number, high: number): number {
   return Math.min(Math.max(value, low), high);
 }
 
-/** The same angle between -π and π. */
+/** Normalises an angle to the range -π to π. */
 function wrapAngle(angle: number): number {
   const turn = 2 * Math.PI;
   return ((((angle + Math.PI) % turn) + turn) % turn) - Math.PI;
 }
 
-/** A number from a text, always the same for the same text (FNV-1a). */
+/** Returns a stable 32-bit hash of a string (FNV-1a). */
 function hashText(text: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) {

@@ -35,7 +35,7 @@ async function StarContent({ params }: { params: Props["params"] }) {
   const { slug } = await params;
   const star = await getStar(slug);
   if (!star) {
-    // The star may have been renamed: old URLs lead to the new page.
+    // The star may have been renamed, so old URLs redirect to the new page.
     const currentSlug = await findStarSlugByAlias(slug);
     if (currentSlug) permanentRedirect(`/stars/${currentSlug}`);
     notFound();

@@ -1,11 +1,8 @@
 @import "tailwindcss";
 
-/*
- * Everything in this file is configuration for Tailwind: colours, fonts, two
- * variants and two utilities. The styling itself is done with classes in the components.
- */
+/* This file only configures Tailwind; the components do their styling with classes. */
 
-/* The colours of the site. Each becomes classes such as bg-surface, text-muted or border-line. */
+/* Each site colour becomes classes such as bg-surface, text-muted or border-line. */
 @theme {
   --color-background: #05060b;
   --color-foreground: #e6e8ef;
@@ -23,15 +20,12 @@
 }
 
 /*
- * Two variants that ask which page is open, for the parts of the layout that
- * differ there: `on-start-page:invisible`, `on-map-page:hidden`.
- *
- * Next.js keeps the last pages a visitor saw in the document, hidden with an
- * inline `display: none` (React's Activity, see cacheComponents), so a page
- * counts only if neither it nor anything around it is hidden that way.
+ * Variants for layout parts that differ per page, e.g. `on-start-page:invisible` or `on-map-page:hidden`.
+ * Next.js keeps recently visited pages in the document, hidden with an inline `display: none` (React Activity,
+ * see cacheComponents), so a page only counts as open when neither it nor an ancestor is hidden that way.
  */
 
-/* The start page has its own large search field (`data-hero-search`). */
+/* The start page is recognised by its large search field (`data-hero-search`). */
 @custom-variant on-start-page {
   &:where(
       body:has([data-hero-search]:not([style*="display: none"], [style*="display: none"] *)) *
@@ -40,7 +34,7 @@
   }
 }
 
-/* The map (`data-map`). The variant also works on <body> itself. */
+/* The map page is recognised by `data-map`. This variant also matches <body> itself. */
 @custom-variant on-map-page {
   &:where(
       body:has([data-map]:not([style*="display: none"], [style*="display: none"] *)),
@@ -51,11 +45,9 @@
 }
 
 /*
- * The plain planet image of the long list (planets/PlanetDot.tsx): a ball in
- * three colours with light from the upper left, like the detailed images.
- * Gradients only, so 200 of them on one page cost next to nothing. The
- * component sets the three colours per planet. Five gradients on top of each
- * other do not fit into a class name, hence a utility of our own.
+ * Cheap planet thumbnail for the long list (planets/PlanetDot.tsx), lit from the upper left like the detailed
+ * images. It uses only gradients, so 200 per page cost next to nothing. Five stacked gradients do not fit in a
+ * class name, hence a custom utility; the component sets the three colours per planet.
  */
 @utility planet-dot {
   background:
@@ -67,7 +59,7 @@
     var(--planet-base);
 }
 
-/* The same ball with bands instead of patches, for gas planets and ice giants. */
+/* The same ball with bands instead of patches, for gas giants and ice giants. */
 @utility planet-dot-banded {
   background:
     radial-gradient(circle at 33% 30%, rgb(255 255 255 / 0.2), transparent 34%),

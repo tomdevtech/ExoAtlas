@@ -1,43 +1,32 @@
 /**
- * The Milky Way as seen from outside.
- *
- * Nobody has a photograph of our galaxy from outside. What people picture is
- * the artist's impression that Robert Hurt drew for NASA from the surveys of
- * its stars and gas: a bar in the middle, two great arms and several lesser
- * ones, pink clouds of glowing gas along them and dark lanes of dust. The map
- * uses that picture as the plan of the disc and gives it what a flat picture
- * lacks: a thickness, a bulge in the middle and a sheet of dust, so that the
- * galaxy also looks right from the side and from inside (GALAXY_GLOW_FRAGMENT
- * in scene/shaders.ts).
- *
- * Coordinates as in the database: parsecs, the Sun at the origin, x towards
- * the galactic centre, y in the direction the galaxy turns, z to the north.
+ * Galaxy geometry for the map. The disc layout comes from Robert Hurt's artist's
+ * impression for NASA; thickness, bulge and dust are added in galaxyClouds.ts and scene/shaders.ts.
+ * Coordinates match the database: parsecs, the Sun at the origin, x towards the
+ * galactic centre, y in the direction of rotation and z towards galactic north.
  */
 
-/** The Sun is about 8,200 parsecs from the centre. */
+/** The Sun is about 8,200 parsecs from the galactic centre. */
 export const GALACTIC_CENTRE: readonly [number, number, number] = [8200, 0, 0];
 
 /**
- * How many parsecs the picture spans from edge to edge. The galactic centre
- * is in its middle, the Sun below it (towards the centre is up) and the
- * galactic longitude of 90 degrees to the left. In the picture the Sun lies
- * 19.1 % of its height below the centre, which sets the scale.
+ * The width of the artist's impression in parsecs. The centre is in the middle of the
+ * picture with the Sun 19.1 % of the picture height below it, which sets the scale.
  */
 export const GALAXY_PICTURE_WIDTH = GALACTIC_CENTRE[0] / 0.191;
-/** Beyond this distance from the centre the picture is empty. */
+/** The distance from the centre in parsecs beyond which the picture is empty. */
 export const GALAXY_EDGE = 21000;
-/** The light of the disc thins out by the factor e every so many parsecs above and below its plane. */
+/** The vertical scale height of the disc in parsecs. */
 export const DISC_HEIGHT = 260;
-/** The bulge in the middle is thicker by up to this much, and so many parsecs wide. */
+/** The bulge adds up to `BULGE_HEIGHT` parsecs of scale height over a radius of about `BULGE_WIDTH` parsecs. */
 export const BULGE_HEIGHT = 520;
 export const BULGE_WIDTH = 2100;
 
 type Rgb = [number, number, number];
 
 /**
- * The colour of a star with the surface temperature `teffK` as red, green and
- * blue from 0 to 1: red dwarfs orange, stars like the Sun nearly white, hot
- * stars bluish. An approximation of the colour of a glowing body.
+ * Returns the RGB colour (0 to 1) of a star with surface temperature `teffK`, using
+ * Tanner Helland's blackbody fit. A missing temperature is treated as 5,600 K, and
+ * values are clamped to 2,000–30,000 K where the fit holds.
  */
 export function starColor(teffK: number | null): Rgb {
   const t = Math.min(Math.max(teffK ?? 5600, 2000), 30000) / 100;

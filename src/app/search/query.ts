@@ -6,9 +6,9 @@ import { searchKey } from "@/shared/slug";
 
 /** Shorter queries would match almost every name. */
 export const MIN_QUERY_LENGTH = 2;
-/** Longer queries are cut off. No name in the catalogue comes close to this. */
+/** Longer queries are cut off; no name in the catalogue comes close to this length. */
 export const MAX_QUERY_LENGTH = 80;
-/** How alike a part of a name must be to count as "similar", from 0 to 1. */
+/** How alike (0 to 1, pg_trgm word similarity) part of a name must be to count as similar. */
 const SIMILARITY_THRESHOLD = 0.45;
 
 export type SearchHit =
@@ -17,9 +17,9 @@ export type SearchHit =
 
 export interface SearchResult {
   hits: SearchHit[];
-  /** No name contains the query. The hits are names that are merely similar. */
+  /** True when no name contains the query and the hits are only similar names. */
   similarOnly: boolean;
-  /** There are more hits than `limit`. */
+  /** True when there are more hits than `limit`. */
   hasMore: boolean;
 }
 
@@ -40,10 +40,7 @@ type Row = {
   planet_count: number | null;
 };
 
-/**
- * Planets and stars in one list. `matches` decides which names are hits,
- * `rank` sorts them: the smaller the number, the further up.
- */
+/** Builds one query over planets and stars. `matches` selects the hits and `rank` orders them, lowest first. */
 function hitsQuery(
   matches: (searchName: SQL) => SQL,
   rank: (searchName: SQL) => SQL,
@@ -108,14 +105,11 @@ function toHit(row: Row): SearchHit {
 /**
  * Searches planets and stars by name.
  *
- * The query is reduced to the same search key as the stored names ("Kepler-22
- * b", "kepler 22b" and "KEPLER22B" all become `kepler22b`), so spelling
- * details do not matter. Names that contain the key win, in this order: the
- * exact name, names that start with the key as a whole word or number
- * ("Kepler-22 b" for "kepler 22"), other names that start with it
- * ("Kepler-220"), then the rest. Shorter names come first within each group.
- * Only when no name contains the key does the search fall back to similar
- * names, which catches typos such as "keplr 22".
+ * The query is reduced to the same search key as the stored names, so "Kepler-22 b" and "kepler 22b" both
+ * become `kepler22b`. Names containing the key rank in this order: the exact name, names starting with the key
+ * as a whole word or number ("Kepler-22 b" for "kepler 22"), other prefixes ("Kepler-220"), then the rest,
+ * shorter names first. Only when no name contains the key does the search fall back to similar names, which
+ * catches typos such as "keplr 22".
  */
 export async function search(query: string, limit: number): Promise<SearchResult> {
   const key = searchKey(query.slice(0, MAX_QUERY_LENGTH));
@@ -123,13 +117,12 @@ export async function search(query: string, limit: number): Promise<SearchResult
     return { hits: [], similarOnly: false, hasMore: false };
   }
   const db = getDb();
-  // One row more than asked for tells us whether there are more hits.
+  // Fetching one extra row tells us whether there are more hits.
   const fetchLimit = limit + 1;
 
-  // The key only contains a-z and 0-9, so it needs no escaping for LIKE or for
-  // the regular expression. The expression matches names in which the key is
-  // not cut off in the middle of a number or a word: after "kepler22" comes a
-  // letter or the end, not another digit.
+  // The key contains only a-z and 0-9, so it needs no escaping for LIKE or the regular expression.
+  // The expression rejects names where the key stops in the middle of a number or word: after
+  // "kepler22" must come a letter or the end, not another digit.
   const wholeToken = `^${key}(${/[0-9]$/.test(key) ? "[a-z]" : "[0-9]"}|$)`;
   const direct = await db.execute<Row>(
     hitsQuery(
@@ -151,10 +144,8 @@ export async function search(query: string, limit: number): Promise<SearchResult
     };
   }
 
-  // Both functions compare trigrams (pg_trgm). word_similarity looks for the
-  // part of a name that resembles the key, which also finds "proxma" in
-  // "Proxima Cen b". similarity compares the whole name and puts the closest
-  // names first.
+  // Both functions compare pg_trgm trigrams. word_similarity finds the part of a name that resembles the key
+  // ("proxma" in "Proxima Cen b"), while similarity compares whole names to rank the closest first.
   const similar = await db.execute<Row>(
     hitsQuery(
       (name) => sql`word_similarity(${key}, ${name}) >= ${SIMILARITY_THRESHOLD}`,

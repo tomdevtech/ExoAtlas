@@ -1,16 +1,13 @@
 /**
- * Smoke test of a running deployment: does it start, reach its database and
- * serve the main pages? It runs after every Vercel deployment against the
- * deployment's own address (.github/workflows/deploy-check.yml), and in the
- * browser tests against the local build.
- *
- * It only relies on what every filled database has: the solar system. The
- * exoplanets differ between production and the test catalogue.
+ * Smoke test of a running deployment: it starts, reaches its database and
+ * serves the main pages. It runs after every Vercel deployment
+ * (.github/workflows/deploy-check.yml) and against the local build in the
+ * browser tests. It relies only on the solar system, because the exoplanets
+ * differ between production and the test catalogue.
  */
 import { expect, test } from "@tests/e2e/fixtures";
 
-// Vercel adds its toolbar to preview deployments. The Content Security Policy
-// blocks it, which the browser reports in the console. That is expected.
+// Vercel injects its toolbar into preview deployments, and the console error from the CSP blocking it is expected.
 test.use({ allowedErrors: /vercel\.live|vercel-insights|_vercel/ });
 
 test("the deployment is healthy and is the expected commit", async ({ request }) => {
@@ -20,7 +17,7 @@ test("the deployment is healthy and is the expected commit", async ({ request })
   const report = await response.json();
   expect(report).toMatchObject({ status: "ok", database: "ok" });
 
-  // Makes sure the check talks to the deployment it was started for.
+  // This makes sure the check talks to the deployment it was started for and not an older one.
   const expected = process.env.SMOKE_EXPECTED_SHA?.slice(0, 7);
   if (expected && report.commit) expect(report.commit).toBe(expected);
 });

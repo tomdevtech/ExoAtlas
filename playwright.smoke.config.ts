@@ -1,13 +1,12 @@
 import { defineConfig, devices } from "@playwright/test";
 
 /**
- * Smoke test against a deployment that is already running: `npm run test:smoke`.
+ * Smoke test against a running deployment.
  *
  *   SMOKE_BASE_URL=https://exofinder-abc123.vercel.app npm run test:smoke
  *
- * VERCEL_AUTOMATION_BYPASS_SECRET gets it past Vercel's Deployment
- * Protection. SMOKE_EXPECTED_SHA makes it check that the deployment runs this
- * commit. See docs/DEPLOYMENT.md.
+ * VERCEL_AUTOMATION_BYPASS_SECRET gets past Vercel's Deployment Protection, and
+ * SMOKE_EXPECTED_SHA checks that the deployment runs that commit. See docs/DEPLOYMENT.md.
  */
 const BASE_URL = process.env.SMOKE_BASE_URL?.replace(/\/+$/, "");
 if (!BASE_URL) {

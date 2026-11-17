@@ -3,8 +3,8 @@
 import dynamic from "next/dynamic";
 
 /**
- * The map only exists in the browser: it needs WebGL and the window. Loading
- * it on demand also keeps three.js out of every other page.
+ * The map is client-only because it needs WebGL and `window`. Loading it on demand
+ * also keeps three.js out of the bundles of all other pages.
  */
 const MilkyWayMap = dynamic(() => import("./MilkyWayMap"), {
   ssr: false,

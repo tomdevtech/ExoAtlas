@@ -7,7 +7,7 @@ const CC_BY = "https://creativecommons.org/licenses/by/4.0/";
 export const metadata: Metadata = {
   title: "Legal notice",
   description: "Who runs this website and how to reach them.",
-  // A private address does not belong into search results.
+  // A private address should not appear in search results.
   robots: { index: false },
 };
 

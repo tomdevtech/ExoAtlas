@@ -14,9 +14,8 @@ export interface Vec3 {
 }
 
 /**
- * Right ascension and declination (degrees) plus distance (parsecs) to galactic
- * coordinates. The Sun is at the origin, x points to the galactic centre, y in
- * the direction of rotation, z to the galactic north pole.
+ * Converts right ascension and declination (degrees) plus distance (parsecs) to galactic coordinates in parsecs.
+ * The Sun is at the origin, x points to the galactic centre, y in the direction of rotation and z to the galactic north pole.
  */
 export function equatorialToGalactic(
   raDeg: number,
@@ -36,7 +35,7 @@ export function equatorialToGalactic(
   return { x, y, z };
 }
 
-/** Angle between two positions in the sky in arcseconds. Meant for small separations. */
+/** Angle between two sky positions in arcseconds. It uses a flat-sky approximation that is only accurate for small separations. */
 export function separationArcsec(
   a: { ra: number; dec: number },
   b: { ra: number; dec: number },

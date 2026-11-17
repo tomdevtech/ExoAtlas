@@ -1,19 +1,10 @@
 name: Deployment check
 
-# Runs when Vercel reports a finished deployment to GitHub. It smoke-tests the
-# deployment's own address (npm run test:smoke). When that fails for a
-# production deployment, it puts the previous production deployment back live.
-#
-# Vercel reports deployments as repository_dispatch events
-# (vercel.deployment.success), with the address, the environment and the commit
-# in client_payload. In Vercel, Project → Settings → Git, "repository_dispatch
-# Events" must be on. Started by hand (Run workflow) it checks any address and
-# never rolls back.
-#
-# Setup: docs/DEPLOYMENT.md, "Smoke test after each deployment" and
-# "Automatic rollback". Secrets: VERCEL_AUTOMATION_BYPASS_SECRET (only with
-# Deployment Protection), VERCEL_TOKEN. Variables: VERCEL_ORG_ID,
-# VERCEL_PROJECT_ID.
+# Smoke-tests each Vercel deployment and rolls production back if the test fails.
+# Vercel must have "repository_dispatch Events" enabled (Project → Settings → Git).
+# A manual run checks any address and never rolls back. Setup is in docs/DEPLOYMENT.md.
+# It needs the secrets VERCEL_TOKEN and, with Deployment Protection,
+# VERCEL_AUTOMATION_BYPASS_SECRET, plus the variables VERCEL_ORG_ID and VERCEL_PROJECT_ID.
 
 on:
   repository_dispatch:
@@ -60,9 +51,8 @@ jobs:
           echo "SMOKE_BASE_URL=$url" >> "$GITHUB_ENV"
           echo "SMOKE_EXPECTED_SHA=$DEPLOY_SHA" >> "$GITHUB_ENV"
           echo "Checking $url ($DEPLOY_ENVIRONMENT, commit ${DEPLOY_SHA:-unknown})"
-      # A deployment the check cannot even open (Deployment Protection without
-      # the bypass secret) is a setup problem, not a broken deployment: then
-      # nothing is rolled back.
+      # A 401/403 is a setup problem (missing bypass secret), not a broken
+      # deployment, so it must not trigger a rollback.
       - name: Can the check reach the deployment?
         id: reach
         run: |
@@ -84,8 +74,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      # Pinned to ubuntu-24.04: ubuntu-latest moved to Ubuntu 26, for which this
-      # Playwright version cannot install the browser dependencies.
+      # The runner is pinned to ubuntu-24.04 because this Playwright version
+      # cannot install its browser dependencies on Ubuntu 26.
       - run: npx playwright install --with-deps chromium
       - run: npm run test:smoke
       - name: Keep the report of a failed check
@@ -98,8 +88,8 @@ jobs:
 
   rollback:
     needs: smoke
-    # Only production, only when Vercel reported it, only when the smoke test
-    # ran and failed. (startsWith ignores case: "production" or "Production".)
+    # Roll back only Vercel-reported production deployments whose smoke test ran and
+    # failed. startsWith is case-insensitive, so it matches "production" and "Production".
     if: >-
       ${{ failure()
       && github.event_name == 'repository_dispatch'

@@ -29,12 +29,12 @@ export const CLIMATE_CLASS_LABELS: Record<ClimateClass, string> = {
   scorching: "scorching",
 };
 
-/** "Super-Earth", or "Planet" when radius and mass are both unknown. */
+/** Label of a planet class, such as "Super-Earth", or "Planet" when radius and mass are both unknown. */
 export function planetClassLabel(planetClass: PlanetClass | null): string {
   return planetClass ? PLANET_CLASS_LABELS[planetClass] : "Planet";
 }
 
-/** "Super-Earth, temperate". Leaves out whatever is unknown. */
+/** Short description such as "Super-Earth, temperate". Unknown parts are left out. */
 export function describePlanet(
   planetClass: PlanetClass | null,
   climateClass: ClimateClass | null,
