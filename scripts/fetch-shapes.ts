@@ -4,34 +4,26 @@
  *
  *   npm run shapes
  *
- * The output is checked in, so this only needs to run when a model changes. The downloads stay in the
- * system's temporary directory for the next run.
+ * The output is checked in, so this only needs to run when a model changes. The models, a few megabytes
+ * each, are read straight into memory: a copy kept in the shared temporary directory could be swapped
+ * by another program between the check for it and its use.
  */
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { SHAPE_SOURCES, type ShapeGrid } from "@/app/solar-system/shapes";
 import { equalVolumeRadius, packGrid, parseObj, radiusGrid, unzipFirst } from "./shapes";
 
-async function download(url: string, directory: string): Promise<Buffer> {
-  const file = path.join(directory, path.basename(new URL(url).pathname));
-  try {
-    await access(file);
-  } catch {
-    const response = await fetch(url, { headers: { "User-Agent": "exofinder-shapes" } });
-    if (!response.ok) throw new Error(`${url} answered with status ${response.status}`);
-    await writeFile(file, Buffer.from(await response.arrayBuffer()));
-  }
-  return readFile(file);
+async function download(url: string): Promise<Buffer> {
+  const response = await fetch(url, { headers: { "User-Agent": "exofinder-shapes" } });
+  if (!response.ok) throw new Error(`${url} answered with status ${response.status}`);
+  return Buffer.from(await response.arrayBuffer());
 }
 
 async function main() {
-  const downloads = path.join(tmpdir(), "exofinder-shapes");
-  await mkdir(downloads, { recursive: true });
   await mkdir(path.resolve("public/shapes"), { recursive: true });
   const grids: Record<string, ShapeGrid> = {};
   for (const [slug, source] of Object.entries(SHAPE_SOURCES)) {
-    const raw = await download(source.download, downloads);
+    const raw = await download(source.download);
     const mesh = parseObj((source.zipped ? unzipFirst(raw) : raw).toString("utf8"));
     const grid = radiusGrid(mesh);
     const { bytes, maxRadius } = packGrid(grid);
