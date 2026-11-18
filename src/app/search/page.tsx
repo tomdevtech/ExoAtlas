@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { PlanetCard } from "@/app/planets/PlanetCard";
+import { BodyCard } from "@/app/solar-system/BodyCard";
 import { StarCard } from "@/app/stars/StarCard";
 import { MIN_QUERY_LENGTH, search } from "./query";
 
@@ -8,7 +9,7 @@ const RESULT_LIMIT = 60;
 
 export const metadata: Metadata = {
   title: "Search",
-  description: "Search all known exoplanets and their host stars by name.",
+  description: "Search all known exoplanets, their host stars and the moons and dwarf planets of the solar system by name.",
 };
 
 type Props = PageProps<"/search">;
@@ -31,7 +32,7 @@ async function Results({ searchParams }: { searchParams: Props["searchParams"] }
   const query = (Array.isArray(q) ? q[0] : q)?.trim() ?? "";
 
   if (query === "") {
-    return <p className="text-muted">Type the name of a planet or a star into the search field.</p>;
+    return <p className="text-muted">Type the name of a planet, a moon or a star into the search field.</p>;
   }
 
   const { hits, similarOnly, hasMore } = await search(query, RESULT_LIMIT);
@@ -61,6 +62,10 @@ async function Results({ searchParams }: { searchParams: Props["searchParams"] }
           hit.kind === "planet" ? (
             <li key={`planet-${hit.planet.slug}`}>
               <PlanetCard planet={hit.planet} showStar />
+            </li>
+          ) : hit.kind === "body" ? (
+            <li key={`body-${hit.body.slug}`}>
+              <BodyCard body={hit.body} showParent />
             </li>
           ) : (
             <li key={`star-${hit.star.slug}`}>

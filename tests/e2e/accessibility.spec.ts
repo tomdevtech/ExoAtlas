@@ -13,6 +13,7 @@ const PAGES: { path: string; ready: string }[] = [
   { path: "/planets/earth", ready: "Earth" },
   { path: "/stars/trappist-1", ready: "TRAPPIST-1" },
   { path: "/stars/sun", ready: "Sun" },
+  { path: "/solar-system/titan", ready: "Titan" },
   { path: "/search?q=kepler", ready: "Search" },
   { path: "/legal/notice", ready: "Legal notice" },
   { path: "/legal/privacy", ready: "Privacy policy" },

@@ -341,7 +341,51 @@ const SOLAR_SYSTEM: Record<string, SolarSystemLook> = {
     flattening: 0.017,
     traits: { density: 0.6, relief: 0 },
   },
+
+  // The moons and dwarf planets of src/app/solar-system/bodies.ts. The colours only serve the still image
+  // and the size comparison; the 3D model shows each body's real map.
+  moon: airless("#8b8680", "#5e5b57", "#b0aba4"),
+  io: airless("#d8c46a", "#9a7a3a", "#f2ead0", 0.8),
+  europa: airless("#c9b9a0", "#8c6e52", "#ebe4d8", 0.6),
+  ganymede: airless("#8e8478", "#5f574e", "#c4bcb0"),
+  callisto: airless("#6e6458", "#4a4038", "#a39a8c"),
+  mimas: airless("#a9a49e", "#7f7a74", "#cfcac4"),
+  enceladus: airless("#e8ecee", "#c6ced2", "#ffffff", 0.8),
+  tethys: airless("#d8d6d0", "#b0ada6", "#efede8"),
+  dione: airless("#c9c6c0", "#9d9a94", "#e6e3de"),
+  rhea: airless("#bdb9b2", "#94908a", "#dddad4"),
+  // Titan's haze hides the ground in visible light, so the model shows the haze, as a camera would.
+  titan: {
+    base: "#d29a4e",
+    layers: [layer("#b47a38", 0.4), layer("#e6b66c", 0.3)],
+    atmosphere: "#e0a654",
+    banded: false,
+    tiltDeg: 0,
+    traits: { density: 1, relief: 0 },
+  },
+  iapetus: airless("#8f8270", "#2e2620", "#e8e4dc"),
+  miranda: airless("#a8a5a0", "#7d7a76", "#cac7c2"),
+  ariel: airless("#b4b0aa", "#8a8680", "#d6d2cc"),
+  umbriel: airless("#6e6b67", "#4e4b48", "#8e8b86"),
+  titania: airless("#a8a39c", "#7e7972", "#cbc6bf"),
+  oberon: airless("#8f8780", "#665e58", "#b0a9a2"),
+  triton: airless("#c9b8a8", "#a08e80", "#e8ddd2", 0.8),
+  charon: airless("#9a9088", "#6e5550", "#b8b0a8"),
+  ceres: airless("#6a665f", "#4c4944", "#9a958c"),
+  pluto: airless("#c9a789", "#7a4a35", "#efe6da", 0.8),
 };
+
+/** An airless body with a real map: dark ground, base colour and bright ground. */
+function airless(base: string, dark: string, bright: string, relief = 1.2): SolarSystemLook {
+  return {
+    base,
+    layers: [layer(dark, 0.4), layer(bright, 0.25)],
+    atmosphere: null,
+    banded: false,
+    tiltDeg: 0,
+    traits: { relief },
+  };
+}
 
 /** Saturn's main rings span 1.24 to 2.27 planet radii. */
 const SATURN_RINGS = { inner: 1.24, outer: 2.27, map: "saturn-ring" };

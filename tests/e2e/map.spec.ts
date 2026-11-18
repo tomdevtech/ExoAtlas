@@ -160,6 +160,41 @@ test.describe("map", () => {
     await expect(circle).toHaveAttribute("aria-pressed", "false");
   });
 
+  test("loads the moons of a planet only when it follows the planet, and follows a moon", async ({ page }) => {
+    const moonMaps: string[] = [];
+    page.on("request", (request) => {
+      const map = /\/textures\/planets\/(io|europa|ganymede|callisto)-(sm|lg)\.jpg$/.exec(request.url());
+      if (map) moonMaps.push(`${map[1]}-${map[2]}`);
+    });
+    await page.goto("/map?system=sun");
+    await waitForMap(page);
+    await expect(page.getByRole("button", { name: "← Galaxy" })).toBeVisible({ timeout: 45_000 });
+    // The dwarf planets join the planets in the order of their orbits.
+    const top = async (name: string) => (await page.getByRole("button", { name: new RegExp(`^${name}`) }).boundingBox())!.y;
+    expect(await top("Mars")).toBeLessThan(await top("Ceres"));
+    expect(await top("Ceres")).toBeLessThan(await top("Jupiter"));
+    expect(await top("Neptune")).toBeLessThan(await top("Pluto"));
+    expect(moonMaps).toEqual([]);
+
+    await page.getByRole("button", { name: /^Jupiter/ }).click();
+    const moons = page.getByRole("list", { name: "Moons of Jupiter" });
+    await expect(moons.getByRole("button")).toHaveText(["Io", "Europa", "Ganymede", "Callisto"]);
+    await expect.poll(() => moonMaps.filter((map) => map.endsWith("-sm")).length).toBe(4);
+    expect(moonMaps).not.toContain("io-lg");
+
+    await moons.getByRole("button", { name: "Io" }).click();
+    await expect(page).toHaveURL(/system=sun&planet=jupiter&moon=io$/);
+    await expect.poll(() => moonMaps).toContain("io-lg");
+    await expect(page.getByRole("link", { name: "Page", exact: true }).first()).toHaveAttribute("href", "/solar-system/io");
+  });
+
+  test("opens a moon from the address", async ({ page }) => {
+    await page.goto("/map?system=sun&planet=saturn&moon=titan");
+    await waitForMap(page);
+    await expect(page.getByRole("button", { name: "Titan", pressed: true })).toBeVisible({ timeout: 45_000 });
+    await expect(page).toHaveURL(/planet=saturn&moon=titan$/);
+  });
+
   test("draws the planets from their small maps and loads the large map of the one it follows", async ({ page }) => {
     const maps: string[] = [];
     page.on("request", (request) => {

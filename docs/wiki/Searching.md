@@ -1,12 +1,12 @@
 # Searching
 
-The search finds planets and stars by their name. It is in the bar at the top of every page, and in the middle of the start page.
+The search finds planets and stars by their name, and the moons and dwarf planets of our solar system. It is in the bar at the top of every page, and in the middle of the start page.
 
 ## Find a planet or a star quickly
 
 1. Click into the search field. It says **Search planets and stars**.
 2. Type at least two letters of the name, for example `trappist`.
-3. A list of suggestions opens below the field. Each line shows the name and, on the right, what it is: a star with its number of planets, or a planet with its kind and its star.
+3. A list of suggestions opens below the field. Each line shows the name and, on the right, what it is: a star with its number of planets, a planet with its kind and its star, or a moon with the planet it orbits.
 4. Click a suggestion. Its page opens.
 
 ![Suggestions while you type](images/search-suggestions.png)

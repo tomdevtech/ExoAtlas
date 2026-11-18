@@ -18,7 +18,7 @@ const TEXT_LINK = "text-sm text-accent underline-offset-4 underline decoration-c
 /**
  * The Milky Way map page: panels, search and links around the `MapEngine` canvas.
  * The current view is mirrored in the URL so it can be linked, for example
- * `/map?star=trappist-1`, `/map?system=sun&planet=saturn` or `/map?view=galaxy`.
+ * `/map?star=trappist-1`, `/map?system=sun&planet=saturn&moon=titan` or `/map?view=galaxy`.
  */
 export default function MilkyWayMap() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -40,6 +40,8 @@ export default function MilkyWayMap() {
   const [failed, setFailed] = useState(false);
   /** The index into `system.planets` of the planet the camera follows. */
   const [planet, setPlanet] = useState<number | null>(null);
+  /** The index into the planet's `moons` of the moon the camera follows. */
+  const [moon, setMoon] = useState<number | null>(null);
   /** Whether the camera circles the galactic centre instead of flying freely. */
   const [orbiting, setOrbiting] = useState(false);
   const [paused, setPaused] = useState(
@@ -49,7 +51,7 @@ export default function MilkyWayMap() {
   /** Returns keyboard focus to the map so that the flight keys keep working after a button click. */
   const focusMap = () => containerRef.current?.focus({ preventScroll: true });
 
-  async function enterSystem(slug: string, planetSlug: string | null = null) {
+  async function enterSystem(slug: string, planetSlug: string | null = null, moonSlug: string | null = null) {
     const engine = engineRef.current;
     setEntering(slug);
     setFailed(false);
@@ -61,9 +63,12 @@ export default function MilkyWayMap() {
       if (!engine || engineRef.current !== engine) return;
       const index = planetSlug ? payload.planets.findIndex((p) => p.slug === planetSlug) : -1;
       const focus = index >= 0 ? index : null;
-      engineRef.current?.showSystem(payload, focus, paused);
+      const moonIndex = focus !== null && moonSlug ? payload.planets[focus].moons.findIndex((m) => m.slug === moonSlug) : -1;
+      const moonFocus = moonIndex >= 0 ? moonIndex : null;
+      engineRef.current?.showSystem(payload, focus, moonFocus, paused);
       setSystem(payload);
       setPlanet(focus);
+      setMoon(moonFocus);
     } catch {
       setFailed(true);
     } finally {
@@ -75,6 +80,7 @@ export default function MilkyWayMap() {
     engineRef.current?.showGalaxy();
     setSystem(null);
     setPlanet(null);
+    setMoon(null);
     focusMap();
   }
 
@@ -85,9 +91,10 @@ export default function MilkyWayMap() {
     setFailed(false);
   }
 
-  function focusPlanet(index: number | null) {
-    engineRef.current?.focusPlanet(index);
+  function focusPlanet(index: number | null, moonIndex: number | null = null) {
+    engineRef.current?.focusPlanet(index, moonIndex);
     setPlanet(index);
+    setMoon(moonIndex);
   }
 
   const handleEscape = useEffectEvent(() => {
@@ -110,7 +117,7 @@ export default function MilkyWayMap() {
     } else if (link.get("view") === "galaxy") {
       engine.flyToOverview(true);
     }
-    if (systemSlug) void enterSystem(systemSlug, link.get("planet"));
+    if (systemSlug) void enterSystem(systemSlug, link.get("planet"), link.get("moon"));
   });
 
   useEffect(() => {
@@ -121,7 +128,10 @@ export default function MilkyWayMap() {
         setSelected(index);
         setFailed(false);
       },
-      onFocus: (index) => setPlanet(index),
+      onFocus: (index, moonIndex) => {
+        setPlanet(index);
+        setMoon(moonIndex);
+      },
       onEscape: () => handleEscape(),
       onOrbit: (on) => setOrbiting(on),
     });
@@ -160,6 +170,7 @@ export default function MilkyWayMap() {
       setSelected(null);
       setSystem(null);
       setPlanet(null);
+      setMoon(null);
       setEntering(null);
       setFailed(false);
       setOrbiting(false);
@@ -174,12 +185,13 @@ export default function MilkyWayMap() {
     if (system) {
       params.set("system", system.star.slug);
       if (planet !== null) params.set("planet", system.planets[planet].slug);
+      if (planet !== null && moon !== null) params.set("moon", system.planets[planet].moons[moon].slug);
     } else if (selected !== null) {
       params.set("star", stars[selected][0]);
     }
     const query = params.toString();
     window.history.replaceState(null, "", query ? `/map?${query}` : "/map");
-  }, [stars, entering, system, planet, selected]);
+  }, [stars, entering, system, planet, moon, selected]);
 
   if (problem === "webgl") {
     return (
@@ -222,9 +234,10 @@ export default function MilkyWayMap() {
               <SystemPanel
                 system={system}
                 planet={planet}
+                moon={moon}
                 paused={paused}
-                onFocus={(index) => {
-                  focusPlanet(index);
+                onFocus={(index, moonIndex) => {
+                  focusPlanet(index, moonIndex);
                   focusMap();
                 }}
                 onPause={(next) => {
@@ -319,7 +332,7 @@ export default function MilkyWayMap() {
         <div className="flex flex-col gap-1 text-xs leading-5 text-muted [text-shadow:0_0_4px_#000] sm:flex-row sm:items-end sm:justify-between sm:gap-4">
           <p className="hidden max-w-md sm:block">
             {system
-              ? "Drag to turn · scroll to zoom · click a planet to follow it · Esc returns to the galaxy. Sizes and distances are not to scale."
+              ? "Drag to turn · scroll to zoom · click a planet or moon to follow it · Esc returns to the galaxy. Sizes and distances are not to scale."
               : orbiting
                 ? "Drag to turn round the centre · scroll or W and S to zoom · A D and E Q to circle · click a star to select it, double-click to fly there."
                 : "Drag to look around · W A S D to fly, E and Q for up and down, Shift for speed · scroll to move forwards · click a star to select it, double-click to fly there."}
@@ -350,6 +363,7 @@ export default function MilkyWayMap() {
                 <a className="hover:text-foreground" href="https://www.solarsystemscope.com/textures/">
                   Solar System Scope
                 </a>
+                {", moons: NASA, USGS (see their pages)"}
               </>
             )}
             {" · "}
@@ -359,7 +373,7 @@ export default function MilkyWayMap() {
             <br />
             {system
               ? system.star.isSun
-                ? "The planets show real maps of their surfaces."
+                ? "The planets and moons show real maps of their surfaces."
                 : "The surfaces are illustrations computed from the data."
               : "Star positions are measured, the galaxy is an artist’s impression."}
             <br />
@@ -561,6 +575,7 @@ function SpecialStarPanel({
 function SystemPanel({
   system,
   planet,
+  moon,
   paused,
   onFocus,
   onPause,
@@ -568,18 +583,20 @@ function SystemPanel({
 }: {
   system: MapSystemPayload;
   planet: number | null;
+  moon: number | null;
   paused: boolean;
-  onFocus: (index: number | null) => void;
+  onFocus: (index: number | null, moon: number | null) => void;
   onPause: (paused: boolean) => void;
   onLeave: () => void;
 }) {
   const { star, planets } = system;
   // On narrow screens the planet list would cover the view, so it can be collapsed there.
   const [listOpen, setListOpen] = useState(false);
-  const choose = (index: number | null) => {
+  const choose = (index: number | null, moonIndex: number | null = null) => {
     setListOpen(false);
-    onFocus(index);
+    onFocus(index, moonIndex);
   };
+  const followed = planet === null ? null : moon === null ? planets[planet] : planets[planet].moons[moon];
   return (
     <section className={`${PANEL} flex min-h-0 flex-col gap-3 p-4`}>
       <div className="flex flex-wrap gap-2">
@@ -611,11 +628,11 @@ function SystemPanel({
           aria-expanded={listOpen}
           onClick={() => setListOpen(!listOpen)}
         >
-          <span className="truncate">{planet === null ? "Whole system" : planets[planet].name}</span>
+          <span className="truncate">{followed ? followed.name : "Whole system"}</span>
           <span aria-hidden="true">{listOpen ? "▴" : "▾"}</span>
         </button>
-        {planet !== null && (
-          <Link className={`${TEXT_LINK} shrink-0`} href={`/planets/${planets[planet].slug}`}>
+        {followed && (
+          <Link className={`${TEXT_LINK} shrink-0`} href={followed.href}>
             Page
           </Link>
         )}
@@ -636,23 +653,47 @@ function SystemPanel({
         {planets.map((item, index) => (
           <li key={item.slug}>
             <div
-              className={`flex items-center justify-between gap-2 rounded-md hover:bg-surface ${planet === index ? "bg-surface" : ""}`}
+              className={`flex items-center justify-between gap-2 rounded-md hover:bg-surface ${planet === index && moon === null ? "bg-surface" : ""}`}
             >
               <button
                 type="button"
                 onClick={() => choose(index)}
-                aria-pressed={planet === index}
+                aria-pressed={planet === index && moon === null}
                 className="min-w-0 flex-1 px-2 py-1.5 text-left"
               >
                 <span className="block truncate text-sm">{item.name}</span>
                 <span className="block truncate text-xs text-muted">{item.description}</span>
               </button>
-              {planet === index && (
-                <Link className={`${TEXT_LINK} shrink-0 pr-2`} href={`/planets/${item.slug}`}>
+              {planet === index && moon === null && (
+                <Link className={`${TEXT_LINK} shrink-0 pr-2`} href={item.href}>
                   Page
                 </Link>
               )}
             </div>
+            {planet === index && item.moons.length > 0 && (
+              <ul className="ml-3 border-l border-line pl-1" aria-label={`Moons of ${item.name}`}>
+                {item.moons.map((satellite, moonIndex) => (
+                  <li
+                    key={satellite.slug}
+                    className={`flex items-center justify-between gap-2 rounded-md hover:bg-surface ${moon === moonIndex ? "bg-surface" : ""}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => choose(index, moonIndex)}
+                      aria-pressed={moon === moonIndex}
+                      className="min-w-0 flex-1 truncate px-2 py-1 text-left text-sm"
+                    >
+                      {satellite.name}
+                    </button>
+                    {moon === moonIndex && (
+                      <Link className={`${TEXT_LINK} shrink-0 pr-2`} href={satellite.href}>
+                        Page
+                      </Link>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </li>
         ))}
       </ul>

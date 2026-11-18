@@ -23,6 +23,14 @@ test.describe("search suggestions", () => {
     await expect(page.getByRole("heading", { level: 1, name: "TRAPPIST-1 e" })).toBeVisible();
   });
 
+  test("find the moons and dwarf planets of the solar system", async ({ page }) => {
+    await page.goto("/");
+    const { field, list } = heroSearch(page);
+    await typeUntil(field, "ganymede", list.getByRole("option").first());
+    await list.getByRole("option", { name: /Ganymede.*Moon of Jupiter/ }).click();
+    await expect(page).toHaveURL(/\/solar-system\/ganymede$/);
+  });
+
   test("can be chosen with the keyboard", async ({ page }) => {
     await page.goto("/");
     const { field, list } = heroSearch(page);
@@ -86,6 +94,6 @@ test.describe("search results page", () => {
 
   test("explains an empty query", async ({ page }) => {
     await page.goto("/search");
-    await expect(page.getByText("Type the name of a planet or a star into the search field.")).toBeVisible();
+    await expect(page.getByText("Type the name of a planet, a moon or a star into the search field.")).toBeVisible();
   });
 });

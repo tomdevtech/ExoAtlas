@@ -66,7 +66,7 @@ test.describe("missing pages", () => {
   // Next.js handles it, and the visitor still sees the right page.
   test.use({ allowedErrors: /status of 404|Minified React error #419/ });
 
-  for (const path of ["/does-not-exist", "/planets/no-such-planet", "/stars/no-such-star"]) {
+  for (const path of ["/does-not-exist", "/planets/no-such-planet", "/stars/no-such-star", "/solar-system/no-such-moon"]) {
     test(`${path} answers 404 with a helpful page`, async ({ page }) => {
       const response = await page.goto(path);
       // Planet and star pages stream, so their status is sent before the database

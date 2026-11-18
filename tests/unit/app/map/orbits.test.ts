@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   axisFromPeriod,
+  layoutMoons,
   layoutOrbits,
+  moonSize,
   orbitPoint,
   periodFromAxis,
   planetSize,
   solveKepler,
   starSize,
+  viewPeriod,
+  viewRadius,
   type OrbitInput,
 } from "@/app/map/orbits";
 
@@ -165,5 +169,86 @@ describe("layoutOrbits", () => {
     const planets = [planet({ semiMajorAxisAu: 1 }), planet({ semiMajorAxisAu: 2 })];
     expect(layoutOrbits(planets, SUN, 42)).toEqual(layoutOrbits(planets, SUN, 42));
     expect(layoutOrbits(planets, SUN, 42)[0].phase).not.toBe(layoutOrbits(planets, SUN, 43)[0].phase);
+  });
+});
+
+describe("viewRadius", () => {
+  const layouts = layoutOrbits(
+    [planet({ semiMajorAxisAu: 1 }), planet({ semiMajorAxisAu: 5.2 }), planet({ semiMajorAxisAu: 30 })],
+    SUN,
+  );
+
+  it("lands exactly on every orbit", () => {
+    for (const layout of layouts) expect(viewRadius(layouts, layout.axisAu)).toBeCloseTo(layout.semiMajor, 9);
+  });
+
+  it("grows with the real distance, inside, between and beyond the orbits", () => {
+    const distances = [0.3, 0.9, 2.8, 5.2, 12, 30, 45, 2000, 100000];
+    const radii = distances.map((au) => viewRadius(layouts, au));
+    for (let i = 1; i < radii.length; i++) expect(radii[i]).toBeGreaterThan(radii[i - 1]);
+  });
+
+  it("adds 1.6 units for each doubling beyond the outermost orbit, like layoutOrbits", () => {
+    const last = layouts[layouts.length - 1];
+    expect(viewRadius(layouts, last.axisAu * 4) - last.semiMajor).toBeCloseTo(3.2, 9);
+  });
+
+  it("is proportional inside the innermost orbit", () => {
+    expect(viewRadius(layouts, 0.5)).toBeCloseTo(layouts[0].semiMajor / 2, 9);
+  });
+});
+
+describe("viewPeriod", () => {
+  it("lets longer orbits take longer, within limits", () => {
+    expect(viewPeriod(88)).toBeLessThan(viewPeriod(365));
+    expect(viewPeriod(0.1)).toBe(3);
+    expect(viewPeriod(1e7)).toBe(240);
+  });
+});
+
+describe("layoutMoons", () => {
+  const galilean = [
+    { semiMajorAxisKm: 1882700, orbitalPeriodDays: 16.69, eccentricity: 0.007, radiusKm: 2410 },
+    { semiMajorAxisKm: 421800, orbitalPeriodDays: 1.77, eccentricity: 0.004, radiusKm: 1821 },
+    { semiMajorAxisKm: 671100, orbitalPeriodDays: 3.55, eccentricity: 0.009, radiusKm: 1561 },
+    { semiMajorAxisKm: 1070400, orbitalPeriodDays: 7.15, eccentricity: 0.001, radiusKm: 2631 },
+  ];
+  const jupiter = { size: planetSize(11.21), radiusKm: 69911, reach: 1 };
+
+  it("keeps the order of the moons and remembers each one", () => {
+    const layouts = layoutMoons(galilean, jupiter);
+    expect(layouts.map((layout) => layout.index)).toEqual([1, 2, 3, 0]);
+    for (let i = 1; i < layouts.length; i++) {
+      expect(layouts[i].semiMajor).toBeGreaterThan(layouts[i - 1].semiMajor);
+      expect(layouts[i].period).toBeGreaterThan(layouts[i - 1].period);
+    }
+  });
+
+  it("keeps every moon clear of the planet, its rings and its neighbours", () => {
+    for (const reach of [1, 2.27]) {
+      const layouts = layoutMoons(galilean, { ...jupiter, reach });
+      expect(layouts[0].semiMajor * (1 - layouts[0].eccentricity) - layouts[0].size).toBeGreaterThan(jupiter.size * reach);
+      for (let i = 1; i < layouts.length; i++) {
+        expect(layouts[i].semiMajor - layouts[i - 1].semiMajor).toBeGreaterThan(layouts[i].size + layouts[i - 1].size);
+      }
+    }
+  });
+
+  it("compresses a moon system to a few planet radii", () => {
+    const layouts = layoutMoons(galilean, jupiter);
+    // Callisto is 27 Jupiter radii out; on the map it stays within about six.
+    expect(layouts[3].semiMajor / jupiter.size).toBeLessThan(6);
+  });
+
+  it("makes moons smaller than their planet but never invisible", () => {
+    for (const layout of layoutMoons(galilean, jupiter)) {
+      expect(layout.size).toBeLessThan(jupiter.size);
+      expect(layout.size).toBeGreaterThanOrEqual(0.02);
+    }
+    expect(moonSize(10)).toBe(0.02);
+  });
+
+  it("starts the moons the same way on every visit", () => {
+    expect(layoutMoons(galilean, jupiter, 7)).toEqual(layoutMoons(galilean, jupiter, 7));
   });
 });

@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { describePlanet } from "@/app/planets/labels";
+import { describeBody } from "@/app/solar-system/bodies";
 import { describeStar } from "@/app/stars/StarCard";
 import { search, type SearchHit } from "../query";
 
@@ -7,13 +8,21 @@ const SUGGESTION_LIMIT = 8;
 
 /** One line in the suggestion list below the search box. */
 export interface Suggestion {
-  kind: "planet" | "star";
+  kind: "planet" | "star" | "body";
   name: string;
   href: string;
   detail: string;
 }
 
 function toSuggestion(hit: SearchHit): Suggestion {
+  if (hit.kind === "body") {
+    return {
+      kind: "body",
+      name: hit.body.name,
+      href: `/solar-system/${hit.body.slug}`,
+      detail: describeBody(hit.body),
+    };
+  }
   if (hit.kind === "star") {
     return {
       kind: "star",

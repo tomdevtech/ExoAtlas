@@ -170,6 +170,7 @@ scripts/
   rollback-production.ts  puts the previous production deployment back live
   check-tls.sh            checks protocols, certificates, headers and redirects of the live site
   fetch-textures.ts       downloads and scales the images in public/textures
+  moon-maps.ts            turns the published mosaics of the moons into textures: centre, colour, brightness, gaps
   generate-presets.ts     simulates the base maps of the exoplanets and writes presets.json
   preview-presets.ts      writes the three channels of a base map side by side, to look at them
   planet-sheet.ts         draws a spread of planets from the catalogue onto one picture
@@ -179,7 +180,7 @@ docs/
   DEPLOYMENT.md           hosting, setup step by step, operations
   wiki/                   the user guide as GitHub Wiki pages, with its screenshots in images/
 drizzle/                  SQL migrations: one generated from the schema, two written by hand
-public/textures/          surface maps of the solar system, base maps of the exoplanets, panorama of the sky
+public/textures/          surface maps of the solar system and its moons, base maps of the exoplanets, panorama of the sky
 tests/
   unit/                   unit tests, at the same paths as the code in src/
   scripts/                tests that run a script of scripts/ from start to end
@@ -213,10 +214,10 @@ src/
     planets/              /planets (the list), /planets/[slug], classification, still images
       globe/              the moving image and the 3D model (WebGL)
     stars/                /stars/[slug], sky coordinates
-    map/                  /map, /map/stars, /map/systems/[slug], galaxy model, orbits
+    map/                  /map, /map/stars, /map/systems/[slug], galaxy model, orbits, belts
       scene/              everything that draws the map (three.js)
     sync/                 the comparison with NASA
-    solar-system/         the Sun and its eight planets
+    solar-system/         the Sun and its eight planets, /solar-system/[slug]: the large moons, Ceres and Pluto
     legal/                /legal/notice, /legal/privacy and who runs this copy
     health/               /health: is the site up and does it reach its database
 ```
@@ -256,6 +257,9 @@ flowchart TD
     Sync --> Planets
     Sync --> Stars
     Sol --> Planets
+    Search --> Sol
+    Stars --> Sol
+    Map --> Sol
     Map --> Planets
     Planets --> Shared
     Planets --> DB
@@ -263,7 +267,7 @@ flowchart TD
     Stars --> DB
 ```
 
-Every feature may use `shared` and `db`; the diagram only draws those arrows for `planets` and `stars`. `planets` is the base feature and imports no other feature. Nothing imports `sync` or `solar-system` except the two scripts. `map` takes the look of the planets from `planets` and is imported by nobody; the star and planet pages only link to it.
+Every feature may use `shared` and `db`; the diagram only draws those arrows for `planets` and `stars`. `planets` is the base feature and imports no other feature, with one exception: the page of a solar-system planet lists its moons, so [planets/[slug]/page.tsx](../src/app/planets/[slug]/page.tsx) imports the list and its card from `solar-system`. Only that page does, so no module imports itself in a circle. `solar-system` builds on `planets` for the look of its bodies; `search`, `stars` and `map` take the moons and dwarf planets from it. Nothing imports `sync` except its script. `map` is imported by nobody; the pages only link to it.
 
 ### Styling
 
@@ -357,6 +361,8 @@ What the plan takes care of:
 The `sync_runs` row is written outside the transaction, so a failed run still leaves a record with its error message.
 
 `npm run seed:sol` is the small sibling: [seed.ts](../src/app/solar-system/seed.ts) writes the Sun and the eight planets from [data.ts](../src/app/solar-system/data.ts) as `sol` rows. It can run any number of times.
+
+The round moons of the planets and the dwarf planets Ceres and Pluto (with Charon) are not in the database. They live in [bodies.ts](../src/app/solar-system/bodies.ts), with their values from JPL Solar System Dynamics, because nothing ever syncs them and they belong to no star's list of planets: the numbers on the start page, the list of all planets and the filters stay about planets. Their pages, `/solar-system/[slug]`, are built ahead of time from that list. Masses are stored as G·M, which spacecraft measure far more precisely than the mass itself, and converted relative to Earth for the page. A test checks that each density agrees with its mass and radius, which caught a value in JPL's table that does not (Charon's; the page uses the one from New Horizons).
 
 ### Values derived on the way in
 
@@ -519,7 +525,7 @@ sequenceDiagram
 
 `search` in [query.ts](../src/app/search/query.ts) works in two steps:
 
-1. **Names that contain the query.** The query is reduced to the same form as `search_name`, so `kepler 22b`, `Kepler-22B` and `KEPLER22B` all become `kepler22b`. One SQL statement looks through planets and stars together. Order: the exact name, then names that start with the query as a whole word or number (`Kepler-22 b` for `kepler 22`), then other names that start with it (`Kepler-220`), then the rest. Shorter names come first.
+1. **Names that contain the query.** The query is reduced to the same form as `search_name`, so `kepler 22b`, `Kepler-22B` and `KEPLER22B` all become `kepler22b`. One SQL statement looks through planets and stars together. Order: the exact name, then names that start with the query as a whole word or number (`Kepler-22 b` for `kepler 22`), then other names that start with it (`Kepler-220`), then the rest. Shorter names come first. The moons and dwarf planets, which live in code, are ranked by the same rules in TypeScript (`matchBodies`) and merged into the rows from the database, so `io` finds Io first. They do not take part in step 2.
 2. **Similar names, only if step 1 found nothing.** Trigram similarity from `pg_trgm` catches typos: `proxma` finds Proxima Cen. The result page says that these are only similar names.
 
 Queries shorter than two characters return nothing, and queries are cut off at 80 characters.
@@ -591,7 +597,7 @@ sequenceDiagram
 
 **Two halves with a narrow border.** [MilkyWayMap.tsx](../src/app/map/MilkyWayMap.tsx) is React: it fetches the data, holds what is selected and draws the panels, the star finder and the buttons. [scene/engine.ts](../src/app/map/scene/engine.ts) is plain three.js: it owns the canvas, the drawing loop and mouse, touch and keyboard. React tells the engine what to show (`setStars`, `select`, `flyToStar`, `flyHome`, `flyToOverview`, `showSystem`, `showGalaxy`, `focusPlanet`, `setPaused`), and the engine reports back through three callbacks (`onSelect`, `onFocus`, `onEscape`). Nothing that changes 60 times per second is React state.
 
-**The address is the state.** `/map?star=trappist-1` selects a star, `/map?system=sun&planet=saturn` opens a system and follows a planet, `/map?view=galaxy` shows the whole galaxy. The map writes the current place back into the address, so every view can be shared, and the star and planet pages link straight to their place on the map.
+**The address is the state.** `/map?star=trappist-1` selects a star, `/map?system=sun&planet=saturn` opens a system and follows a planet, `/map?system=sun&planet=saturn&moon=titan` follows one of its moons, `/map?view=galaxy` shows the whole galaxy. The map writes the current place back into the address, so every view can be shared, and the star and planet pages link straight to their place on the map.
 
 **Two scenes.** From the whole galaxy down to a planet is a factor of a trillion, too much for one scene. So there are two, and the picture fades through black between them:
 
@@ -616,7 +622,11 @@ Adding up the light along every line of sight costs time for each pixel. The gal
 
 **What the system view draws.** [orbits.ts](../src/app/map/orbits.ts) lays out the orbits (`layoutOrbits`). Real proportions cannot be shown: Neptune is 80 times as far from the Sun as Mercury, and next to their orbits all planets are dust. The layout keeps the order, the eccentricity and the relative speed, squeezes the distances and enlarges the planets. A missing distance is derived from the period with Kepler's third law and the other way round. Positions on the ellipse come from Kepler's equation (`solveKepler`), so a planet is faster close to its star. Every planet is a ball with the shader of its planet page, lit from the position of the star. While the camera follows a planet it turns with it around the star, so the day side stays in view, and time slows down for planets that would otherwise race.
 
-**The answers are short.** `/map/stars` sends each star as a list of seven values (slug, name, x, y, z, temperature, number of planets) instead of an object with named fields, and browsers may keep it for an hour ([payload.ts](../src/app/map/payload.ts)). `/map/systems/[slug]` already contains the `GlobeSpec` of each planet, computed on the server by the same `planetAppearance` as on the planet page.
+In the solar system Ceres and Pluto have orbits of their own among the planets. The moons appear when the camera follows their planet, and only then are they created and their small maps loaded; a followed moon loads its large map. `layoutMoons` squeezes their distances like the planets' (Callisto, 27 Jupiter radii out, stays within six), keeps their order and their periods relative to each other, and starts them outside the rings. Each orbit lies in the plane of the planet's equator, tilted by the moon's inclination, so the moons of Uranus circle on their side and Triton runs backwards; the Moon's orbit is measured against the ecliptic. The moons are tidally locked: longitude 0 of each map faces the planet. They run on a clock of their own, so they do not crawl while time slows down for the planet.
+
+The asteroid belt, Jupiter's trojans and the Hildas, the Kuiper belt with the scattered disc and the Oort cloud are some 14,500 points ([belts.ts](../src/app/map/belts.ts)), each with an orbit drawn from the distributions the surveys found: the Kirkwood gaps that Jupiter clears, the trojans 60 degrees ahead of Jupiter and behind it, the Hildas in their triangle, the plutinos with Pluto, the cold classical belt close to the ecliptic. The Oort cloud has never been seen; its points stand still at the distances models give, from 2,000 to 100,000 AU. One instanced draw call shows them all, each body a quad of a few pixels, and the vertex shader moves it along its Kepler orbit (`BELT_VERTEX` in scene/shaders.ts), so the processor does no work for them per frame; what never changes, the two vectors that span each orbit, is computed once beforehand (`orbitAxes` in scene/beltsView.ts). They are quads rather than points because ANGLE, which runs WebGL on Direct3D under Windows, draws points through a geometry shader: as points the belts cost 0.7 ms per frame on a small built-in graphics card, as quads too little to tell from the measuring noise while following a planet, and about 0.3 ms in the view of the whole system. Their distances are squeezed by the same rule as the orbits (`viewRadius`), which the shader repeats from the laid-out orbits.
+
+**The answers are short.** `/map/stars` sends each star as a list of seven values (slug, name, x, y, z, temperature, number of planets) instead of an object with named fields, and browsers may keep it for an hour ([payload.ts](../src/app/map/payload.ts)). `/map/systems/[slug]` already contains the `GlobeSpec` of each planet, computed on the server by the same `planetAppearance` as on the planet page, and for the Sun the dwarf planets and the moons with theirs.
 
 ## When things go wrong
 

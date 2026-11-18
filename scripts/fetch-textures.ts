@@ -1,15 +1,18 @@
 /**
- * Downloads planet, Milky Way and galaxy textures and stores scaled copies in public/textures.
+ * Downloads planet, moon, Milky Way and galaxy textures and stores scaled copies in public/textures.
  *
  *   npm run textures
  *
- * The output is checked in, so this only needs to run when a size or source changes.
- * Credits and licences are listed in public/textures/README.md.
+ * The output is checked in, so this only needs to run when a size or source changes. The downloads stay
+ * in a folder of the system's temporary directory, so a second run does not fetch the large moon mosaics
+ * (several hundred megabytes each) again. Credits and licences are listed in public/textures/README.md.
  */
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { access, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import sharp from "sharp";
+import { MAP_SOURCES } from "@/app/solar-system/maps";
+import { prepareMap, type MapRecipe } from "./moon-maps";
 
 const SOLAR_SYSTEM_SCOPE = "https://www.solarsystemscope.com/textures/download/";
 const ESO_PANORAMA = "https://cdn.eso.org/images/large/eso0932a.jpg";
@@ -30,16 +33,79 @@ const PLANET_MAPS: [source: string, name: string][] = [
   ["2k_neptune.jpg", "neptune"],
 ];
 
+/**
+ * How each moon's mosaic is prepared (scripts/moon-maps.ts): where its longitude 0 lies, how it is
+ * coloured, and its visual albedo. For a GeoTIFF the middle is the projection's central meridian
+ * (GeoKey 3088) shifted by the tiepoint, which differs between products of the same archive; the others
+ * were checked against known features (Herschel on Mimas, Cassini Regio on Iapetus, Occator on Ceres). Grey mosaics are tinted from the colour of the dark ground to that of
+ * the bright ground, after colour images of the same body.
+ */
+const MOON_RECIPES: Record<string, MapRecipe> = {
+  moon: { centredOn180: false, colouring: { kind: "colour", saturation: 0.6 }, albedo: 0.12 },
+  io: { centredOn180: false, colouring: { kind: "colour", saturation: 0.55 }, albedo: 0.63 },
+  europa: { centredOn180: true, colouring: { kind: "grey", dark: "#8a6a50", bright: "#f2ede4" }, albedo: 0.67 },
+  ganymede: { centredOn180: true, colouring: { kind: "colour", saturation: 0.5 }, albedo: 0.43 },
+  callisto: { centredOn180: true, colouring: { kind: "grey", dark: "#5c4e40", bright: "#dcd5c9" }, albedo: 0.22 },
+  mimas: { centredOn180: false, colouring: { kind: "grey", dark: "#9a958e", bright: "#e8e5e0" }, albedo: 0.6 },
+  enceladus: { centredOn180: false, colouring: { kind: "grey", dark: "#c3ced6", bright: "#fbfdff" }, albedo: 0.9 },
+  tethys: { centredOn180: false, colouring: { kind: "grey", dark: "#b6b1a9", bright: "#f2efe9" }, albedo: 0.8 },
+  dione: { centredOn180: false, colouring: { kind: "grey", dark: "#a6a199", bright: "#eeebe6" }, albedo: 0.7 },
+  rhea: { centredOn180: false, colouring: { kind: "grey", dark: "#a8a299", bright: "#ece8e1" }, albedo: 0.7 },
+  titan: { centredOn180: true, colouring: { kind: "haze", color: "#d39a4c" }, albedo: 0.22 },
+  iapetus: { centredOn180: true, colouring: { kind: "colour", saturation: 0.3 }, albedo: 0.3 },
+  miranda: { centredOn180: false, colouring: { kind: "grey", dark: "#807b75", bright: "#d8d4ce" }, albedo: 0.32 },
+  ariel: { centredOn180: false, colouring: { kind: "grey", dark: "#827d77", bright: "#dcd8d2" }, albedo: 0.39 },
+  umbriel: { centredOn180: false, colouring: { kind: "grey", dark: "#6f6c68", bright: "#c9c6c1" }, albedo: 0.21 },
+  titania: { centredOn180: false, colouring: { kind: "grey", dark: "#7e7871", bright: "#d6d0c8" }, albedo: 0.27 },
+  oberon: { centredOn180: false, colouring: { kind: "grey", dark: "#7a706a", bright: "#d2cac2" }, albedo: 0.23 },
+  triton: { centredOn180: false, colouring: { kind: "colour", saturation: 0.35 }, albedo: 0.72 },
+  ceres: { centredOn180: true, colouring: { kind: "grey", dark: "#5e5a55", bright: "#cfcbc4" }, albedo: 0.09 },
+  pluto: { centredOn180: true, colouring: { kind: "grey", dark: "#6e3a28", bright: "#f4eadc" }, albedo: 0.52 },
+  charon: { centredOn180: false, colouring: { kind: "grey", dark: "#6a564e", bright: "#dcd7d0" }, albedo: 0.38 },
+};
+
+/** Downloads `url` into `directory`, unless an earlier run already did. */
 async function download(url: string, directory: string): Promise<string> {
+  const file = path.join(directory, path.basename(new URL(url).pathname));
+  try {
+    await access(file);
+    return file;
+  } catch {
+    // Not downloaded yet.
+  }
   const response = await fetch(url, { headers: { "User-Agent": "exofinder-textures" } });
   if (!response.ok) throw new Error(`${url} answered with status ${response.status}`);
-  const file = path.join(directory, path.basename(new URL(url).pathname));
   await writeFile(file, Buffer.from(await response.arrayBuffer()));
   return file;
 }
 
+/** Scales a moon's mosaic to `width` and prepares it. Large mosaics are scaled first, which is much faster. */
+async function moonMap(file: string, recipe: MapRecipe, width: number, out: string, quality: number): Promise<number> {
+  const { data, info } = await sharp(file, { limitInputPixels: false })
+    .resize(width, width / 2, { fit: "fill", kernel: "lanczos3" })
+    .toColourspace("srgb")
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  // A grey mosaic arrives with one channel; the preparation works on three.
+  const rgb = info.channels === 3 ? new Uint8Array(data) : expand(new Uint8Array(data), info.channels);
+  const { picture, filled } = prepareMap({ width: info.width, height: info.height, rgb }, recipe);
+  await sharp(Buffer.from(picture.rgb), { raw: { width: picture.width, height: picture.height, channels: 3 } })
+    .jpeg({ quality, mozjpeg: true })
+    .toFile(out);
+  return filled;
+}
+
+function expand(data: Uint8Array, channels: number): Uint8Array {
+  const count = data.length / channels;
+  const rgb = new Uint8Array(count * 3);
+  for (let i = 0; i < count; i++) rgb.fill(data[i * channels], i * 3, i * 3 + 3);
+  return rgb;
+}
+
 async function main() {
-  const downloads = await mkdtemp(path.join(tmpdir(), "exofinder-textures-"));
+  const downloads = path.join(tmpdir(), "exofinder-textures");
+  await mkdir(downloads, { recursive: true });
   await mkdir(path.join(OUT, "planets"), { recursive: true });
   await mkdir(path.join(OUT, "sky"), { recursive: true });
 
@@ -64,6 +130,14 @@ async function main() {
     .png()
     .toFile(path.join(OUT, "planets", "saturn-ring.png"));
   console.log("planets/saturn-ring");
+
+  // The moons and dwarf planets, keyed by the slugs of src/app/solar-system/bodies.ts.
+  for (const [name, recipe] of Object.entries(MOON_RECIPES)) {
+    const file = await download(MAP_SOURCES[name].download, downloads);
+    const filled = await moonMap(file, recipe, 2048, path.join(OUT, "planets", `${name}-lg.jpg`), 80);
+    await moonMap(file, recipe, 512, path.join(OUT, "planets", `${name}-sm.jpg`), 78);
+    console.log(`planets/${name}${filled > 0.005 ? ` (${(filled * 100).toFixed(0)} % filled)` : ""}`);
+  }
 
   const sun = await download(SOLAR_SYSTEM_SCOPE + "2k_sun.jpg", downloads);
   await sharp(sun)
@@ -93,7 +167,7 @@ async function main() {
     .toFile(path.join(OUT, "sky", "galaxy.jpg"));
   console.log("sky/galaxy");
 
-  console.log(`Done. The downloads are in ${downloads} and can be deleted.`);
+  console.log(`Done. The downloads are kept in ${downloads} for the next run and can be deleted.`);
 }
 
 main().catch((error) => {

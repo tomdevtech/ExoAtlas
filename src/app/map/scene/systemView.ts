@@ -32,8 +32,9 @@ import { linearColor, seedOffset, type GlobeSpec } from "@/app/planets/globe/spe
 import { stormUniforms } from "@/app/planets/globe/storms";
 import { surfaceDefines, surfaceUniforms, textureUrls } from "@/app/planets/globe/uniforms";
 import { starColor } from "../galaxy";
-import { layoutOrbits, orbitPoint, starSize, type OrbitLayout } from "../orbits";
+import { layoutMoons, layoutOrbits, orbitPoint, starSize, type MoonLayout, type OrbitLayout } from "../orbits";
 import type { MapSystemPayload } from "../payload";
+import { BeltsView } from "./beltsView";
 import type { Viewport } from "./galaxyView";
 import type { LabelLayer } from "./labels";
 import {
@@ -119,25 +120,41 @@ export class TextureStore {
   }
 }
 
-interface Body {
-  layout: OrbitLayout;
+/** What planets and moons have in common: a globe drawn with the shader of the detail pages, and its orbit. */
+interface Globe {
   name: string;
   spec: GlobeSpec;
   /** Whether the high-resolution maps have been requested (see `sharpen`). */
   sharp: boolean;
   /** The group that moves along the orbit. */
   anchor: Group;
-  /** The planet mesh, which spins around the tilted axis. */
+  /** The globe mesh, which spins around the tilted axis. */
   ball: Mesh<SphereGeometry, RawShaderMaterial>;
-  ring: Mesh<RingGeometry, RawShaderMaterial> | null;
   haze: Mesh<SphereGeometry, RawShaderMaterial> | null;
-  moon: Mesh<SphereGeometry, RawShaderMaterial> | null;
   orbit: Line<BufferGeometry, LineBasicMaterial>;
+}
+
+interface Body extends Globe {
+  layout: OrbitLayout;
+  ring: Mesh<RingGeometry, RawShaderMaterial> | null;
+  /** The illustrated moon of an exoplanet, which belongs to its look. */
+  moon: Mesh<SphereGeometry, RawShaderMaterial> | null;
+  /** The real moons, created the first time the camera follows the planet, so that their maps load only then. */
+  moons: Moon[] | null;
   spin: number;
   spinStart: number;
 }
 
-export type SystemHit = { kind: "planet"; index: number } | { kind: "star" };
+interface Moon extends Globe {
+  layout: MoonLayout;
+  /** The plane of the orbit, which is shown only while the camera follows the planet. */
+  plane: Group;
+}
+
+export type SystemHit =
+  | { kind: "planet"; index: number }
+  | { kind: "moon"; planet: number; moon: number }
+  | { kind: "star" };
 
 const SPIN_RATE = (Math.PI * 2) / 40;
 const ORBIT_SEGMENTS = 256;
@@ -150,7 +167,7 @@ const FOLLOWED_PERIOD = 90;
 /**
  * Renders one star with its planets on their orbits. Lengths are in arbitrary display units: the star
  * has a radius of about 1, orbits are compressed and planets enlarged (see orbits.ts), and the orbits
- * lie in the plane y = 0. The planets use the same shader as the 3D model on their detail pages.
+ * lie in the plane y = 0. The planets and moons use the same shader as the 3D model on their detail pages.
  */
 export class SystemView {
   readonly scene = new Scene();
@@ -158,9 +175,12 @@ export class SystemView {
 
   /** The payload index of the planet the camera follows, or null when showing the whole system. */
   focused: number | null = null;
+  /** The index into the followed planet's moons of the moon the camera follows, if any. */
+  focusedMoon: number | null = null;
   paused = false;
 
   private readonly bodies: Body[] = [];
+  private readonly belts: BeltsView | null = null;
   private readonly star: Mesh<SphereGeometry, RawShaderMaterial>;
   private readonly glow: Mesh<PlaneGeometry, RawShaderMaterial>;
   private readonly sky: Sky;
@@ -170,6 +190,10 @@ export class SystemView {
   private readonly extent: number;
 
   private clock = 0;
+  /** Moons keep their own pace, so that they do not crawl while time slows down for a followed planet. */
+  private moonClock = 0;
+  /** The animation time of the last frame, so that a change of focus can place the moons at once. */
+  private lastSeconds = 0;
   /** The orbit speed factor, which is 1 normally and lower while the camera follows a fast planet. */
   private rate = 1;
   private azimuth = 0.6;
@@ -183,6 +207,7 @@ export class SystemView {
   /** The remaining offset from the previous target, which decays so that focus changes glide. */
   private readonly lag = new Vector3();
   private readonly scratch = new Vector3();
+  private readonly spot = new Vector3();
 
   constructor(
     private readonly payload: MapSystemPayload,
@@ -250,14 +275,32 @@ export class SystemView {
       (extent, layout) => Math.max(extent, layout.semiMajor * (1 + layout.eccentricity)),
       this.starRadius * 3,
     );
+    const jupiter = layouts.find((layout) => planets[layout.index].slug === "jupiter");
+    if (star.isSun && jupiter) {
+      this.belts = new BeltsView(layouts, {
+        jupiterLongitude: jupiter.periapsis + jupiter.phase,
+        jupiterPeriod: jupiter.period,
+        seed,
+      });
+      this.scene.add(this.belts.mesh);
+    }
     this.placeBodies(0);
   }
 
-  private createBody(layout: OrbitLayout): Body {
+  /**
+   * Builds the globe of a planet or moon `size` view units wide, with its haze and orbit line. The globe
+   * stays hidden until its maps have loaded so that it does not flash black; a map that fails to load also
+   * counts as done, so it never stays hidden for ever. The caller adds its own parts to `axis` and then
+   * calls `ready`.
+   */
+  private createGlobe(
+    name: string,
+    spec: GlobeSpec,
+    size: number,
+    orbit: { semiMajor: number; eccentricity: number; periapsis: number },
+  ): Globe & { axis: Group; uniforms: Record<string, IUniform>; ready: () => void } {
     const { textures } = this;
-    const planet = this.payload.planets[layout.index];
-    const spec = planet.globe;
-    // On its orbit a planet is only a few dozen pixels wide, so the small maps are enough until the
+    // On its orbit a globe is only a few dozen pixels wide, so the small maps are enough until the
     // camera follows it (see `sharpen`).
     const urls = textureUrls(spec, "sm");
 
@@ -266,8 +309,6 @@ export class SystemView {
     axis.rotation.z = (-spec.tiltDeg * Math.PI) / 180;
     anchor.add(axis);
 
-    // The planet stays hidden until its maps have loaded so that it does not flash black. A map that
-    // fails to load also counts as done, so the planet never stays hidden for ever.
     let pending = 1;
     const loaded = () => {
       pending--;
@@ -291,9 +332,7 @@ export class SystemView {
       uLightObject: { value: new Vector3() },
       uCameraObject: { value: new Vector3() },
     };
-    for (const [name, value] of Object.entries({ ...surfaceUniforms(spec), ...stormUniforms(spec, 0) })) uniforms[name] = { value };
-    // The defines ensure that only the shader code this planet needs is compiled.
-    const defines = { ...surfaceDefines(spec) };
+    for (const [key, value] of Object.entries({ ...surfaceUniforms(spec), ...stormUniforms(spec, 0) })) uniforms[key] = { value };
 
     const ball = new Mesh(
       this.ballGeometry,
@@ -301,42 +340,16 @@ export class SystemView {
         glslVersion: GLSL3,
         vertexShader: BALL_VERTEX,
         fragmentShader: PLANET_FRAGMENT,
-        defines,
+        // The defines ensure that only the shader code this globe needs is compiled.
+        defines: { ...surfaceDefines(spec) },
         uniforms,
       }),
     );
     // Fast-spinning giants are flattened at the poles.
-    ball.scale.set(layout.size, layout.size * (1 - spec.flattening), layout.size);
+    ball.scale.set(size, size * (1 - spec.flattening), size);
     axis.add(ball);
 
-    let ring: Body["ring"] = null;
-    if (spec.rings) {
-      ring = new Mesh(
-        new RingGeometry(spec.rings.inner, spec.rings.outer, 160, 1),
-        new RawShaderMaterial({
-          glslVersion: GLSL3,
-          vertexShader: RING_VERTEX,
-          fragmentShader: RING_FRAGMENT,
-          defines,
-          // The rings share the planet's uniforms so they use the same maps and lighting. Only the light
-          // and camera directions are separate, because the disc does not spin with the planet.
-          uniforms: {
-            ...uniforms,
-            uLightObject: { value: new Vector3() },
-            uCameraObject: { value: new Vector3() },
-          },
-          side: DoubleSide,
-          transparent: true,
-          depthWrite: false,
-        }),
-      );
-      // RingGeometry is built upright, so it is laid flat into the equatorial plane.
-      ring.rotation.x = -Math.PI / 2;
-      ring.scale.setScalar(layout.size);
-      axis.add(ring);
-    }
-
-    let haze: Body["haze"] = null;
+    let haze: Globe["haze"] = null;
     if (spec.atmosphere) {
       const shell = 1 + (0.03 + 0.07 * spec.atmosphere.density) * 1.6;
       haze = new Mesh(
@@ -360,8 +373,55 @@ export class SystemView {
           blendDst: OneFactor,
         }),
       );
-      haze.scale.set(layout.size * shell, layout.size * shell * (1 - spec.flattening), layout.size * shell);
+      haze.scale.set(size * shell, size * shell * (1 - spec.flattening), size * shell);
       axis.add(haze);
+    }
+
+    const points = new Float32Array((ORBIT_SEGMENTS + 1) * 3);
+    for (let i = 0; i <= ORBIT_SEGMENTS; i++) {
+      const [x, y] = orbitPoint(orbit.semiMajor, orbit.eccentricity, orbit.periapsis, (i / ORBIT_SEGMENTS) * 2 * Math.PI);
+      points.set([x, 0, -y], i * 3);
+    }
+    const orbitGeometry = new BufferGeometry();
+    orbitGeometry.setAttribute("position", new BufferAttribute(points, 3));
+    const orbitLine = new Line(
+      orbitGeometry,
+      new LineBasicMaterial({ color: 0x8fa3c8, transparent: true, opacity: 0.3, depthWrite: false }),
+    );
+
+    return { name, spec, sharp: false, anchor, axis, ball, haze, orbit: orbitLine, uniforms, ready: loaded };
+  }
+
+  private createBody(layout: OrbitLayout): Body {
+    const planet = this.payload.planets[layout.index];
+    const spec = planet.globe;
+    const { anchor, axis, ball, haze, orbit, uniforms, ready } = this.createGlobe(planet.name, spec, layout.size, layout);
+
+    let ring: Body["ring"] = null;
+    if (spec.rings) {
+      ring = new Mesh(
+        new RingGeometry(spec.rings.inner, spec.rings.outer, 160, 1),
+        new RawShaderMaterial({
+          glslVersion: GLSL3,
+          vertexShader: RING_VERTEX,
+          fragmentShader: RING_FRAGMENT,
+          defines: ball.material.defines,
+          // The rings share the planet's uniforms so they use the same maps and lighting. Only the light
+          // and camera directions are separate, because the disc does not spin with the planet.
+          uniforms: {
+            ...uniforms,
+            uLightObject: { value: new Vector3() },
+            uCameraObject: { value: new Vector3() },
+          },
+          side: DoubleSide,
+          transparent: true,
+          depthWrite: false,
+        }),
+      );
+      // RingGeometry is built upright, so it is laid flat into the equatorial plane.
+      ring.rotation.x = -Math.PI / 2;
+      ring.scale.setScalar(layout.size);
+      axis.add(ring);
     }
 
     let moon: Body["moon"] = null;
@@ -385,25 +445,8 @@ export class SystemView {
       axis.add(moon);
     }
 
-    const points = new Float32Array((ORBIT_SEGMENTS + 1) * 3);
-    for (let i = 0; i <= ORBIT_SEGMENTS; i++) {
-      const [x, y] = orbitPoint(
-        layout.semiMajor,
-        layout.eccentricity,
-        layout.periapsis,
-        (i / ORBIT_SEGMENTS) * 2 * Math.PI,
-      );
-      points.set([x, 0, -y], i * 3);
-    }
-    const orbitGeometry = new BufferGeometry();
-    orbitGeometry.setAttribute("position", new BufferAttribute(points, 3));
-    const orbit = new Line(
-      orbitGeometry,
-      new LineBasicMaterial({ color: 0x8fa3c8, transparent: true, opacity: 0.3, depthWrite: false }),
-    );
-
     this.scene.add(anchor, orbit);
-    loaded();
+    ready();
     return {
       layout,
       name: planet.name,
@@ -414,6 +457,7 @@ export class SystemView {
       ring,
       haze,
       moon,
+      moons: null,
       orbit,
       spin: spec.spin,
       spinStart: ((spec.seed * 0.618) % 1) * Math.PI * 2,
@@ -421,15 +465,44 @@ export class SystemView {
   }
 
   /**
-   * Replaces a planet's small maps with the large ones, each as soon as it has loaded. This happens once,
-   * when the camera first follows the planet.
+   * Creates the real moons of a planet. Each orbit lies in a plane tilted by the moon's inclination
+   * against the planet's equator, or against the ecliptic for the Moon, and travels with the planet.
    */
-  private sharpen(body: Body): void {
-    if (body.sharp) return;
-    body.sharp = true;
-    const urls = textureUrls(body.spec, "lg");
+  private createMoons(body: Body): Moon[] {
+    const planet = this.payload.planets[body.layout.index];
+    const layouts = layoutMoons(
+      planet.moons,
+      { size: body.layout.size, radiusKm: (planet.radiusEarth ?? 1) * 6371, reach: body.spec.rings?.outer ?? 1 },
+      hashText(planet.slug),
+    );
+    return layouts.map((layout) => {
+      const data = planet.moons[layout.index];
+      const { anchor, ball, haze, orbit, spec, ready } = this.createGlobe(data.name, data.globe, layout.size, layout);
+      const plane = new Group();
+      // With the order "YXZ" three.js tilts the orbit about x by the inclination first and then turns its
+      // ascending node about the axis to a fixed but arbitrary direction.
+      plane.rotation.set((data.inclinationDeg * Math.PI) / 180, scatterAngle(data.slug), 0, "YXZ");
+      plane.add(anchor, orbit);
+      plane.visible = false;
+      const reference = new Group();
+      if (!data.ecliptic) reference.rotation.z = (-body.spec.tiltDeg * Math.PI) / 180;
+      reference.add(plane);
+      body.anchor.add(reference);
+      ready();
+      return { name: data.name, spec, sharp: false, anchor, ball, haze, orbit, layout, plane };
+    });
+  }
+
+  /**
+   * Replaces the small maps of a planet or moon with the large ones, each as soon as it has loaded. This
+   * happens once, when the camera first follows it.
+   */
+  private sharpen(globe: Globe): void {
+    if (globe.sharp) return;
+    globe.sharp = true;
+    const urls = textureUrls(globe.spec, "lg");
     // The rings share these uniforms with the planet, so they are updated as well.
-    const { uniforms } = body.ball.material;
+    const { uniforms } = globe.ball.material;
     const swap = (name: string, url: string | null) => {
       if (!url) return;
       this.textures.get(url, (texture) => {
@@ -449,18 +522,26 @@ export class SystemView {
 
   /** Moves the camera closer for positive amounts and away for negative ones. One mouse wheel notch is about 1. */
   push(amount: number): void {
-    const body = this.focusedBody();
-    const nearest = body ? body.layout.size * 2.2 : this.starRadius * 2.4;
+    const followed = this.followedMoon() ?? this.focusedBody();
+    const nearest = followed ? followed.layout.size * 2.2 : this.starRadius * 2.4;
     this.distanceGoal = clamp(this.distanceGoal * Math.exp(-amount * 0.2), nearest, this.extent * 9);
   }
 
-  /** Follows a planet, or shows the whole system when `index` is null. */
-  focus(index: number | null): void {
+  /** Follows a planet or one of its moons, or shows the whole system when `index` is null. */
+  focus(index: number | null, moon: number | null = null): void {
     const before = this.focusPoint(new Vector3());
     this.focused = index;
     const body = this.focusedBody();
+    if (body && body.moons === null && this.payload.planets[body.layout.index].moons.length > 0) {
+      body.moons = this.createMoons(body);
+    }
+    this.focusedMoon = body?.moons && moon !== null && moon >= 0 && moon < body.moons.length ? moon : null;
+    // The moons must be in place before the new target is measured.
+    this.placeBodies(this.lastSeconds);
+    const followed = this.followedMoon();
     // The old target is kept as a decaying offset so the camera glides over instead of jumping.
     this.lag.add(before).sub(this.focusPoint(this.scratch));
+    if (followed) this.sharpen(followed);
     if (body) {
       this.sharpen(body);
       // The camera looks from the star's side, slightly off the line to it, so that most of the planet
@@ -470,16 +551,25 @@ export class SystemView {
       this.azimuth = Math.atan2(-z, -x) + DAYLIGHT_OFFSET;
       this.swing = wrapAngle(turned - this.azimuth);
     }
-    this.distanceGoal = body
-      ? body.layout.size * (body.ring ? 13 : 6.5)
-      : this.overviewDistance(this.camera.aspect);
+    this.distanceGoal = followed
+      ? followed.layout.size * 6.5
+      : body
+        ? body.layout.size * (body.ring ? 13 : 6.5)
+        : this.overviewDistance(this.camera.aspect);
   }
 
   private focusedBody(): Body | null {
     return this.bodies.find((body) => body.layout.index === this.focused) ?? null;
   }
 
+  private followedMoon(): Moon | null {
+    const moons = this.focusedBody()?.moons;
+    return moons && this.focusedMoon !== null ? moons[this.focusedMoon] : null;
+  }
+
   private focusPoint(out: Vector3): Vector3 {
+    const moon = this.followedMoon();
+    if (moon) return moon.anchor.getWorldPosition(out);
     const body = this.focusedBody();
     return body ? out.copy(body.anchor.position) : out.set(0, 0, 0);
   }
@@ -491,6 +581,7 @@ export class SystemView {
 
   /** Positions every planet on its orbit and updates its rotation and shader time. */
   private placeBodies(seconds: number): void {
+    this.lastSeconds = seconds;
     for (const body of this.bodies) {
       const { layout } = body;
       const [x, y] = orbitPoint(
@@ -516,8 +607,32 @@ export class SystemView {
       body.orbit.material.opacity = focused ? 0.7 : 0.3;
       body.ball.material.uniforms.uTime.value = seconds;
       for (const [name, value] of Object.entries(stormUniforms(body.spec, seconds))) body.ball.material.uniforms[name].value = value;
-      body.ball.material.uniforms.uDetail.value = focused ? 1 : 0;
+      body.ball.material.uniforms.uDetail.value = focused && this.focusedMoon === null ? 1 : 0;
+      if (body.moons) this.placeMoons(body.moons, focused, seconds);
     }
+  }
+
+  /** Moves the moons along their orbits. They show only while the camera follows their planet. */
+  private placeMoons(moons: Moon[], shown: boolean, seconds: number): void {
+    moons.forEach((moon, index) => {
+      moon.plane.visible = shown;
+      if (!shown) return;
+      const { layout } = moon;
+      const [x, y] = orbitPoint(
+        layout.semiMajor,
+        layout.eccentricity,
+        layout.periapsis,
+        layout.phase + (this.moonClock / layout.period) * 2 * Math.PI,
+      );
+      moon.anchor.position.set(x, 0, -y);
+      // The moons are tidally locked, and the middle of each map (longitude 0) faces the planet. The
+      // shader puts that longitude on +z, which this turns towards the planet at the origin.
+      moon.ball.rotation.y = Math.atan2(-x, y);
+      const followed = index === this.focusedMoon;
+      moon.orbit.material.opacity = followed ? 0.6 : 0.25;
+      moon.ball.material.uniforms.uTime.value = seconds;
+      moon.ball.material.uniforms.uDetail.value = followed ? 1 : 0;
+    });
   }
 
   /** Advances the system by `dt` seconds. `seconds` is the animation time, which keeps running while the orbits are paused. */
@@ -527,7 +642,10 @@ export class SystemView {
     const followed = this.focusedBody();
     const calm = followed ? Math.min(1, followed.layout.period / FOLLOWED_PERIOD) : 1;
     this.rate += (calm - this.rate) * (1 - Math.exp(-dt * 3));
-    if (!this.paused) this.clock += dt * this.rate;
+    if (!this.paused) {
+      this.clock += dt * this.rate;
+      this.moonClock += dt;
+    }
 
     const angleBefore = followed ? Math.atan2(followed.anchor.position.z, followed.anchor.position.x) : 0;
     this.placeBodies(seconds);
@@ -576,9 +694,16 @@ export class SystemView {
       if (body.ring) place(body.ring);
       if (body.haze) place(body.haze);
       if (body.moon) place(body.moon);
+      if (body.moons && body.layout.index === this.focused) {
+        for (const moon of body.moons) {
+          place(moon.ball);
+          if (moon.haze) place(moon.haze);
+        }
+      }
     }
     place(this.star);
     this.star.material.uniforms.uTime.value = seconds;
+    this.belts?.update(this.clock, viewport);
   }
 
   /** Returns a sphere's screen centre and radius in CSS pixels, or null if it is behind the camera. */
@@ -593,18 +718,33 @@ export class SystemView {
     ];
   }
 
-  /** Returns the planet or star under the point (x, y) in CSS pixels, if any. */
+  /** The moons that are shown, with their planet's payload index and their own index. */
+  private shownMoons(): { moon: Moon; planet: number; index: number }[] {
+    const body = this.focusedBody();
+    if (!body?.moons) return [];
+    return body.moons
+      .map((moon, index) => ({ moon, planet: body.layout.index, index }))
+      .filter(({ moon }) => moon.anchor.visible);
+  }
+
+  /** Returns the planet, moon or star under the point (x, y) in CSS pixels, if any. */
   pick(x: number, y: number, viewport: Viewport): SystemHit | null {
     let best: SystemHit | null = null;
     let bestOffset = Infinity;
-    for (const body of this.bodies) {
-      const point = this.project(body.anchor.position, body.layout.size, viewport);
-      if (!point) continue;
+    const consider = (position: Vector3, size: number, hit: SystemHit) => {
+      const point = this.project(position, size, viewport);
+      if (!point) return;
       const offset = Math.hypot(point[0] - x, point[1] - y);
       if (offset < Math.max(point[2], 14) && offset < bestOffset) {
         bestOffset = offset;
-        best = { kind: "planet", index: body.layout.index };
+        best = hit;
       }
+    };
+    for (const body of this.bodies) {
+      consider(body.anchor.position, body.layout.size, { kind: "planet", index: body.layout.index });
+    }
+    for (const { moon, planet, index } of this.shownMoons()) {
+      consider(moon.anchor.getWorldPosition(this.spot), moon.layout.size, { kind: "moon", planet, moon: index });
     }
     if (best) return best;
     const star = this.project(this.star.position, this.starRadius, viewport);
@@ -619,22 +759,29 @@ export class SystemView {
       if (!body.anchor.visible) continue;
       const point = this.project(body.anchor.position, body.layout.size, viewport);
       if (!point) continue;
-      const focused = body.layout.index === this.focused;
+      const strong = body.layout.index === this.focused && this.focusedMoon === null;
       const reach = body.ring ? point[2] * 2.3 : point[2];
-      labels.put(body.name, point[0], point[1], focused ? "strong" : "plain", reach + 7);
+      labels.put(body.name, point[0], point[1], strong ? "strong" : "plain", reach + 7);
+    }
+    for (const { moon, index } of this.shownMoons()) {
+      const point = this.project(moon.anchor.getWorldPosition(this.spot), moon.layout.size, viewport);
+      if (point) labels.put(moon.name, point[0], point[1], index === this.focusedMoon ? "strong" : "plain", point[2] + 6);
     }
   }
 
   dispose(): void {
     for (const body of this.bodies) {
-      body.ball.material.dispose();
+      for (const globe of [body, ...(body.moons ?? [])]) {
+        globe.ball.material.dispose();
+        globe.haze?.material.dispose();
+        globe.orbit.geometry.dispose();
+        globe.orbit.material.dispose();
+      }
       body.ring?.geometry.dispose();
       body.ring?.material.dispose();
-      body.haze?.material.dispose();
       body.moon?.material.dispose();
-      body.orbit.geometry.dispose();
-      body.orbit.material.dispose();
     }
+    this.belts?.dispose();
     this.star.material.dispose();
     this.glow.geometry.dispose();
     this.glow.material.dispose();
@@ -651,6 +798,11 @@ function clamp(value: number, low: number, high: number): number {
 function wrapAngle(angle: number): number {
   const turn = 2 * Math.PI;
   return ((((angle + Math.PI) % turn) + turn) % turn) - Math.PI;
+}
+
+/** Returns an angle from 0 to 2π that is always the same for the same text. */
+function scatterAngle(text: string): number {
+  return ((hashText(text) % 3600) / 3600) * 2 * Math.PI;
 }
 
 /** Returns a stable 32-bit hash of a string (FNV-1a). */
