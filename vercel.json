@@ -1,5 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "buildCommand": "npm run db:migrate-on-deploy && npm run build"
+  "buildCommand": "npm run db:migrate-on-deploy && npm run build",
+  "git": {
+    "deploymentEnabled": false
+  }
 }

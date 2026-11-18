@@ -97,7 +97,7 @@ flowchart LR
     Site -->|role exofinder_web| Read[read the catalogue]:::ro
     Build[Production build]:::job -->|owner| Schema[change the tables]:::rw
     Jobs[Sync, seed, backup<br>GitHub Actions]:::job -->|owner| Data[write and read all data]:::rw
-    Deploy[Smoke test, rollback<br>GitHub Actions]:::job -->|Vercel token| Live[choose the live deployment]:::rw
+    Deploy[Deployment, smoke test,<br>rollback, GitHub Actions]:::job -->|Vercel token| Live[deploy, choose the live deployment]:::rw
 
     classDef who fill:#f3f4f6,stroke:#4b5563,color:#111827
     classDef app fill:#f3f4f6,stroke:#4b5563,color:#111827
@@ -111,7 +111,7 @@ flowchart LR
 | The website (Vercel Functions) | `DATABASE_URL_READONLY`: role `exofinder_web`, through the pooler | read, every query cancelled after 5 seconds |
 | The production build | `DATABASE_URL_UNPOOLED`: the owner, direct | change the tables (migrations) |
 | Sync, seed and backup (GitHub Actions) | secret `PRODUCTION_DATABASE_URL`: the owner, direct | write and read all data |
-| Smoke test and rollback (GitHub Actions) | `VERCEL_TOKEN`, `VERCEL_AUTOMATION_BYPASS_SECRET` | open protected deployments, choose which deployment is live |
+| Deployment, smoke test and rollback (GitHub Actions) | `VERCEL_TOKEN`, `VERCEL_AUTOMATION_BYPASS_SECRET` | deploy a checked commit, open protected deployments, choose which deployment is live |
 | Health check, TLS check (GitHub Actions), UptimeRobot | nothing but HTTPS | read pages, like a visitor |
 | Visitors | nothing but HTTPS | read pages |
 
@@ -121,7 +121,8 @@ flowchart LR
 | --- | --- | --- |
 | [ci.yml](../.github/workflows/ci.yml) | every pull request and push to `main` | type check, lint, unit, database and browser tests, `npm audit`, build |
 | [codeql.yml](../.github/workflows/codeql.yml) | every pull request and push to `main`, Mondays | scans the code for security problems |
-| [deploy-check.yml](../.github/workflows/deploy-check.yml) | after every Vercel deployment | smoke test; puts the previous production deployment back if production fails it |
+| [deploy.yml](../.github/workflows/deploy.yml) | when CI has passed for a pull request or a push to `main` | waits for every other check, CodeQL included, then deploys: a preview, or production from `main` |
+| [deploy-check.yml](../.github/workflows/deploy-check.yml) | after every deployment, called by deploy.yml | smoke test; puts the previous production deployment back if production fails it |
 | [health.yml](../.github/workflows/health.yml) | hourly | asks `/health` on the live site |
 | [sync.yml](../.github/workflows/sync.yml) | daily, 03:17 UTC | compares the catalogue with NASA and writes the differences |
 | [backup.yml](../.github/workflows/backup.yml) | Sundays, 04:41 UTC | dumps the database and keeps the dump for 90 days |
@@ -191,7 +192,7 @@ tests/
   e2e/                    browser tests (Playwright): flows, what the shaders draw, security, accessibility
   smoke/                  the smoke test that runs against every deployment
   support/                test catalogue, test databases, sample rows from NASA
-vercel.json               build command for Vercel
+vercel.json               build command for Vercel; its own Git deployments off (deploy.yml deploys)
 src/
   proxy.ts                answers broken percent-encoding with 400
   db/

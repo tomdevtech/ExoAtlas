@@ -152,7 +152,7 @@ The browser tests fail on every error in the browser console, so a hydration err
 
 `npm run test:smoke` ([tests/smoke/](../tests/smoke)) checks a running deployment in about a minute: `/health` answers and runs the expected commit, the main pages answer 200 with their security headers, the JSON endpoints return data, and a short walk in the browser has no console errors. It relies only on the solar system, which every filled database has.
 
-[deploy-check.yml](../.github/workflows/deploy-check.yml) runs it after every Vercel deployment, previews and production. When production fails it, the workflow puts the previous deployment back live ([DEPLOYMENT.md](DEPLOYMENT.md), "Automatic rollback").
+[deploy-check.yml](../.github/workflows/deploy-check.yml) runs it after every deployment, previews and production; [deploy.yml](../.github/workflows/deploy.yml) deploys a commit only once all its checks have passed and then calls it. When production fails it, the workflow puts the previous deployment back live ([DEPLOYMENT.md](DEPLOYMENT.md), "Automatic rollback").
 
 ### Checks of the live site
 

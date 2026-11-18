@@ -4,16 +4,16 @@ ExoFinder runs on Vercel with a hosted PostgreSQL database. This page describes 
 
 ## How a change gets online
 
-Vercel watches the GitHub repository. Nobody has to start a deployment:
+Nobody has to start a deployment, but nothing is deployed before its checks have passed. GitHub Actions first runs the checks in [ci.yml](../.github/workflows/ci.yml) (type check, lint, unit, database and browser tests, `npm audit` and the build) and [codeql.yml](../.github/workflows/codeql.yml). When CI has passed, [deploy.yml](../.github/workflows/deploy.yml) waits until every other check of the commit has finished as well, CodeQL's code scanning included, and only then hands the commit to Vercel with the Vercel CLI. If any check fails, nothing is deployed and the live site stays as it is.
 
-| You push to | Vercel builds | Address |
+| The checks pass for | Vercel builds | Address |
 | --- | --- | --- |
-| `main` | a **production** deployment | the real address of the site |
-| any other branch, or a pull request | a **preview** deployment | its own address, linked in the pull request |
+| a push to `main` | a **production** deployment | the real address of the site |
+| a pull request from a branch of this repository | a **preview** deployment | its own address, in the run of *Deploy* |
+
+Vercel's own deployments from Git are switched off in [vercel.json](../vercel.json) (`"git": { "deploymentEnabled": false }`): they start the moment a commit is pushed and do not wait for any check. Pull requests from forks are not deployed, because the workflow holds the Vercel token. GitHub starts `deploy.yml` only in the version on `main`, so a change to it takes effect once it is merged. Protect `main` as well (see step 4 below), so that changes reach it only through a pull request whose checks are green.
 
 The build command comes from [vercel.json](../vercel.json): first `npm run db:migrate-on-deploy`, then `npm run build`. For a production deployment the first step brings the database up to date (see [Migrations](#migrations)). If a step fails, the deployment that is live stays as it is.
-
-GitHub Actions runs the checks in [ci.yml](../.github/workflows/ci.yml) at the same time: type check, lint, unit, database and browser tests, `npm audit` and the build. **Vercel does not wait for them.** So that only checked code reaches production, protect `main` (see step 4 below): changes then reach `main` only through a pull request whose checks are green.
 
 Once a deployment is ready, [deploy-check.yml](../.github/workflows/deploy-check.yml) smoke-tests it under its own address: is it up, does it reach its database, do the main pages work? If that fails for a production deployment, the workflow puts the previous one back live (see [Smoke test after each deployment](#smoke-test-after-each-deployment) and [Automatic rollback](#automatic-rollback)). Once an hour, [health.yml](../.github/workflows/health.yml) asks the live site whether it is still up.
 
@@ -21,10 +21,11 @@ The NASA sync does not run on Vercel. [sync.yml](../.github/workflows/sync.yml) 
 
 ```mermaid
 flowchart LR
-    PR([Pull request]):::change --> CI[CI and CodeQL<br>five checks]:::check
-    PR --> Prev[Preview deployment]:::vercel --> SP[Smoke test<br>of the preview]:::check
+    PR([Pull request]):::change --> CI[CI and CodeQL]:::check
+    CI -->|all green| Prev[Preview deployment]:::vercel --> SP[Smoke test<br>of the preview]:::check
     CI -->|all green| Merge([Merge to main]):::change
-    Merge --> Mig[Migrations<br>as owner]:::vercel --> Build[next build]:::vercel --> Live[Production live]:::vercel
+    Merge --> CIMain[CI and CodeQL<br>on main]:::check
+    CIMain -->|all green| Mig[Migrations<br>as owner]:::vercel --> Build[next build]:::vercel --> Live[Production live]:::vercel
     Live --> SProd[Smoke test<br>of production]:::check
     SProd -->|fails| RB[Rollback to the<br>previous deployment]:::alarm
 
@@ -142,14 +143,13 @@ In GitHub: *Settings → Branches → Add branch ruleset* (or *Branch protection
 
 Without this step the site works, but nothing notices when a deployment is broken. What each part does is described below.
 
-0. **Deployment events.** In Vercel, *Settings → Git*: switch on **repository_dispatch Events**. Vercel then tells GitHub about every finished deployment, and that starts the check.
 1. **Deployment Protection.** In Vercel, *Settings → Deployment Protection*: if it is on (by default it protects every address except the production domain), create a secret under *Protection Bypass for Automation*. Store it in GitHub (*Settings → Secrets and variables → Actions → Secrets*) as `VERCEL_AUTOMATION_BYPASS_SECRET`.
-2. **Token for the rollback.** In Vercel, *Account Settings → Tokens*: create a token with access to the team of the project. Store it in GitHub as the secret `VERCEL_TOKEN`.
+2. **Token for deployments and the rollback.** In Vercel, *Account Settings → Tokens*: create a token with access to the team of the project. Store it in GitHub as the secret `VERCEL_TOKEN`. Without it nothing is deployed.
 3. **Project and team.** In GitHub, under *Variables* (not *Secrets*), set `VERCEL_PROJECT_ID` (Vercel: project *Settings → General → Project ID*) and `VERCEL_ORG_ID` (the team ID under *Team Settings → General*, or for a personal account the user ID under *Account Settings*). `npx vercel link` also writes both into `.vercel/project.json`.
 4. **Live address.** In GitHub, set the variable `PRODUCTION_URL` to the address of the site, for example `https://exofinder.example.org`.
 5. **Uptime service (recommended).** Let a monitoring service such as UptimeRobot or Better Stack ask `https://<your domain>/legal/notice` every few minutes and e-mail you when it does not answer 200. Not `/health`: that asks the database, and a check every few minutes would keep a Neon database from ever going to sleep. On the free plan that alone would use more compute time than included (about 180 of 100 CU-hours a month at 0.25 CU). The legal notice is a prebuilt page without the database, so it shows whether the site is up; the hourly check of `/health` in GitHub Actions covers the database.
 
-Without the secrets the checks still run; the rollback then fails with a message that names the missing value, and the run turns red.
+Without `VERCEL_TOKEN` and the two variables nothing is deployed: the run of *Deploy* turns red with a message that names the missing value. Without the bypass secret the smoke test cannot open protected deployments and says so.
 
 ### 7. Security
 
@@ -181,7 +181,7 @@ On Vercel there is no server process that could hang and would need a restart: e
 
 ## Smoke test after each deployment
 
-When Vercel has finished a deployment, it reports it to GitHub as a `repository_dispatch` event (`vercel.deployment.success`, with the address, the environment and the commit). [deploy-check.yml](../.github/workflows/deploy-check.yml) then runs `npm run test:smoke` ([tests/smoke/](../tests/smoke)) against the deployment's own address, for previews and production alike. In about a minute it checks:
+When [deploy.yml](../.github/workflows/deploy.yml) has deployed a commit, it calls [deploy-check.yml](../.github/workflows/deploy-check.yml) with the address, the environment and the commit. That runs `npm run test:smoke` ([tests/smoke/](../tests/smoke)) against the deployment's own address, for previews and production alike. In about a minute it checks:
 
 - `/health` answers 200 and the deployment runs the commit it was started for,
 - the start page, the planet list, a planet and a star page, the search, the map and the legal pages answer 200 with the security headers,
@@ -204,10 +204,12 @@ Vercel puts its toolbar into preview deployments. The Content Security Policy of
 
 ```mermaid
 sequenceDiagram
-    participant V as Vercel
     participant GH as GitHub Actions
+    participant V as Vercel
     participant New as New deployment
-    V->>GH: vercel.deployment.success<br>(address, environment, commit)
+    GH->>GH: CI, CodeQL and code scanning pass
+    GH->>V: vercel deploy --prod
+    V-->>New: built and live
     GH->>New: smoke test
     alt every test passes
         GH-->>GH: green, nothing else happens
@@ -225,7 +227,7 @@ No rollback happens when the smoke test could not open the deployment at all (De
 What to know:
 
 - **Only the code goes back, not the database.** The migrations of the failed deployment stay. That is why a migration must never break the code before it (see [Migrations](#migrations)): then the old code keeps working with the new tables.
-- **After a rollback, Vercel holds back new production deployments.** Pushes to `main` are built, but do not go live by themselves until a deployment is promoted by hand: fix the problem, wait for the new deployment and its smoke test, then *Deployments → … → Promote* in Vercel (or `npx vercel promote <address>`).
+- **After a rollback, Vercel holds back new production deployments.** Pushes to `main` are checked and built, but do not go live by themselves until a deployment is promoted by hand: fix the problem, wait for the new deployment and its smoke test, then *Deployments → … → Promote* in Vercel (or `npx vercel promote <address>`).
 - On the Hobby plan Vercel can only roll back to the deployment directly before the current one. That is the one the script picks anyway.
 - Rolling back by hand: *Deployments → … → Instant Rollback* in Vercel.
 
