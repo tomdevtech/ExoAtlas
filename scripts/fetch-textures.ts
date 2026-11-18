@@ -4,11 +4,12 @@
  *   npm run textures
  *
  * The output is checked in, so this only needs to run when a size or source changes. The downloads stay
- * in a folder of the system's temporary directory, so a second run does not fetch the large moon mosaics
- * (several hundred megabytes each) again. Credits and licences are listed in public/textures/README.md.
+ * in .cache/textures, which git ignores, so a second run does not fetch the large moon mosaics (several
+ * hundred megabytes each) again. They are kept in the project rather than the system's shared temporary
+ * directory, where another program could put a file of the same name in their place. Credits and
+ * licences are listed in public/textures/README.md.
  */
-import { access, mkdir, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { access, mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import { MAP_SOURCES, type MapSource } from "@/app/solar-system/maps";
@@ -67,7 +68,10 @@ const MOON_RECIPES: Record<string, MapRecipe> = {
   charon: { centredOn180: false, colouring: { kind: "grey", dark: "#6a564e", bright: "#dcd7d0" }, albedo: 0.38 },
 };
 
-/** Downloads `url` into `directory`, unless an earlier run already did. */
+/**
+ * Downloads `url` into `directory`, unless an earlier run already did. The file gets its name only once it
+ * is complete, so an interrupted download is not mistaken for one.
+ */
 async function download(url: string, directory: string): Promise<string> {
   const file = path.join(directory, path.basename(new URL(url).pathname));
   try {
@@ -78,7 +82,9 @@ async function download(url: string, directory: string): Promise<string> {
   }
   const response = await fetch(url, { headers: { "User-Agent": "exofinder-textures" } });
   if (!response.ok) throw new Error(`${url} answered with status ${response.status}`);
-  await writeFile(file, Buffer.from(await response.arrayBuffer()));
+  const partial = `${file}.part`;
+  await writeFile(partial, Buffer.from(await response.arrayBuffer()));
+  await rename(partial, file);
   return file;
 }
 
@@ -112,7 +118,7 @@ function expand(data: Uint8Array, channels: number): Uint8Array {
 }
 
 async function main() {
-  const downloads = path.join(tmpdir(), "exofinder-textures");
+  const downloads = path.resolve(".cache/textures");
   await mkdir(downloads, { recursive: true });
   await mkdir(path.join(OUT, "planets"), { recursive: true });
   await mkdir(path.join(OUT, "sky"), { recursive: true });
