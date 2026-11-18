@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { orbitPoint } from "@/app/map/orbits";
+import type { MapSmallMoon } from "@/app/map/payload";
 import { orbitAxes } from "@/app/map/scene/beltsView";
+import { smallMoonAxes } from "@/app/map/scene/smallMoonsView";
 
 /** The position a body reaches in view axes, as BELT_VERTEX computes it, before the distances are squeezed. */
 function position(axes: ReturnType<typeof orbitAxes>, i: number, x: number, y: number): number[] {
@@ -38,5 +40,21 @@ describe("orbitAxes", () => {
     // 90 degrees past the node the body is highest, at the sine of the inclination.
     const axes = orbitAxes(new Float32Array([0.5, 1, 0]), 1);
     expect(position(axes, 0, 0, 1)[1]).toBeCloseTo(Math.sin(0.5), 5);
+  });
+});
+
+describe("smallMoonAxes", () => {
+  // A moon in the equator and one in the ecliptic, both without inclination.
+  const moons: MapSmallMoon[] = [
+    ["Inner", 100000, 0, 0, 0, 0, 0, 1, 10, 0],
+    ["Outer", 9000000, 0.2, 0, 0, 0, 0, 500, 3, 1],
+  ];
+
+  it("tilts orbits in the equator with the planet's axis and leaves those in the ecliptic", () => {
+    const axes = smallMoonAxes(moons, 30);
+    // The equatorial orbit's periapsis direction turns about z by the tilt, as the planet's axis does.
+    expect(axes.toPeriapsis[0]).toBeCloseTo(Math.cos((-30 * Math.PI) / 180), 5);
+    expect(axes.toPeriapsis[1]).toBeCloseTo(Math.sin((-30 * Math.PI) / 180), 5);
+    expect(Array.from(axes.toPeriapsis.subarray(3, 6))).toEqual([1, 0, -0]);
   });
 });

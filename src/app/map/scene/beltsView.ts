@@ -12,7 +12,7 @@ import {
   Vector3,
 } from "three";
 import { solarSystemBelts, type BeltOptions } from "../belts";
-import { viewRadius, type OrbitLayout } from "../orbits";
+import { TRUE_AU, viewRadius, type OrbitLayout } from "../orbits";
 import { BELT_FRAGMENT, BELT_KNOTS, BELT_VERTEX } from "./shaders";
 
 /**
@@ -35,8 +35,8 @@ export class BeltsView {
     geometry.setAttribute("color", new InstancedBufferAttribute(belts.color, 3));
     geometry.instanceCount = belts.count;
     // The bodies move on the GPU, so three.js cannot measure them. The bounds reach to the Oort cloud's
-    // outer edge so that frustum culling never drops the belts.
-    geometry.boundingSphere = new Sphere(new Vector3(), viewRadius(layouts, 100000) * 1.05);
+    // outer edge in either scale so that frustum culling never drops the belts.
+    geometry.boundingSphere = new Sphere(new Vector3(), Math.max(viewRadius(layouts, 100000), 100000 * TRUE_AU) * 1.05);
 
     const knots = layouts.slice(0, BELT_KNOTS);
     const pad = (values: number[]) => [...values, ...new Array<number>(BELT_KNOTS - values.length).fill(1)];
@@ -53,6 +53,8 @@ export class BeltsView {
           uKnotAu: { value: pad(knots.map((layout) => layout.axisAu)) },
           uKnotView: { value: pad(knots.map((layout) => layout.semiMajor)) },
           uKnots: { value: knots.length },
+          uTrue: { value: 0 },
+          uFade: { value: 1 },
         },
         transparent: true,
         depthWrite: false,
@@ -65,10 +67,14 @@ export class BeltsView {
 
   /**
    * `clock` is the orbit clock of the system view, so the belts move, pause and slow down with the
-   * planets. The viewport sets the size of the drawing buffer, in which the quads are measured.
+   * planets. The viewport sets the size of the drawing buffer, in which the quads are measured. `trueScale`
+   * runs from 0 (compressed) to 1 (true scale), and at a `fade` of 0 the belts are not drawn at all.
    */
-  update(clock: number, viewport: { width: number; height: number; pixelRatio: number }): void {
+  update(clock: number, viewport: { width: number; height: number; pixelRatio: number }, trueScale: number, fade: number): void {
     const { uniforms } = this.mesh.material;
+    this.mesh.visible = fade > 0.002;
+    uniforms.uTrue.value = trueScale;
+    uniforms.uFade.value = fade;
     uniforms.uClock.value = clock;
     uniforms.uPixelRatio.value = viewport.pixelRatio;
     (uniforms.uResolution.value as Vector2).set(viewport.width * viewport.pixelRatio, viewport.height * viewport.pixelRatio);

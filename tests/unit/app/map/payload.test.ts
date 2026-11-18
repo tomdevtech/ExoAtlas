@@ -81,11 +81,13 @@ describe("toMapSystem", () => {
       planet({ slug: "jupiter", name: "Jupiter", source: "sol", orbitalPeriodDays: 4331, planetClass: "gas_giant" }),
       planet({ slug: "neptune", name: "Neptune", source: "sol", orbitalPeriodDays: 59800, planetClass: "neptune_like" }),
     ]);
-    expect(planets.map((item) => item.slug)).toEqual(["mars", "ceres", "jupiter", "neptune", "pluto"]);
+    expect(planets.map((item) => item.slug)).toEqual(["mars", "vesta", "ceres", "jupiter", "neptune", "pluto"]);
+    expect(planets[1]).toMatchObject({ description: "Asteroid", shape: { url: "/shapes/vesta.bin", map: true, tumbling: false } });
+    expect(planets[1].shape!.maxRadius).toBeGreaterThan(1);
     expect(planets[0].href).toBe("/planets/mars");
-    expect(planets[1]).toMatchObject({ href: "/solar-system/ceres", description: "Dwarf planet" });
-    expect(planets[1].globe.maps.day).toBe("ceres");
-    expect(planets[1].semiMajorAxisAu).toBeCloseTo(2.77, 2);
+    expect(planets[2]).toMatchObject({ href: "/solar-system/ceres", description: "Dwarf planet", shape: null });
+    expect(planets[2].globe.maps.day).toBe("ceres");
+    expect(planets[2].semiMajorAxisAu).toBeCloseTo(2.77, 2);
   });
 
   it("gives the planets of the solar system their large moons, and exoplanets none", () => {
@@ -97,6 +99,10 @@ describe("toMapSystem", () => {
     expect(jupiter.moons[0].globe.maps.day).toBe("io");
     expect(planets.find((item) => item.slug === "pluto")!.moons.map((moon) => moon.slug)).toEqual(["charon"]);
     expect(toMapSystem(STAR, [planet()]).planets[0].moons).toEqual([]);
+    // The small moons travel as compact tuples, as there are hundreds of them.
+    expect(jupiter.smallMoons).toHaveLength(111);
+    expect(jupiter.smallMoons[0]).toHaveLength(10);
+    expect(toMapSystem(STAR, [planet()]).planets[0].smallMoons).toEqual([]);
     // A NASA planet keeps no moons even if its slug matched a solar-system planet.
     expect(toMapSystem(STAR, [planet({ slug: "jupiter" })]).planets[0].moons).toEqual([]);
   });

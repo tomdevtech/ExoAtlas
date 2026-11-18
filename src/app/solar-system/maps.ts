@@ -11,6 +11,8 @@ export interface MapSource {
   licence: string;
   /** What the map does not show as it is, for example parts no spacecraft saw. */
   note: string | null;
+  /** The part of the download that is the map, in pixels, where the publisher framed it with a title and labels. */
+  crop?: { left: number; top: number; width: number; height: number };
 }
 
 const USGS = "https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/";
@@ -99,6 +101,15 @@ export const MAP_SOURCES: Record<string, MapSource> = {
     licence: PUBLIC,
     note: "in visible light the orange haze hides the ground; the faint pattern is the surface as Cassini saw it in near-infrared light",
   },
+  phoebe: {
+    download: `${PHOTOJOURNAL}pia07/pia07775/PIA07775.tif`,
+    credit: "NASA/JPL/Space Science Institute, Cassini",
+    url: "https://science.nasa.gov/photojournal/map-of-phoebe-december-2005/",
+    licence: PUBLIC,
+    note: "Cassini saw the far north only in part, and that part is filled with the nearby tones; the grey images are tinted with Phoebe's colours",
+    // The published map has a title, a frame and labelled axes round 8 pixels per degree of map.
+    crop: { left: 189, top: 184, width: 2880, height: 1440 },
+  },
   iapetus: {
     download: `${PHOTOJOURNAL}pia18/pia18436/PIA18436.jpg`,
     credit: "NASA/JPL-Caltech/Space Science Institute/Lunar and Planetary Institute, Cassini",
@@ -147,6 +158,20 @@ export const MAP_SOURCES: Record<string, MapSource> = {
     url: `${USGS_PAGE}triton_voyager_2_global_color_mosaic_600m`,
     licence: PUBLIC,
     note: "Voyager 2 saw only part of the southern half in 1989; the rest is filled with a smooth continuation of the nearby tones, and the colours are toned down",
+  },
+  vesta: {
+    download: `${USGS}Vesta_Dawn_FC_HAMO_Mosaic_Global_74ppd.tif`,
+    credit: "NASA/JPL-Caltech/UCLA/MPS/DLR/IDA/USGS, Dawn",
+    url: `${USGS_PAGE}vesta_dawn_fc_hamo_global_mosaic_60m`,
+    licence: PUBLIC,
+    note: "the far north was in winter darkness while Dawn mapped Vesta and is filled with the nearby tones, and the grey images are tinted with Vesta's colours",
+  },
+  phobos: {
+    download: `${USGS}Phobos_ME_SRC_Mosaic_Global_16ppd.tif`,
+    credit: "ESA/DLR/FU Berlin/NASA/USGS, Mars Express and Viking",
+    url: "https://astrogeology.usgs.gov/search/map/phobos_mars_express_src_global_mosaic_16ppd",
+    licence: PUBLIC,
+    note: "the grey images are tinted with Phobos' colours",
   },
   ceres: {
     download: "https://asc-pds-services.s3.us-west-2.amazonaws.com/wms_basemaps/asteroid_belt/Ceres/Ceres_Dawn_FC_DLR_global_8ppd.png",

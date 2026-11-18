@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GALACTIC_CENTRE, GALAXY_EDGE, GALAXY_PICTURE_WIDTH } from "@/app/map/galaxy";
+import { BULGE_HEIGHT, BULGE_WIDTH, GALACTIC_CENTRE, GALAXY_EDGE, GALAXY_PICTURE_WIDTH } from "@/app/map/galaxy";
 import {
   cellKey,
   cellsAround,
@@ -9,13 +9,25 @@ import {
   reachAt,
   SMOOTH_PLAN,
   STAR_CLASSES,
-  starDensity,
   STARS_PER_CLASS,
   type Plan,
+  type StarClass,
 } from "@/app/map/starfield";
 
 const SUNS = STAR_CLASSES.findIndex((item) => item.name === "suns");
 const GIANTS = STAR_CLASSES.findIndex((item) => item.name === "giants");
+
+/**
+ * The number of stars of a class per cubic parsec at a point, as the model in starfield.ts defines it: the
+ * class's density, scaled by the plan of the arms and thinning out above and below the disc, whose height
+ * grows in the bulge. The generator draws its stars from this by rejection sampling, so the tests compare
+ * against it.
+ */
+function starDensity(starClass: StarClass, plan: Plan, x: number, y: number, z: number): number {
+  const fromCentre = Math.hypot(x - GALACTIC_CENTRE[0], y - GALACTIC_CENTRE[1]);
+  const height = starClass.height + BULGE_HEIGHT * Math.exp(-((fromCentre / BULGE_WIDTH) ** 2));
+  return starClass.density * plan(x, y) * Math.exp(-Math.abs(z) / height);
+}
 
 describe("the classes of stars", () => {
   it("run from faint and common to bright and rare, each made out further", () => {

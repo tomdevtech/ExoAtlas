@@ -122,8 +122,15 @@ describe("prepareMap", () => {
 });
 
 describe("the map sources", () => {
-  it("name a map, a credit and a licence for every moon and dwarf planet", () => {
-    expect(Object.keys(MAP_SOURCES).sort()).toEqual(SOLAR_BODIES.map((body) => body.slug).sort());
+  it("name a map, a credit and a licence for every body with a page, apart from those never mapped whole", () => {
+    // No spacecraft has mapped all of Deimos, Hyperion or the small moons near Saturn's rings; their pages say
+    // so and show the shape alone.
+    const unmapped = ["deimos", "hyperion", "pan", "daphnis", "atlas", "prometheus", "pandora", "epimetheus", "janus", "telesto", "calypso", "helene"];
+    expect(Object.keys(MAP_SOURCES).sort()).toEqual(
+      SOLAR_BODIES.map((body) => body.slug)
+        .filter((slug) => !unmapped.includes(slug))
+        .sort(),
+    );
     for (const source of Object.values(MAP_SOURCES)) {
       expect(source.download).toMatch(/^https:\/\//);
       expect(source.url).toMatch(/^https:\/\//);

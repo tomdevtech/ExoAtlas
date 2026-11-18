@@ -128,12 +128,6 @@ function thickness(starClass: StarClass, fromCentre: number): number {
   return starClass.height + BULGE_HEIGHT * Math.exp(-((fromCentre / BULGE_WIDTH) ** 2));
 }
 
-/** Returns the number of stars of the class per cubic parsec at a point. */
-export function starDensity(starClass: StarClass, plan: Plan, x: number, y: number, z: number): number {
-  const fromCentre = Math.hypot(x - GALACTIC_CENTRE[0], y - GALACTIC_CENTRE[1]);
-  return starClass.density * plan(x, y) * Math.exp(-Math.abs(z) / thickness(starClass, fromCentre));
-}
-
 /**
  * Returns how far the class is generated around a point. In crowded regions the
  * reach shrinks to stay within `STARS_PER_CLASS`, and the galaxy glow fills in beyond.

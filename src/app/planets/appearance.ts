@@ -372,6 +372,22 @@ const SOLAR_SYSTEM: Record<string, SolarSystemLook> = {
   triton: airless("#c9b8a8", "#a08e80", "#e8ddd2", 0.8),
   charon: airless("#9a9088", "#6e5550", "#b8b0a8"),
   ceres: airless("#6a665f", "#4c4944", "#9a958c"),
+  vesta: airless("#9a948c", "#6d6760", "#c9c3ba"),
+  phobos: airless("#5b5651", "#403c38", "#7d7770"),
+  deimos: airless("#6f6861", "#4f4944", "#8f8880"),
+  hyperion: airless("#a8957d", "#5f5143", "#cdbda6"),
+  // The small moons near the rings are coated in bright ring dust; Phoebe is as dark as coal.
+  pan: airless("#c9c3b8", "#9a948a", "#e3ded5"),
+  daphnis: airless("#c9c3b8", "#9a948a", "#e3ded5"),
+  atlas: airless("#c9c3b8", "#9a948a", "#e3ded5"),
+  prometheus: airless("#c2bcb1", "#938d84", "#ded9d0"),
+  pandora: airless("#c2bcb1", "#938d84", "#ded9d0"),
+  epimetheus: airless("#bdb7ad", "#8e8880", "#dad5cc"),
+  janus: airless("#bdb7ad", "#8e8880", "#dad5cc"),
+  telesto: airless("#d6d2cb", "#aaa59d", "#eeebe6"),
+  calypso: airless("#dbd8d2", "#b0aca5", "#f1efea"),
+  helene: airless("#d3cfc8", "#a7a29a", "#ebe8e2"),
+  phoebe: airless("#4f4a44", "#36322e", "#6f6962"),
   pluto: airless("#c9a789", "#7a4a35", "#efe6da", 0.8),
 };
 

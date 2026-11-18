@@ -1,0 +1,62 @@
+{
+  "vesta": {
+    "maxRadiusKm": 292.076,
+    "meanRadiusKm": 261.499
+  },
+  "phobos": {
+    "maxRadiusKm": 13.84,
+    "meanRadiusKm": 11.076
+  },
+  "deimos": {
+    "maxRadiusKm": 8.627,
+    "meanRadiusKm": 6.272
+  },
+  "hyperion": {
+    "maxRadiusKm": 184.546,
+    "meanRadiusKm": 136.256
+  },
+  "pan": {
+    "maxRadiusKm": 20.406,
+    "meanRadiusKm": 13.696
+  },
+  "daphnis": {
+    "maxRadiusKm": 5.605,
+    "meanRadiusKm": 3.893
+  },
+  "atlas": {
+    "maxRadiusKm": 24.156,
+    "meanRadiusKm": 14.933
+  },
+  "prometheus": {
+    "maxRadiusKm": 72.57,
+    "meanRadiusKm": 42.763
+  },
+  "pandora": {
+    "maxRadiusKm": 56.896,
+    "meanRadiusKm": 40.035
+  },
+  "epimetheus": {
+    "maxRadiusKm": 75.344,
+    "meanRadiusKm": 58.586
+  },
+  "janus": {
+    "maxRadiusKm": 106.8,
+    "meanRadiusKm": 88.981
+  },
+  "telesto": {
+    "maxRadiusKm": 16.939,
+    "meanRadiusKm": 12.286
+  },
+  "calypso": {
+    "maxRadiusKm": 16.487,
+    "meanRadiusKm": 9.524
+  },
+  "helene": {
+    "maxRadiusKm": 21.811,
+    "meanRadiusKm": 18.074
+  },
+  "phoebe": {
+    "maxRadiusKm": 121.896,
+    "meanRadiusKm": 106.558
+  }
+}

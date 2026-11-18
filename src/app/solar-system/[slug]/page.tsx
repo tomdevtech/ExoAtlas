@@ -22,7 +22,11 @@ import {
   type SolarBody,
 } from "../bodies";
 import { BodyCard } from "../BodyCard";
+import { MoonTable } from "../MoonTable";
+import { smallMoonsOf } from "../smallMoons";
 import { MAP_SOURCES } from "../maps";
+import { SHAPE_SOURCES, shapeGrid } from "../shapes";
+import { ShapeViewer } from "../ShapeViewer";
 
 type Props = PageProps<"/solar-system/[slug]">;
 
@@ -61,17 +65,29 @@ async function BodyContent({ params }: { params: Props["params"] }) {
   const moons = moonsOf(body.slug);
   const siblings = body.kind === "moon" ? moonsOf(body.parent).filter((other) => other.slug !== body.slug) : [];
   const source = MAP_SOURCES[body.slug];
+  const grid = body.shape ? shapeGrid(body.slug) : null;
+  const shapeSource = grid ? SHAPE_SOURCES[body.slug] : null;
 
   return (
     <article className="flex flex-col gap-12">
       <header className="flex flex-col items-center gap-8 sm:flex-row">
-        <PlanetViewer spec={JSON.stringify(appearance.globe)} name={body.name}>
-          <PlanetImage appearance={appearance} size={280} label={`Illustration of ${body.name}`} animated={false} />
-        </PlanetViewer>
+        {grid ? (
+          <ShapeViewer
+            name={body.name}
+            shapeUrl={`/shapes/${body.slug}.bin`}
+            maxRadius={grid.maxRadiusKm / grid.meanRadiusKm}
+            mapUrl={source ? `/textures/planets/${body.slug}-lg.jpg` : null}
+            color={appearance.base}
+          />
+        ) : (
+          <PlanetViewer spec={JSON.stringify(appearance.globe)} name={body.name}>
+            <PlanetImage appearance={appearance} size={280} label={`Illustration of ${body.name}`} animated={false} />
+          </PlanetViewer>
+        )}
         <div className="flex flex-col gap-3">
           <h1 className="text-4xl font-semibold tracking-tight">{body.name}</h1>
           <p className="text-lg text-muted">
-            {body.kind === "dwarf_planet" ? "Dwarf planet orbiting the " : "Moon of "}
+            {body.kind === "dwarf_planet" ? "Dwarf planet orbiting the " : body.kind === "asteroid" ? "Asteroid orbiting the " : "Moon of "}
             <Link href={parentHref(body)} className={LINK}>
               {parentName(body)}
             </Link>
@@ -83,10 +99,23 @@ async function BodyContent({ params }: { params: Props["params"] }) {
             </Link>
           </p>
           <p className="text-sm leading-6 text-muted">
-            The model shows a real map put together from spacecraft images
+            {grid
+              ? source
+                ? "The model shows its real shape, measured by spacecraft, with a map put together from their images"
+                : "The model shows its real shape, measured by spacecraft. No spacecraft has mapped its whole surface, so it is drawn in its colour alone"
+              : "The model shows a real map put together from spacecraft images"}
             {source?.note ? `; ${source.note}` : ""}. Drag it to look at every side, zoom with the
             buttons, with two fingers or with Ctrl and the mouse wheel.
           </p>
+          {shapeSource && (
+            <p className="text-xs text-muted">
+              Shape:{" "}
+              <a className="underline-offset-4 underline decoration-current/40 hover:decoration-current" href={shapeSource.url}>
+                {shapeSource.credit}
+              </a>
+              .
+            </p>
+          )}
           {source && (
             <p className="text-xs text-muted">
               Map:{" "}
@@ -99,16 +128,17 @@ async function BodyContent({ params }: { params: Props["params"] }) {
         </div>
       </header>
 
-      <Section title={body.kind === "dwarf_planet" ? "Dwarf planet" : "Moon"}>
+      <Section title={body.kind === "dwarf_planet" ? "Dwarf planet" : body.kind === "asteroid" ? "Asteroid" : "Moon"}>
         <Facts>
           <Fact label="Radius" value={`${formatNumber(body.radiusKm)} km (${formatNumber(radiusEarth(body))} × Earth)`} />
-          <Fact label="Mass" value={`${formatNumber(massEarth(body))} × Earth`} />
-          <Fact label="Density" value={`${formatNumber(body.density)} g/cm³`} />
-          <Fact label="Surface gravity" value={`${formatNumber(surfaceGravity(body))} m/s²`} />
+          <Fact label="Mass" value={massOf(massEarth(body))} />
+          <Fact label="Density" value={body.density === null ? null : `${formatNumber(body.density)} g/cm³`} />
+          <Fact label="Surface gravity" value={gravityOf(surfaceGravity(body))} />
         </Facts>
         <p className="text-sm leading-6 text-muted">
-          The radius is the mean radius, the radius of a sphere with the same volume. The mass is derived from
-          the gravitational pull measured by spacecraft or from the orbits of neighbours.
+          The radius is the mean radius, the radius of a sphere with the same volume
+          {grid ? `; ${body.name} is far from round, its longest axis ${formatNumber(grid.maxRadiusKm * 2)} km across` : ""}. The mass is
+          derived from the gravitational pull measured by spacecraft or from the orbits of neighbours.
         </p>
         <SizeComparison name={body.name} radiusEarth={radiusEarth(body)} color={appearance.base} />
       </Section>
@@ -118,7 +148,7 @@ async function BodyContent({ params }: { params: Props["params"] }) {
           <Fact label="Orbits" value={parentName(body)} />
           <Fact label="Orbital period" value={formatPeriod(body.orbitalPeriodDays)} />
           <Fact
-            label={body.kind === "dwarf_planet" ? "Distance from the Sun" : "Distance from the planet"}
+            label={body.parent === "sun" ? "Distance from the Sun" : "Distance from the planet"}
             value={
               body.parent === "sun"
                 ? `${formatNumber(body.semiMajorAxisKm / AU_KM)} AU`
@@ -149,6 +179,7 @@ async function BodyContent({ params }: { params: Props["params"] }) {
       </Section>
 
       {moons.length > 0 && <BodyList title={moons.length === 1 ? "Moon" : "Moons"} bodies={moons} />}
+      {smallMoonsOf(body.slug).length > 0 && <MoonTable parent={body.slug} name={body.name} />}
       {siblings.length > 0 && (
         <BodyList title={`Other large moons of ${parentName(body)}`} bodies={siblings} />
       )}
@@ -172,6 +203,18 @@ async function BodyContent({ params }: { params: Props["params"] }) {
   );
 }
 
+/** Small moons weigh billions of times less than Earth, so their mass reads better in kilograms. */
+function massOf(earths: number | null): string | null {
+  if (earths === null) return null;
+  return earths < 1e-6 ? `${formatNumber(earths * 5.9722e24 / 1e15)} × 10¹⁵ kg` : `${formatNumber(earths)} × Earth`;
+}
+
+/** The pull on the surface of a small moon is a few thousandths of a metre per second squared. */
+function gravityOf(gravity: number | null): string | null {
+  if (gravity === null) return null;
+  return gravity < 0.01 ? `${formatNumber(gravity * 1000)} mm/s²` : `${formatNumber(gravity)} m/s²`;
+}
+
 function BodyList({ title, bodies }: { title: string; bodies: SolarBody[] }) {
   return (
     <Section title={title}>
@@ -186,9 +229,9 @@ function BodyList({ title, bodies }: { title: string; bodies: SolarBody[] }) {
   );
 }
 
-/** The map link: a dwarf planet is followed directly, a moon through its planet. */
+/** The map link: a body that orbits the Sun is followed directly, a moon through its planet. */
 function mapHref(body: SolarBody): string {
-  return body.kind === "dwarf_planet"
+  return body.parent === "sun"
     ? `/map?system=sun&planet=${body.slug}`
     : `/map?system=sun&planet=${body.parent}&moon=${body.slug}`;
 }

@@ -40,42 +40,24 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             >
               NASA Exoplanet Archive
             </a>
-            . Images of exoplanets are illustrations computed from the data, not photographs. Maps of
-            the solar system:{" "}
-            <a
+            . Images of exoplanets are illustrations computed from the data, not photographs. Where every
+            picture, map and value comes from is listed under{" "}
+            <Link
               className="text-accent underline-offset-4 underline decoration-current/40 hover:decoration-current"
-              href="https://www.solarsystemscope.com/textures/"
+              href="/credits"
             >
-              Solar System Scope
-            </a>
-            . Sky panorama:{" "}
-            <a
-              className="text-accent underline-offset-4 underline decoration-current/40 hover:decoration-current"
-              href="https://www.eso.org/public/images/eso0932a/"
-            >
-              ESO/S. Brunier
-            </a>
-            . Picture of the galaxy:{" "}
-            <a
-              className="text-accent underline-offset-4 underline decoration-current/40 hover:decoration-current"
-              href="https://www.eso.org/public/images/eso1339g/"
-            >
-              NASA/JPL-Caltech/ESO/R. Hurt
-            </a>
-            . All under{" "}
-            <a
-              className="text-accent underline-offset-4 underline decoration-current/40 hover:decoration-current"
-              href="https://creativecommons.org/licenses/by/4.0/"
-            >
-              CC BY 4.0
-            </a>
-            , scaled down.
+              Credits
+            </Link>
+            .
           </p>
-          {/* The map has no footer and carries these two links itself (map/MilkyWayMap.tsx). */}
+          {/* The map has no footer and carries these links itself (map/MilkyWayMap.tsx). */}
           <nav
             aria-label="Legal"
             className="mx-auto flex w-full max-w-4xl gap-5 px-6 pt-3 pb-5 text-sm text-muted"
           >
+            <Link href="/credits" className="transition-colors hover:text-foreground">
+              Credits
+            </Link>
             <Link href="/legal/notice" className="transition-colors hover:text-foreground">
               Legal notice
             </Link>

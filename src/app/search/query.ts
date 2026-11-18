@@ -122,7 +122,7 @@ function toHit(row: Row): SearchHit {
  * Ranks the moons and dwarf planets, which live in code rather than in the database, by the same rules
  * as the direct matches of `search`. Returns only the bodies whose name contains the key.
  */
-export function matchBodies(key: string, wholeToken: RegExp): Ranked[] {
+function matchBodies(key: string, wholeToken: RegExp): Ranked[] {
   return SOLAR_BODIES.flatMap((body) => {
     const name = searchKey(body.name);
     if (!name.includes(key)) return [];

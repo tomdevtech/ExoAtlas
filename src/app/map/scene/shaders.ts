@@ -1,4 +1,5 @@
 import { SURFACE_GLSL } from "@/app/planets/globe/surface.glsl";
+import { TRUE_AU } from "../orbits";
 import {
   BULGE_HEIGHT,
   BULGE_WIDTH,
@@ -695,6 +696,8 @@ uniform float uPixelRatio;
 uniform float uKnotAu[KNOTS];
 uniform float uKnotView[KNOTS];
 uniform int uKnots;
+uniform float uTrue;        // 0 for the compressed scale, 1 for the true one, in between while it changes
+uniform float uFade;        // 1 when shown, 0 when faded out
 out vec3 vColor;
 out vec2 vCorner;
 
@@ -721,7 +724,7 @@ void main() {
   for (int k = 0; k < 3; k++) E -= (E - e * sin(E) - M) / (1.0 - e * cos(E));
   vec2 inPlane = vec2(cos(E) - e, sqrt(1.0 - e * e) * sin(E)) * orbit.x;
   float r = length(inPlane);
-  vec3 world = (inPlane.x * toPeriapsis + inPlane.y * ahead) * (viewRadius(r) / r);
+  vec3 world = (inPlane.x * toPeriapsis + inPlane.y * ahead) * (mix(viewRadius(r), r * ${TRUE_AU.toFixed(1)}, uTrue) / r);
   vec4 eye = modelViewMatrix * vec4(world, 1.0);
   gl_Position = projectionMatrix * eye;
   // Close up a body grows to a few pixels, far away it stays a single pixel.
@@ -729,7 +732,7 @@ void main() {
   gl_Position.xy += corner * pixels / uResolution * gl_Position.w;
   // A body behind the camera is moved out of the picture.
   if (eye.z > 0.0) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
-  vColor = pow(color, vec3(1.0 / 2.2));
+  vColor = pow(color, vec3(1.0 / 2.2)) * uFade;
   vCorner = corner;
 }
 `;
@@ -742,5 +745,102 @@ void main() {
   float r2 = dot(vCorner, vCorner);
   if (r2 > 1.0) discard;
   outColor = vec4(vColor * (1.0 - r2), 1.0);
+}
+`;
+
+/** The most large moons a planet's small moons are squeezed between (see `compressedMoonDistance`). */
+export const MOON_KNOTS = 16;
+
+/**
+ * The distance of a small moon from its planet, in radii of the planet, at the current mix of scales. It
+ * repeats \`compressedMoonDistance\` in orbits.ts and mixes the result with the true distance by the
+ * logarithm, as the large moons are mixed.
+ */
+const MOON_DISTANCE_GLSL = /* glsl */ `
+#define MOON_KNOTS ${MOON_KNOTS}
+uniform float uKnotTrue[MOON_KNOTS];
+uniform float uKnotView[MOON_KNOTS];
+uniform int uKnots;
+uniform float uTrue;
+
+float compressedDistance(float r) {
+  if (uKnots == 0) return r;
+  if (r <= uKnotTrue[0]) return uKnotView[0] * r / uKnotTrue[0];
+  for (int i = 1; i < MOON_KNOTS; i++) {
+    if (i >= uKnots) break;
+    if (r <= uKnotTrue[i]) {
+      float share = log(r / uKnotTrue[i - 1]) / log(uKnotTrue[i] / uKnotTrue[i - 1]);
+      return mix(uKnotView[i - 1], uKnotView[i], share);
+    }
+  }
+  return uKnotView[uKnots - 1] + log2(r / uKnotTrue[uKnots - 1]);
+}
+
+float moonDistance(float r) {
+  return exp(mix(log(compressedDistance(r)), log(r), uTrue));
+}
+`;
+
+/**
+ * Moves the small moons of a planet along their Kepler orbits, like BELT_VERTEX but in radii of the
+ * planet: the object is scaled to the planet's radius in view units.
+ */
+export const SMALL_MOONS_VERTEX = /* glsl */ `
+${MOON_DISTANCE_GLSL}
+in vec2 corner;      // the corner of the quad, from -1 to 1
+in vec4 orbit;       // semi-major axis in planet radii, eccentricity, mean anomaly at time 0, view seconds per orbit
+in vec3 toPeriapsis; // unit vector from the planet to the periapsis
+in vec3 ahead;       // unit vector in the orbit's plane, 90 degrees ahead of the periapsis
+in float light;      // 0 for the smallest moons, 1 for those of about 100 km
+uniform mat4 modelViewMatrix;
+uniform mat4 projectionMatrix;
+uniform float uClock;
+uniform vec2 uResolution;
+uniform float uPixelRatio;
+uniform float uFade;
+out vec3 vColor;
+out vec2 vCorner;
+
+const float TAU = 6.28318530718;
+
+void main() {
+  float e = orbit.y;
+  float M = mod(orbit.z + uClock * TAU / orbit.w, TAU);
+  // Some captured moons have eccentricities near 0.9, which take five Newton steps; there are only a few
+  // hundred moons, so the extra steps cost nothing.
+  float E = M + e * sin(M);
+  for (int k = 0; k < 5; k++) E -= (E - e * sin(E) - M) / (1.0 - e * cos(E));
+  vec2 inPlane = vec2(cos(E) - e, sqrt(1.0 - e * e) * sin(E)) * orbit.x;
+  float r = length(inPlane);
+  vec3 place = (inPlane.x * toPeriapsis + inPlane.y * ahead) * (moonDistance(r) / r);
+  vec4 eye = modelViewMatrix * vec4(place, 1.0);
+  gl_Position = projectionMatrix * eye;
+  float pixels = mix(1.4, 2.6, light) * uPixelRatio;
+  gl_Position.xy += corner * pixels / uResolution * gl_Position.w;
+  if (eye.z > 0.0) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+  // Small moons are dark, captured bodies; the brightness only hints at their size.
+  vColor = vec3(0.86, 0.84, 0.8) * (0.55 + 0.45 * light) * uFade;
+  vCorner = corner;
+}
+`;
+
+/** Draws the orbits of the small moons, squeezed like the moons themselves. Positions are in true radii of the planet. */
+export const SMALL_MOON_ORBITS_VERTEX = /* glsl */ `
+${MOON_DISTANCE_GLSL}
+in vec3 position;
+uniform mat4 modelViewMatrix;
+uniform mat4 projectionMatrix;
+void main() {
+  float r = length(position);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position * (moonDistance(r) / r), 1.0);
+}
+`;
+
+export const SMALL_MOON_ORBITS_FRAGMENT = /* glsl */ `${HEADER}
+uniform vec3 uColor;
+uniform float uOpacity;
+out vec4 outColor;
+void main() {
+  outColor = vec4(uColor, uOpacity);
 }
 `;

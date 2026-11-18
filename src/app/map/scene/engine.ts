@@ -167,11 +167,18 @@ export class MapEngine {
   }
 
   /** Switches from the galaxy to a star system, optionally focused on `planet` or one of its moons. */
-  showSystem(payload: MapSystemPayload, planet: number | null, moon: number | null, paused: boolean): void {
+  showSystem(
+    payload: MapSystemPayload,
+    planet: number | null,
+    moon: number | null,
+    options: { paused: boolean; trueScale: boolean; moons: boolean },
+  ): void {
     this.swap(() => {
       this.system?.dispose();
       this.system = new SystemView(payload, this.textures, this.skyTexture);
-      this.system.paused = paused;
+      this.system.paused = options.paused;
+      this.system.setTrueScale(options.trueScale, true);
+      this.system.setMoonsShown(options.moons);
       if (planet !== null) this.system.focus(planet, moon);
       this.keys.clear();
       this.setCursor("grab");
@@ -192,6 +199,15 @@ export class MapEngine {
 
   setPaused(paused: boolean): void {
     if (this.system) this.system.paused = paused;
+  }
+
+  /** Switches the system between the compressed and the true scale; the change glides unless motion is reduced. */
+  setTrueScale(on: boolean): void {
+    this.system?.setTrueScale(on, this.reducedMotion);
+  }
+
+  setMoonsShown(shown: boolean): void {
+    this.system?.setMoonsShown(shown);
   }
 
   dispose(): void {
@@ -227,6 +243,7 @@ export class MapEngine {
     if (this.system) {
       this.system.update(dt, this.seconds, this.viewport);
       this.systemGate.render(this.renderer, this.system.scene, this.system.camera);
+      this.system.renderHaze(this.renderer, this.viewport);
       this.system.drawLabels(this.labels, this.viewport);
     } else {
       this.galaxy.update(dt, this.keys, this.viewport);

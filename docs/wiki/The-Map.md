@@ -73,14 +73,15 @@ After **Enter system** you see the star in the middle and its planets on their o
 2. **Zoom:** turn the mouse wheel. On a phone, pinch with two fingers.
 3. **Follow a planet:** click it on the map or in the list on the left. The camera flies to the planet and stays with it.
 4. **Open its page:** click **Page** next to the planet in the list.
-5. **Follow a moon:** in the solar system the moons of the planet you follow appear around it and below its name in the list. Click one to follow it.
-5. **See everything again:** click **Whole system** at the top of the list.
-6. **Stop the movement:** click **Pause orbits**. Click **Play orbits** to go on.
-7. **Leave the system:** click **← Galaxy** or press **Esc**.
+5. **Follow a moon:** in the solar system the moons of the planet you follow appear around it and below its name in the list, the large ones first, then every smaller one. The other planets make way meanwhile. Click any moon to follow it. **Hide moons** in the row of the planet switches them off. Most small moons were never seen up close: when you follow one, its shape and surface are an illustration, and the list says so. To enjoy the view without the panel, **«** next to the star's name folds it away and **» Show panel** brings it back.
+6. **See everything again:** click **Whole system** at the top of the list.
+7. **Stop the movement:** click **Pause**. Click **Play** to go on.
+8. **Change the scale:** the button next to **Pause** names the scale you see, **Compressed** or **True scale**. Click it to switch. In the true scale the planets shrink to dots far apart, and every body stays at least a few pixels wide so that you can still find it.
+9. **Leave the system:** click **Galaxy** or press **Esc**.
 
 On a phone the list of planets is folded away so that it does not cover the view. Tap the button with the planet's name to open it.
 
-> **Not to scale.** In the system view the planets are drawn much bigger than they really are, and the orbits are pushed closer together. Otherwise the planets would be too small to see.
+> **Two scales.** At first the planets are drawn much bigger than they really are, and the orbits are pushed closer together, so that you can see all of them at once. **True scale** shows the real proportions instead, for the planets and for the moons of the planet you follow alike.
 
 ## Jump into the map from other pages
 

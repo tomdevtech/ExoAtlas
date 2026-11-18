@@ -10,7 +10,8 @@ export function BodyCard({ body, showParent = false }: { body: SolarBody; showPa
       href={`/solar-system/${body.slug}`}
       className="flex items-center gap-4 rounded-lg border border-line p-3 transition-colors hover:border-accent/60 hover:bg-surface"
     >
-      <PlanetImage appearance={bodyAppearance(body)} size={56} className="shrink-0" />
+      {/* A spinning sphere would misrepresent an irregular body, and some of them have no map to spin. */}
+      <PlanetImage appearance={bodyAppearance(body)} size={56} className="shrink-0" animated={!body.shape} />
       <span className="flex min-w-0 flex-col">
         <span className="truncate font-medium">{body.name}</span>
         <span className="truncate text-sm text-muted">

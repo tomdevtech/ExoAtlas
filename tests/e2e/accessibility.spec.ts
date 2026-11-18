@@ -16,6 +16,7 @@ const PAGES: { path: string; ready: string }[] = [
   { path: "/solar-system/titan", ready: "Titan" },
   { path: "/search?q=kepler", ready: "Search" },
   { path: "/legal/notice", ready: "Legal notice" },
+  { path: "/credits", ready: "Credits" },
   { path: "/legal/privacy", ready: "Privacy policy" },
 ];
 

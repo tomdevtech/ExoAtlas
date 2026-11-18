@@ -11,7 +11,7 @@ import { access, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import sharp from "sharp";
-import { MAP_SOURCES } from "@/app/solar-system/maps";
+import { MAP_SOURCES, type MapSource } from "@/app/solar-system/maps";
 import { prepareMap, type MapRecipe } from "./moon-maps";
 
 const SOLAR_SYSTEM_SCOPE = "https://www.solarsystemscope.com/textures/download/";
@@ -52,6 +52,7 @@ const MOON_RECIPES: Record<string, MapRecipe> = {
   dione: { centredOn180: false, colouring: { kind: "grey", dark: "#a6a199", bright: "#eeebe6" }, albedo: 0.7 },
   rhea: { centredOn180: false, colouring: { kind: "grey", dark: "#a8a299", bright: "#ece8e1" }, albedo: 0.7 },
   titan: { centredOn180: true, colouring: { kind: "haze", color: "#d39a4c" }, albedo: 0.22 },
+  phoebe: { centredOn180: false, colouring: { kind: "grey", dark: "#3f3a35", bright: "#857d73" }, albedo: 0.06 },
   iapetus: { centredOn180: true, colouring: { kind: "colour", saturation: 0.3 }, albedo: 0.3 },
   miranda: { centredOn180: false, colouring: { kind: "grey", dark: "#807b75", bright: "#d8d4ce" }, albedo: 0.32 },
   ariel: { centredOn180: false, colouring: { kind: "grey", dark: "#827d77", bright: "#dcd8d2" }, albedo: 0.39 },
@@ -59,6 +60,8 @@ const MOON_RECIPES: Record<string, MapRecipe> = {
   titania: { centredOn180: false, colouring: { kind: "grey", dark: "#7e7871", bright: "#d6d0c8" }, albedo: 0.27 },
   oberon: { centredOn180: false, colouring: { kind: "grey", dark: "#7a706a", bright: "#d2cac2" }, albedo: 0.23 },
   triton: { centredOn180: false, colouring: { kind: "colour", saturation: 0.35 }, albedo: 0.72 },
+  vesta: { centredOn180: false, colouring: { kind: "grey", dark: "#615b54", bright: "#ddd7cd" }, albedo: 0.42 },
+  phobos: { centredOn180: false, colouring: { kind: "grey", dark: "#463f39", bright: "#8c837a" }, albedo: 0.07 },
   ceres: { centredOn180: true, colouring: { kind: "grey", dark: "#5e5a55", bright: "#cfcbc4" }, albedo: 0.09 },
   pluto: { centredOn180: true, colouring: { kind: "grey", dark: "#6e3a28", bright: "#f4eadc" }, albedo: 0.52 },
   charon: { centredOn180: false, colouring: { kind: "grey", dark: "#6a564e", bright: "#dcd7d0" }, albedo: 0.38 },
@@ -79,9 +82,14 @@ async function download(url: string, directory: string): Promise<string> {
   return file;
 }
 
-/** Scales a moon's mosaic to `width` and prepares it. Large mosaics are scaled first, which is much faster. */
-async function moonMap(file: string, recipe: MapRecipe, width: number, out: string, quality: number): Promise<number> {
-  const { data, info } = await sharp(file, { limitInputPixels: false })
+/**
+ * Scales a moon's mosaic to `width` and prepares it, after cutting it out of its frame if the publisher
+ * framed it. Large mosaics are scaled first, which is much faster.
+ */
+async function moonMap(file: string, recipe: MapRecipe, crop: MapSource["crop"], width: number, out: string, quality: number): Promise<number> {
+  const source = sharp(file, { limitInputPixels: false });
+  if (crop) source.extract(crop);
+  const { data, info } = await source
     .resize(width, width / 2, { fit: "fill", kernel: "lanczos3" })
     .toColourspace("srgb")
     .removeAlpha()
@@ -134,8 +142,9 @@ async function main() {
   // The moons and dwarf planets, keyed by the slugs of src/app/solar-system/bodies.ts.
   for (const [name, recipe] of Object.entries(MOON_RECIPES)) {
     const file = await download(MAP_SOURCES[name].download, downloads);
-    const filled = await moonMap(file, recipe, 2048, path.join(OUT, "planets", `${name}-lg.jpg`), 80);
-    await moonMap(file, recipe, 512, path.join(OUT, "planets", `${name}-sm.jpg`), 78);
+    const { crop } = MAP_SOURCES[name];
+    const filled = await moonMap(file, recipe, crop, 2048, path.join(OUT, "planets", `${name}-lg.jpg`), 80);
+    await moonMap(file, recipe, crop, 512, path.join(OUT, "planets", `${name}-sm.jpg`), 78);
     console.log(`planets/${name}${filled > 0.005 ? ` (${(filled * 100).toFixed(0)} % filled)` : ""}`);
   }
 

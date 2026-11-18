@@ -5,7 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useEffectEvent, useMemo, useRef, useState, type FormEvent } from "react";
 import { isSpecialStar, SPECIAL_STAR } from "@/app/stars/my-special-star/star";
 import { formatNumber, parsecToLightYears } from "@/shared/format";
-import type { MapStar, MapStarsPayload, MapSystemPayload } from "./payload";
+import { slugify } from "@/shared/slug";
+import type { MapPlanet, MapStar, MapStarsPayload, MapSystemPayload } from "./payload";
 import { MapEngine } from "./scene/engine";
 
 const PANEL = "rounded-lg border border-line bg-background/80 backdrop-blur";
@@ -18,7 +19,9 @@ const TEXT_LINK = "text-sm text-accent underline-offset-4 underline decoration-c
 /**
  * The Milky Way map page: panels, search and links around the `MapEngine` canvas.
  * The current view is mirrored in the URL so it can be linked, for example
- * `/map?star=trappist-1`, `/map?system=sun&planet=saturn&moon=titan` or `/map?view=galaxy`.
+ * `/map?star=trappist-1`, `/map?system=sun&planet=saturn&moon=titan` or `/map?view=galaxy`. The scale
+ * and whether moons are shown are part of it too (`scale=true`, `moons=off`), so nothing has to be stored
+ * in the browser.
  */
 export default function MilkyWayMap() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -40,8 +43,14 @@ export default function MilkyWayMap() {
   const [failed, setFailed] = useState(false);
   /** The index into `system.planets` of the planet the camera follows. */
   const [planet, setPlanet] = useState<number | null>(null);
-  /** The index into the planet's `moons` of the moon the camera follows. */
+  /** The moon the camera follows: an index into the planet's `moons`, or past them into its `smallMoons`. */
   const [moon, setMoon] = useState<number | null>(null);
+  /** Whether the system is drawn in the true scale instead of the compressed one. */
+  const [trueScale, setTrueScale] = useState(false);
+  /** Whether the moons of a followed planet are shown. */
+  const [moons, setMoons] = useState(true);
+  /** Whether the panel of a system is folded away, to see the whole picture. */
+  const [panelHidden, setPanelHidden] = useState(false);
   /** Whether the camera circles the galactic centre instead of flying freely. */
   const [orbiting, setOrbiting] = useState(false);
   const [paused, setPaused] = useState(
@@ -51,7 +60,12 @@ export default function MilkyWayMap() {
   /** Returns keyboard focus to the map so that the flight keys keep working after a button click. */
   const focusMap = () => containerRef.current?.focus({ preventScroll: true });
 
-  async function enterSystem(slug: string, planetSlug: string | null = null, moonSlug: string | null = null) {
+  async function enterSystem(
+    slug: string,
+    planetSlug: string | null = null,
+    moonSlug: string | null = null,
+    view: { trueScale: boolean; moons: boolean } = { trueScale, moons },
+  ) {
     const engine = engineRef.current;
     setEntering(slug);
     setFailed(false);
@@ -63,12 +77,14 @@ export default function MilkyWayMap() {
       if (!engine || engineRef.current !== engine) return;
       const index = planetSlug ? payload.planets.findIndex((p) => p.slug === planetSlug) : -1;
       const focus = index >= 0 ? index : null;
-      const moonIndex = focus !== null && moonSlug ? payload.planets[focus].moons.findIndex((m) => m.slug === moonSlug) : -1;
+      const moonIndex = focus !== null && moonSlug ? moonSlugs(payload.planets[focus]).indexOf(moonSlug) : -1;
       const moonFocus = moonIndex >= 0 ? moonIndex : null;
-      engineRef.current?.showSystem(payload, focus, moonFocus, paused);
+      engineRef.current?.showSystem(payload, focus, view.moons ? moonFocus : null, { paused, ...view });
       setSystem(payload);
       setPlanet(focus);
-      setMoon(moonFocus);
+      setMoon(view.moons ? moonFocus : null);
+      setTrueScale(view.trueScale);
+      setMoons(view.moons);
     } catch {
       setFailed(true);
     } finally {
@@ -117,7 +133,12 @@ export default function MilkyWayMap() {
     } else if (link.get("view") === "galaxy") {
       engine.flyToOverview(true);
     }
-    if (systemSlug) void enterSystem(systemSlug, link.get("planet"), link.get("moon"));
+    if (systemSlug) {
+      void enterSystem(systemSlug, link.get("planet"), link.get("moon"), {
+        trueScale: link.get("scale") === "true",
+        moons: link.get("moons") !== "off",
+      });
+    }
   });
 
   useEffect(() => {
@@ -171,6 +192,8 @@ export default function MilkyWayMap() {
       setSystem(null);
       setPlanet(null);
       setMoon(null);
+      setTrueScale(false);
+      setMoons(true);
       setEntering(null);
       setFailed(false);
       setOrbiting(false);
@@ -185,13 +208,15 @@ export default function MilkyWayMap() {
     if (system) {
       params.set("system", system.star.slug);
       if (planet !== null) params.set("planet", system.planets[planet].slug);
-      if (planet !== null && moon !== null) params.set("moon", system.planets[planet].moons[moon].slug);
+      if (planet !== null && moon !== null) params.set("moon", moonSlugs(system.planets[planet])[moon]);
+      if (trueScale) params.set("scale", "true");
+      if (!moons) params.set("moons", "off");
     } else if (selected !== null) {
       params.set("star", stars[selected][0]);
     }
     const query = params.toString();
     window.history.replaceState(null, "", query ? `/map?${query}` : "/map");
-  }, [stars, entering, system, planet, moon, selected]);
+  }, [stars, entering, system, planet, moon, trueScale, moons, selected]);
 
   if (problem === "webgl") {
     return (
@@ -230,12 +255,27 @@ export default function MilkyWayMap() {
       <div className="pointer-events-none absolute inset-0 flex flex-col justify-between gap-3 p-3 sm:p-4">
         <div className="flex min-h-0 items-start justify-between gap-3">
           <div className="pointer-events-auto flex max-h-full w-full max-w-xs min-w-0 flex-col gap-3">
-            {system ? (
+            {system && panelHidden ? (
+              <button type="button" className={`${BUTTON} self-start backdrop-blur`} onClick={() => setPanelHidden(false)}>
+                » Show panel
+              </button>
+            ) : system ? (
               <SystemPanel
                 system={system}
                 planet={planet}
                 moon={moon}
                 paused={paused}
+                trueScale={trueScale}
+                moons={moons}
+                onScale={(next) => {
+                  engineRef.current?.setTrueScale(next);
+                  setTrueScale(next);
+                }}
+                onMoons={(next) => {
+                  engineRef.current?.setMoonsShown(next);
+                  setMoons(next);
+                  if (!next) setMoon(null);
+                }}
                 onFocus={(index, moonIndex) => {
                   focusPlanet(index, moonIndex);
                   focusMap();
@@ -245,6 +285,7 @@ export default function MilkyWayMap() {
                   setPaused(next);
                 }}
                 onLeave={leaveSystem}
+                onHide={() => setPanelHidden(true)}
               />
             ) : (
               <>
@@ -329,54 +370,14 @@ export default function MilkyWayMap() {
           )}
         </div>
 
-        <div className="flex flex-col gap-1 text-xs leading-5 text-muted [text-shadow:0_0_4px_#000] sm:flex-row sm:items-end sm:justify-between sm:gap-4">
-          <p className="hidden max-w-md sm:block">
-            {system
-              ? "Drag to turn · scroll to zoom · click a planet or moon to follow it · Esc returns to the galaxy. Sizes and distances are not to scale."
-              : orbiting
-                ? "Drag to turn round the centre · scroll or W and S to zoom · A D and E Q to circle · click a star to select it, double-click to fly there."
-                : "Drag to look around · W A S D to fly, E and Q for up and down, Shift for speed · scroll to move forwards · click a star to select it, double-click to fly there."}
-          </p>
-          <p className="max-w-md sm:hidden">
-            {system
-              ? "Drag to turn, pinch to zoom, tap a planet. Not to scale."
-              : orbiting
-                ? "Drag to turn round the centre, pinch to zoom, tap a star."
-                : "Drag to look around, pinch to fly, tap a star."}
-          </p>
-          <p className="pointer-events-auto sm:shrink-0 sm:text-right">
-            Sky:{" "}
-            <a className="hover:text-foreground" href="https://www.eso.org/public/images/eso0932a/">
-              ESO/S. Brunier
-            </a>
-            {!system && (
-              <>
-                {" · "}Galaxy:{" "}
-                <a className="hover:text-foreground" href="https://www.eso.org/public/images/eso1339g/">
-                  NASA/JPL-Caltech/ESO/R. Hurt
-                </a>
-              </>
-            )}
-            {system?.star.isSun && (
-              <>
-                {" · "}Maps:{" "}
-                <a className="hover:text-foreground" href="https://www.solarsystemscope.com/textures/">
-                  Solar System Scope
-                </a>
-                {", moons: NASA, USGS (see their pages)"}
-              </>
-            )}
+        {/* How to steer is in the map's accessible name and in the user guide, and the sources of the
+            pictures are on the credits page, so the corner keeps only the links the site footer has. */}
+        <div className="flex justify-end text-xs leading-5 text-muted [text-shadow:0_0_4px_#000]">
+          <p className="pointer-events-auto">
+            <Link className="hover:text-foreground" href="/credits">
+              Credits
+            </Link>
             {" · "}
-            <a className="hover:text-foreground" href="https://creativecommons.org/licenses/by/4.0/">
-              CC BY 4.0
-            </a>
-            <br />
-            {system
-              ? system.star.isSun
-                ? "The planets and moons show real maps of their surfaces."
-                : "The surfaces are illustrations computed from the data."
-              : "Star positions are measured, the galaxy is an artist’s impression."}
-            <br />
             {/* The site footer is hidden on the map, so its legal links are repeated here. */}
             <Link className="hover:text-foreground" href="/legal/notice">
               Legal notice
@@ -390,6 +391,14 @@ export default function MilkyWayMap() {
       </div>
     </>
   );
+}
+
+/**
+ * The address names of a planet's moons in the order of the list: the large moons by their slug, then the
+ * small ones by their name ("S/2004 S 12" becomes `s-2004-s-12`).
+ */
+function moonSlugs(planet: MapPlanet): string[] {
+  return [...planet.moons.map((moon) => moon.slug), ...planet.smallMoons.map(([name]) => slugify(name))];
 }
 
 function distanceText(parsec: number): string {
@@ -577,17 +586,27 @@ function SystemPanel({
   planet,
   moon,
   paused,
+  trueScale,
+  moons,
   onFocus,
   onPause,
+  onScale,
+  onMoons,
   onLeave,
+  onHide,
 }: {
   system: MapSystemPayload;
   planet: number | null;
   moon: number | null;
   paused: boolean;
+  trueScale: boolean;
+  moons: boolean;
   onFocus: (index: number | null, moon: number | null) => void;
+  onScale: (trueScale: boolean) => void;
+  onMoons: (shown: boolean) => void;
   onPause: (paused: boolean) => void;
   onLeave: () => void;
+  onHide: () => void;
 }) {
   const { star, planets } = system;
   // On narrow screens the planet list would cover the view, so it can be collapsed there.
@@ -596,19 +615,46 @@ function SystemPanel({
     setListOpen(false);
     onFocus(index, moonIndex);
   };
-  const followed = planet === null ? null : moon === null ? planets[planet] : planets[planet].moons[moon];
+  const followed: { name: string; href: string | null } | null =
+    planet === null
+      ? null
+      : moon === null
+        ? planets[planet]
+        : moon < planets[planet].moons.length
+          ? planets[planet].moons[moon]
+          : { name: planets[planet].smallMoons[moon - planets[planet].moons.length][0], href: null };
   return (
     <section className={`${PANEL} flex min-h-0 flex-col gap-3 p-4`}>
       <div className="flex flex-wrap gap-2">
         <button type="button" className={BUTTON} onClick={onLeave}>
-          ← Galaxy
+          Galaxy
         </button>
         <button type="button" className={BUTTON} onClick={() => onPause(!paused)} aria-pressed={paused}>
-          {paused ? "Play orbits" : "Pause orbits"}
+          {paused ? "Play" : "Pause"}
+        </button>
+        {/* The button names the scale that is shown; a click switches to the other one. */}
+        <button
+          type="button"
+          className={BUTTON}
+          onClick={() => onScale(!trueScale)}
+          title={trueScale ? "Switch to the compressed scale: distances squeezed, planets enlarged" : "Switch to the true scale: distances and sizes as they are"}
+        >
+          {trueScale ? "True scale" : "Compressed"}
         </button>
       </div>
       <div>
-        <h2 className="text-lg leading-6 font-semibold wrap-break-word">{star.name}</h2>
+        <div className="flex items-start justify-between gap-2">
+          <h2 className="min-w-0 text-lg leading-6 font-semibold wrap-break-word">{star.name}</h2>
+          <button
+            type="button"
+            className="shrink-0 rounded-md px-1.5 text-lg leading-6 text-muted hover:text-foreground"
+            onClick={onHide}
+            aria-label="Hide panel"
+            title="Hide the panel to see the whole picture"
+          >
+            «
+          </button>
+        </div>
         <p className="mt-1 text-sm leading-6 text-muted">
           {star.isSun
             ? "Our own star"
@@ -631,7 +677,7 @@ function SystemPanel({
           <span className="truncate">{followed ? followed.name : "Whole system"}</span>
           <span aria-hidden="true">{listOpen ? "▴" : "▾"}</span>
         </button>
-        {followed && (
+        {followed?.href && (
           <Link className={`${TEXT_LINK} shrink-0`} href={followed.href}>
             Page
           </Link>
@@ -664,13 +710,22 @@ function SystemPanel({
                 <span className="block truncate text-sm">{item.name}</span>
                 <span className="block truncate text-xs text-muted">{item.description}</span>
               </button>
+              {planet === index && item.moons.length + item.smallMoons.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onMoons(!moons)}
+                  className="shrink-0 text-xs text-muted hover:text-foreground"
+                >
+                  {moons ? "Hide moons" : "Show moons"}
+                </button>
+              )}
               {planet === index && moon === null && (
                 <Link className={`${TEXT_LINK} shrink-0 pr-2`} href={item.href}>
                   Page
                 </Link>
               )}
             </div>
-            {planet === index && item.moons.length > 0 && (
+            {planet === index && moons && item.moons.length + item.smallMoons.length > 0 && (
               <ul className="ml-3 border-l border-line pl-1" aria-label={`Moons of ${item.name}`}>
                 {item.moons.map((satellite, moonIndex) => (
                   <li
@@ -692,6 +747,31 @@ function SystemPanel({
                     )}
                   </li>
                 ))}
+                {item.smallMoons.length > 0 && (
+                  <li className="px-2 pt-2 pb-1 text-xs text-muted">
+                    {item.smallMoons.length} smaller {item.smallMoons.length === 1 ? "moon" : "moons"}
+                  </li>
+                )}
+                {item.smallMoons.map(([name], smallIndex) => {
+                  const moonIndex = item.moons.length + smallIndex;
+                  return (
+                    <li key={name} className={`rounded-md hover:bg-surface ${moon === moonIndex ? "bg-surface" : ""}`}>
+                      <button
+                        type="button"
+                        onClick={() => choose(index, moonIndex)}
+                        aria-pressed={moon === moonIndex}
+                        className="w-full truncate px-2 py-0.5 text-left text-xs"
+                      >
+                        {name}
+                      </button>
+                      {moon === moonIndex && (
+                        <p className="px-2 pb-1 text-xs leading-5 text-muted">
+                          No close-up images exist: its shape and surface are an illustration.
+                        </p>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </li>

@@ -5,11 +5,14 @@ const PATHS = [
   "/",
   "/planets",
   "/planets/earth",
+  "/solar-system/titan",
+  "/credits",
   "/search/suggest?q=ke",
   "/map/stars",
   "/health",
   "/icon.svg",
   "/textures/planets/earth-sm.jpg",
+  "/shapes/phobos.bin",
   "/does-not-exist",
 ];
 
@@ -122,7 +125,7 @@ test.describe("content security policy in the browser", () => {
     await page.goto("/planets/earth");
     await expect(page.getByRole("button", { name: "Reset" })).toBeVisible({ timeout: 45_000 });
     await page.goto("/map?system=sun&planet=earth");
-    await expect(page.getByRole("button", { name: "← Galaxy" })).toBeVisible({ timeout: 45_000 });
+    await expect(page.getByRole("button", { name: "Galaxy", exact: true })).toBeVisible({ timeout: 45_000 });
   });
 });
 

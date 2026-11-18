@@ -3,7 +3,6 @@ import { SOLAR_SYSTEM_PLANETS } from "@/app/solar-system/data";
 import {
   bodyAppearance,
   describeBody,
-  DWARF_PLANETS,
   massEarth,
   moonsOf,
   parentHref,
@@ -11,8 +10,10 @@ import {
   radiusEarth,
   SOLAR_BODIES,
   solarBody,
+  SUN_BODIES,
   surfaceGravity,
 } from "@/app/solar-system/bodies";
+import { shapeGrid } from "@/app/solar-system/shapes";
 import { isSlug } from "@/shared/slug";
 
 const PLANETS = new Set(SOLAR_SYSTEM_PLANETS.map((planet) => planet.slug));
@@ -29,21 +30,27 @@ describe("the moons and dwarf planets", () => {
 
   it("orbit a planet, a dwarf planet or the Sun", () => {
     for (const body of SOLAR_BODIES) {
-      if (body.kind === "dwarf_planet") expect(body.parent, body.slug).toBe("sun");
+      if (body.kind !== "moon") expect(body.parent, body.slug).toBe("sun");
       else expect(PLANETS.has(body.parent) || solarBody(body.parent)?.kind === "dwarf_planet", body.slug).toBe(true);
     }
   });
 
   it("have plausible measurements", () => {
     for (const body of SOLAR_BODIES) {
-      expect(body.radiusKm, body.slug).toBeGreaterThan(150);
-      expect(body.density, body.slug).toBeGreaterThan(0.9);
-      expect(body.density, body.slug).toBeLessThan(4);
+      // Only the bodies drawn from a shape model may be too small to have pulled themselves round.
+      expect(body.radiusKm, body.slug).toBeGreaterThan(body.shape ? 3 : 150);
       expect(body.eccentricity, body.slug).toBeGreaterThanOrEqual(0);
       expect(body.eccentricity, body.slug).toBeLessThan(0.3);
       expect(body.summary.length, body.slug).toBeGreaterThan(40);
+      // Mass and density are known together or not at all.
+      expect(body.gm === null, body.slug).toBe(body.density === null);
+      const mass = massEarth(body);
+      if (mass === null || body.density === null) continue;
+      // Small irregular moons are rubble and ice full of holes, lighter than water.
+      expect(body.density, body.slug).toBeGreaterThan(body.shape ? 0.25 : 0.9);
+      expect(body.density, body.slug).toBeLessThan(4);
       // The density must agree with mass and radius, which checks the units of all three.
-      const derived = (massEarth(body) * 5.9722e27) / ((4 / 3) * Math.PI * (body.radiusKm * 1e5) ** 3);
+      const derived = (mass * 5.9722e27) / ((4 / 3) * Math.PI * (body.radiusKm * 1e5) ** 3);
       expect(derived / body.density, body.slug).toBeCloseTo(1, 1);
     }
   });
@@ -62,22 +69,37 @@ describe("the moons and dwarf planets", () => {
   it("lists the moons of a body from the inside out", () => {
     expect(moonsOf("jupiter").map((moon) => moon.slug)).toEqual(["io", "europa", "ganymede", "callisto"]);
     expect(moonsOf("saturn").map((moon) => moon.slug)).toEqual([
+      "pan",
+      "daphnis",
+      "atlas",
+      "prometheus",
+      "pandora",
+      "epimetheus",
+      "janus",
       "mimas",
       "enceladus",
+      "telesto",
+      "calypso",
       "tethys",
+      "helene",
       "dione",
       "rhea",
       "titan",
+      "hyperion",
       "iapetus",
+      "phoebe",
     ]);
+    expect(moonsOf("mars").map((moon) => moon.slug)).toEqual(["phobos", "deimos"]);
     expect(moonsOf("pluto").map((moon) => moon.slug)).toEqual(["charon"]);
     expect(moonsOf("mercury")).toEqual([]);
-    expect(DWARF_PLANETS.map((body) => body.slug)).toEqual(["ceres", "pluto"]);
+    expect(SOLAR_BODIES.filter((body) => body.kind === "dwarf_planet").map((body) => body.slug)).toEqual(["ceres", "pluto"]);
+    expect(SUN_BODIES.map((body) => body.slug)).toEqual(["vesta", "ceres", "pluto"]);
   });
 
   it("marks Triton as orbiting backwards and the Moon as measured against the ecliptic", () => {
     expect(solarBody("triton")!.inclinationDeg).toBeGreaterThan(90);
-    expect(SOLAR_BODIES.filter((body) => body.ecliptic).map((body) => body.slug)).toEqual(["moon"]);
+    // Phoebe circles so far out that the Sun's pull sets its plane rather than Saturn's equator.
+    expect(SOLAR_BODIES.filter((body) => body.ecliptic).map((body) => body.slug)).toEqual(["moon", "phoebe"]);
   });
 
   it("say what they orbit and link to it", () => {
@@ -87,6 +109,20 @@ describe("the moons and dwarf planets", () => {
     expect(parentHref(solarBody("charon")!)).toBe("/solar-system/pluto");
     expect(parentHref(solarBody("europa")!)).toBe("/planets/jupiter");
     expect(parentHref(solarBody("pluto")!)).toBe("/stars/sun");
+  });
+
+  it("draw the irregular ones from a shape model, and only Hyperion tumbles", () => {
+    expect(SOLAR_BODIES.filter((body) => body.shape)).toHaveLength(15);
+    expect(SOLAR_BODIES.filter((body) => !body.shape && body.radiusKm < 150)).toEqual([]);
+    for (const body of SOLAR_BODIES.filter((each) => each.shape)) {
+      // The published mean radius and the volume of the shape agree.
+      expect(shapeGrid(body.slug)!.meanRadiusKm / body.radiusKm, body.slug).toBeCloseTo(1, 1);
+    }
+    expect(SOLAR_BODIES.filter((body) => body.tumbling).map((body) => body.slug)).toEqual(["hyperion"]);
+    // Where no spacecraft measured a moon's pull, the page says the mass is unknown.
+    expect(massEarth(solarBody("daphnis")!)).toBeNull();
+    expect(surfaceGravity(solarBody("daphnis")!)).toBeNull();
+    expect(describeBody(solarBody("vesta")!)).toBe("Asteroid");
   });
 
   it("each show their own real map, without an atmosphere except for Titan", () => {

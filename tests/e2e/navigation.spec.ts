@@ -47,15 +47,39 @@ test.describe("header and footer", () => {
     await expect(page.getByRole("heading", { name: "Map of the Milky Way" })).toBeAttached();
   });
 
-  test("the footer links to the legal notice and the privacy policy", async ({ page }) => {
+  test("the footer links to the credits, the legal notice and the privacy policy", async ({ page }) => {
     await page.goto("/planets");
     const footer = page.getByRole("contentinfo");
+
+    await footer.getByRole("navigation", { name: "Legal" }).getByRole("link", { name: "Credits" }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "Credits" })).toBeVisible();
+    await page.goBack();
 
     await footer.getByRole("link", { name: /legal notice|impressum/i }).click();
     await expect(page.getByRole("heading", { level: 1, name: "Legal notice" })).toBeVisible();
 
     await page.getByRole("contentinfo").getByRole("link", { name: /privacy/i }).click();
     await expect(page.getByRole("heading", { level: 1, name: "Privacy policy" })).toBeVisible();
+  });
+});
+
+test.describe("credits", () => {
+  test("name the source and licence of every picture, map, shape and set of values", async ({ page }) => {
+    await page.goto("/credits");
+    const main = page.getByRole("main");
+    for (const source of [
+      "ESO/S. Brunier",
+      "NASA/JPL-Caltech/ESO/R. Hurt",
+      "Solar System Scope",
+      "NASA Exoplanet Archive",
+      "JPL Solar System Dynamics",
+      "C. M. Ernst et al. 2023, JHU/APL Small Body Mapping Tool",
+    ]) {
+      // A text name matches any link whose name contains it.
+      await expect(main.getByRole("link", { name: source }).first()).toBeVisible();
+    }
+    await expect(main.getByText(/^Titan:/)).toBeVisible();
+    await expect(main.getByRole("link", { name: "CC BY 4.0" }).first()).toHaveAttribute("href", "https://creativecommons.org/licenses/by/4.0/");
   });
 });
 
