@@ -9,8 +9,8 @@ import { SystemView, TextureStore } from "./systemView";
 /** Callbacks through which the map notifies the page. */
 export interface MapEvents {
   onSelect(index: number): void;
-  /** A planet was clicked, or the star was clicked (`null`) to show the whole system again. */
-  onFocus(planet: number | null): void;
+  /** A planet or one of its moons was clicked, or the star (`null`) to show the whole system again. */
+  onFocus(planet: number | null, moon: number | null): void;
   onEscape(): void;
   /** The camera started (true) or stopped (false) orbiting the galactic centre. */
   onOrbit?(orbiting: boolean): void;
@@ -166,13 +166,20 @@ export class MapEngine {
     this.galaxy.setOrbit(on, this.reducedMotion);
   }
 
-  /** Switches from the galaxy to a star system, optionally focused on `planet`. */
-  showSystem(payload: MapSystemPayload, planet: number | null, paused: boolean): void {
+  /** Switches from the galaxy to a star system, optionally focused on `planet` or one of its moons. */
+  showSystem(
+    payload: MapSystemPayload,
+    planet: number | null,
+    moon: number | null,
+    options: { paused: boolean; trueScale: boolean; moons: boolean },
+  ): void {
     this.swap(() => {
       this.system?.dispose();
       this.system = new SystemView(payload, this.textures, this.skyTexture);
-      this.system.paused = paused;
-      if (planet !== null) this.system.focus(planet);
+      this.system.paused = options.paused;
+      this.system.setTrueScale(options.trueScale, true);
+      this.system.setMoonsShown(options.moons);
+      if (planet !== null) this.system.focus(planet, moon);
       this.keys.clear();
       this.setCursor("grab");
     });
@@ -186,12 +193,21 @@ export class MapEngine {
     });
   }
 
-  focusPlanet(planet: number | null): void {
-    this.system?.focus(planet);
+  focusPlanet(planet: number | null, moon: number | null = null): void {
+    this.system?.focus(planet, moon);
   }
 
   setPaused(paused: boolean): void {
     if (this.system) this.system.paused = paused;
+  }
+
+  /** Switches the system between the compressed and the true scale; the change glides unless motion is reduced. */
+  setTrueScale(on: boolean): void {
+    this.system?.setTrueScale(on, this.reducedMotion);
+  }
+
+  setMoonsShown(shown: boolean): void {
+    this.system?.setMoonsShown(shown);
   }
 
   dispose(): void {
@@ -227,6 +243,7 @@ export class MapEngine {
     if (this.system) {
       this.system.update(dt, this.seconds, this.viewport);
       this.systemGate.render(this.renderer, this.system.scene, this.system.camera);
+      this.system.renderHaze(this.renderer, this.viewport);
       this.system.drawLabels(this.labels, this.viewport);
     } else {
       this.galaxy.update(dt, this.keys, this.viewport);
@@ -369,9 +386,10 @@ export class MapEngine {
     if (this.system) {
       const hit = this.system.pick(x, y, this.viewport);
       if (!hit) return;
-      const planet = hit.kind === "planet" ? hit.index : null;
-      this.system.focus(planet);
-      this.events.onFocus(planet);
+      const planet = hit.kind === "planet" ? hit.index : hit.kind === "moon" ? hit.planet : null;
+      const moon = hit.kind === "moon" ? hit.moon : null;
+      this.system.focus(planet, moon);
+      this.events.onFocus(planet, moon);
       return;
     }
     const star = this.galaxy.pick(x, y, this.viewport);

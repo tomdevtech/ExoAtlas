@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { search, type SearchHit } from "@/app/search/query";
 
 const names = (hits: SearchHit[]) =>
-  hits.map((hit) => (hit.kind === "planet" ? hit.planet.name : hit.star.name));
+  hits.map((hit) => (hit.kind === "planet" ? hit.planet.name : hit.kind === "star" ? hit.star.name : hit.body.name));
 
 describe("search", () => {
   it("puts the exact name first", async () => {
@@ -54,6 +54,14 @@ describe("search", () => {
     }
   });
 
+  it("finds the moons and dwarf planets, which live in code, among the planets and stars", async () => {
+    const { hits } = await search("ganymede", 10);
+    expect(hits[0]).toMatchObject({ kind: "body", body: { slug: "ganymede" } });
+    // A two-letter name still comes first when it matches exactly.
+    expect(names((await search("io", 10)).hits)[0]).toBe("Io");
+    expect(names((await search("pluto", 10)).hits)).toContain("Pluto");
+  });
+
   it("also lists planets that NASA withdrew, marked as removed", async () => {
     const { hits } = await search("retracted 1 b", 10);
     const planet = hits.find((hit) => hit.kind === "planet");
@@ -95,9 +103,7 @@ describe("search with hostile input", () => {
     expect(result.hits.length).toBeLessThanOrEqual(10);
     // Anything beyond the first 80 characters must be ignored.
     const tail = await search(`${"z".repeat(80)}kepler-22 b`, 10);
-    expect(tail.hits.map((hit) => (hit.kind === "planet" ? hit.planet.name : hit.star.name))).not.toContain(
-      "Kepler-22 b",
-    );
+    expect(names(tail.hits)).not.toContain("Kepler-22 b");
   });
 
   it("still finds the planet when junk surrounds the name", async () => {

@@ -22,6 +22,8 @@
 
 # misc
 .DS_Store
+# downloads that `npm run textures` keeps for its next run
+/.cache/
 *.pem
 
 # debug

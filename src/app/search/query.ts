@@ -1,6 +1,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import { measuredDensity, type PlanetSummary } from "@/app/planets/queries";
 import type { StarSummary } from "@/app/stars/StarCard";
+import { SOLAR_BODIES, type SolarBody } from "@/app/solar-system/bodies";
 import { getDb } from "@/db/client";
 import { searchKey } from "@/shared/slug";
 
@@ -13,7 +14,8 @@ const SIMILARITY_THRESHOLD = 0.45;
 
 export type SearchHit =
   | { kind: "planet"; planet: PlanetSummary }
-  | { kind: "star"; star: StarSummary };
+  | { kind: "star"; star: StarSummary }
+  | { kind: "body"; body: SolarBody };
 
 export interface SearchResult {
   hits: SearchHit[];
@@ -38,7 +40,12 @@ type Row = {
   star_name: string;
   star_teff_k: number | null;
   planet_count: number | null;
+  rank: number;
+  name_length: number;
 };
+
+/** A hit with the sort keys of `hitsQuery`, so that hits from the database and from code can be merged. */
+type Ranked = { hit: SearchHit; rank: number; length: number; name: string };
 
 /** Builds one query over planets and stars. `matches` selects the hits and `rank` orders them, lowest first. */
 function hitsQuery(
@@ -103,7 +110,7 @@ function toHit(row: Row): SearchHit {
 }
 
 /**
- * Searches planets and stars by name.
+ * Searches planets, stars, moons and dwarf planets by name.
  *
  * The query is reduced to the same search key as the stored names, so "Kepler-22 b" and "kepler 22b" both
  * become `kepler22b`. Names containing the key rank in this order: the exact name, names starting with the key
@@ -111,6 +118,23 @@ function toHit(row: Row): SearchHit {
  * shorter names first. Only when no name contains the key does the search fall back to similar names, which
  * catches typos such as "keplr 22".
  */
+/**
+ * Ranks the moons and dwarf planets, which live in code rather than in the database, by the same rules
+ * as the direct matches of `search`. Returns only the bodies whose name contains the key.
+ */
+function matchBodies(key: string, wholeToken: RegExp): Ranked[] {
+  return SOLAR_BODIES.flatMap((body) => {
+    const name = searchKey(body.name);
+    if (!name.includes(key)) return [];
+    const rank = name === key ? 0 : wholeToken.test(name) ? 1 : name.startsWith(key) ? 2 : 3;
+    return [{ hit: { kind: "body", body } as const, rank, length: name.length, name: body.name }];
+  });
+}
+
+function byRank(a: Ranked, b: Ranked): number {
+  return a.rank - b.rank || a.length - b.length || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+}
+
 export async function search(query: string, limit: number): Promise<SearchResult> {
   const key = searchKey(query.slice(0, MAX_QUERY_LENGTH));
   if (key.length < MIN_QUERY_LENGTH) {
@@ -136,11 +160,15 @@ export async function search(query: string, limit: number): Promise<SearchResult
       fetchLimit,
     ),
   );
-  if (direct.length > 0) {
+  const merged = [
+    ...direct.map((row) => ({ hit: toHit(row), rank: Number(row.rank), length: Number(row.name_length), name: row.name })),
+    ...matchBodies(key, new RegExp(wholeToken)),
+  ].sort(byRank);
+  if (merged.length > 0) {
     return {
-      hits: direct.slice(0, limit).map(toHit),
+      hits: merged.slice(0, limit).map((entry) => entry.hit),
       similarOnly: false,
-      hasMore: direct.length > limit,
+      hasMore: merged.length > limit,
     };
   }
 

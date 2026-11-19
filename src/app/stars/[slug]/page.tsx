@@ -3,6 +3,8 @@ import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import { Suspense } from "react";
 import { PlanetCard } from "@/app/planets/PlanetCard";
+import { SUN_BODIES } from "@/app/solar-system/bodies";
+import { BodyCard } from "@/app/solar-system/BodyCard";
 import { getPlanetsOfStar } from "@/app/planets/queries";
 import { formatNumber, parsecToLightYears } from "@/shared/format";
 import { Fact, Facts, PageSkeleton, Section } from "@/shared/ui";
@@ -119,6 +121,18 @@ async function StarContent({ params }: { params: Props["params"] }) {
           </>
         )}
       </Section>
+
+      {isSun && (
+        <Section title="Dwarf planets and Vesta">
+          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {SUN_BODIES.map((body) => (
+              <li key={body.slug}>
+                <BodyCard body={body} showParent />
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
 
       <Section title="Star">
         <Facts>

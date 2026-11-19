@@ -1,0 +1,105 @@
+name: Deploy
+
+# Deploys a commit to Vercel only once every other check of it has passed: CI, CodeQL and its code
+# scanning. Vercel's own Git deployments are switched off in vercel.json, because they start at once
+# and do not wait for the checks. A push to main becomes production, a pull request a preview.
+# deploy-check.yml then smoke-tests the deployment and rolls production back if it fails.
+# Setup is in docs/DEPLOYMENT.md: the secret VERCEL_TOKEN and the variables VERCEL_ORG_ID and
+# VERCEL_PROJECT_ID, which the rollback needs as well.
+#
+# workflow_run only starts this file as it is on main, so a change to it takes effect after merging.
+# It holds the Vercel token, so it deploys only branches of this repository, never those of forks,
+# and it does not run the commit's code: the Vercel CLI uploads it and Vercel builds it.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: read
+  checks: read
+  actions: read
+
+# One deployment per branch at a time; a newer commit waits for the older one instead of breaking it off.
+concurrency:
+  group: deploy-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success'
+      && github.event.workflow_run.head_repository.full_name == github.repository }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+      environment: ${{ steps.deploy.outputs.environment }}
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha }}
+      BRANCH: ${{ github.event.workflow_run.head_branch }}
+      EVENT: ${{ github.event.workflow_run.event }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      # CI has passed, but CodeQL runs in a workflow of its own and may still be busy. Vercel's checks
+      # and those of this run are left out; any other check that fails stops the deployment.
+      - name: Wait for every other check of the commit
+        run: |
+          own=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .check_suite_id)
+          for attempt in $(seq 1 60); do
+            checks=$(gh api --paginate "repos/$GITHUB_REPOSITORY/commits/$SHA/check-runs?per_page=100" \
+              --jq ".check_runs[] | select(.check_suite.id != $own) | select(.name | startswith(\"Vercel\") | not) | [.name, .status, (.conclusion // \"-\")] | @tsv")
+            if printf '%s\n' "$checks" | awk -F'\t' '$2 == "completed" && $3 != "success" && $3 != "neutral" && $3 != "skipped"' | grep -q .; then
+              printf '%s\n' "$checks"
+              echo "::error::A check of $SHA failed, so it is not deployed."
+              exit 1
+            fi
+            if ! printf '%s\n' "$checks" | awk -F'\t' '$2 != "completed"' | grep -q .; then
+              printf '%s\n' "$checks"
+              echo "Every check of $SHA has passed."
+              exit 0
+            fi
+            sleep 20
+          done
+          printf '%s\n' "$checks"
+          echo "::error::The checks of $SHA did not finish within 20 minutes."
+          exit 1
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - name: Deploy to Vercel
+        id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "::error::The secret VERCEL_TOKEN is missing (docs/DEPLOYMENT.md)."
+            exit 1
+          fi
+          if [ "$EVENT" = "push" ] && [ "$BRANCH" = "main" ]; then
+            environment=production
+            set -- --prod
+          else
+            environment=preview
+            set --
+          fi
+          # The CLI starts outside the checkout, so no file of the repository (an .npmrc, say) configures it.
+          cd "$RUNNER_TEMP"
+          url=$(npx -y vercel@65.9.0 deploy "$GITHUB_WORKSPACE" "$@" --yes --token "$VERCEL_TOKEN")
+          echo "Deployed $SHA to $url ($environment)"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "environment=$environment" >> "$GITHUB_OUTPUT"
+
+  check:
+    needs: deploy
+    uses: ./.github/workflows/deploy-check.yml
+    with:
+      url: ${{ needs.deploy.outputs.url }}
+      environment: ${{ needs.deploy.outputs.environment }}
+      sha: ${{ github.event.workflow_run.head_sha }}
+      rollback: ${{ needs.deploy.outputs.environment == 'production' }}
+    secrets: inherit

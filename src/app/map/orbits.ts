@@ -1,8 +1,15 @@
 /**
- * Lays out orbits for the system view. Real proportions are unreadable (Neptune is
- * 80 times as far out as Mercury), so the order, shape and relative speed of the
- * orbits are kept while distances are compressed and planets are enlarged.
+ * Lays out orbits for the system view, in two scales. Real proportions are hard to read (Neptune is 80
+ * times as far out as Mercury, and next to their orbits the planets are dust), so the compressed scale
+ * keeps the order, shape and relative speed of the orbits while it squeezes distances and enlarges the
+ * planets. The true scale keeps every distance and size as it is, with TRUE_AU view units to the AU.
  */
+
+/** View units per AU in the true scale. One keeps Earth's radius (4.3e-5) far above the precision of 32-bit floats. */
+export const TRUE_AU = 1;
+const KM_PER_AU = 149597870.7;
+const EARTH_RADIUS_KM = 6371;
+const SUN_RADIUS_KM = 695700;
 
 export interface OrbitInput {
   orbitalPeriodDays: number | null;
@@ -25,6 +32,20 @@ export interface OrbitLayout {
   phase: number;
   /** The planet radius in view units. */
   size: number;
+  /** The real semi-major axis in AU, measured or derived from the period. */
+  axisAu: number;
+  /** The planet radius in view units in the true scale. */
+  trueSize: number;
+}
+
+/** Returns the star radius in view units in the true scale. A missing radius is treated as the Sun's. */
+export function trueStarSize(radiusSun: number | null): number {
+  return (((radiusSun ?? 1) * SUN_RADIUS_KM) / KM_PER_AU) * TRUE_AU;
+}
+
+/** Returns the planet radius in view units in the true scale. A missing radius is treated as two Earth radii. */
+export function truePlanetSize(radiusEarth: number | null): number {
+  return (((radiusEarth ?? 2) * EARTH_RADIUS_KM) / KM_PER_AU) * TRUE_AU;
 }
 
 /**
@@ -51,6 +72,22 @@ export function axisFromPeriod(periodDays: number, massSun: number): number {
 /** Returns the period in days for a semi-major axis in AU (Kepler's third law). */
 export function periodFromAxis(axisAu: number, massSun: number): number {
   return 365.25 * Math.sqrt(axisAu ** 3 / massSun);
+}
+
+/**
+ * Returns the seconds an orbit of `periodDays` takes in the view. Real periods range from hours to
+ * centuries, so they are compressed; longer periods still take longer.
+ */
+export function viewPeriod(periodDays: number): number {
+  return Math.min(Math.max(6 * (periodDays / 10) ** 0.4, 3), 240);
+}
+
+/**
+ * Returns the seconds a moon's orbit of `periodDays` takes in the view. Moons run on their own, gentler
+ * compression, so that the innermost do not race and the far captured ones still move.
+ */
+export function moonViewPeriod(periodDays: number): number {
+  return Math.min(Math.max(8 * periodDays ** 0.4, 6), 120);
 }
 
 /** Solves Kepler's equation M = E − e·sin E for the eccentric anomaly E with Newton's method. */
@@ -144,15 +181,134 @@ export function layoutOrbits(
       semiMajor,
       eccentricity,
       periapsis: scatter(seed, entry.index * 2) * 2 * Math.PI,
-      period: Math.min(Math.max(6 * (entry.period / 10) ** 0.4, 3), 240),
+      period: viewPeriod(entry.period),
       phase: scatter(seed, entry.index * 2 + 1) * 2 * Math.PI,
       size,
+      axisAu: entry.axis,
+      trueSize: truePlanetSize(entry.planet.radiusEarth),
     });
     previousAxis = entry.axis;
     previousRadius = semiMajor;
     previousSize = size;
   }
   return layouts;
+}
+
+/**
+ * Returns the view radius at a real distance from the star, following the same compression as the orbits:
+ * between two planets it is interpolated by the logarithm of the distance, and beyond the outermost one
+ * each doubling adds 1.6 units, as in `layoutOrbits`. Inside the innermost orbit it is proportional.
+ * `layouts` must be sorted from the inside out, as `layoutOrbits` returns them.
+ */
+export function viewRadius(layouts: OrbitLayout[], au: number): number {
+  if (layouts.length === 0) return au;
+  const first = layouts[0];
+  if (au <= first.axisAu) return (first.semiMajor * au) / first.axisAu;
+  for (let i = 1; i < layouts.length; i++) {
+    const inner = layouts[i - 1];
+    const outer = layouts[i];
+    if (au <= outer.axisAu) {
+      const share = Math.log(au / inner.axisAu) / Math.log(outer.axisAu / inner.axisAu);
+      return inner.semiMajor + (outer.semiMajor - inner.semiMajor) * (Number.isFinite(share) ? share : 1);
+    }
+  }
+  const last = layouts[layouts.length - 1];
+  return last.semiMajor + 1.6 * Math.log2(au / last.axisAu);
+}
+
+export interface MoonInput {
+  semiMajorAxisKm: number;
+  orbitalPeriodDays: number;
+  eccentricity: number;
+  radiusKm: number;
+}
+
+export interface MoonLayout {
+  /** The index of the moon in the input. */
+  index: number;
+  /** The semi-major axis in radii of the planet, as it really is. */
+  distance: number;
+  /** The moon's radius in radii of the planet, as it really is. */
+  size: number;
+  /** The semi-major axis in radii of the planet in the compressed scale. */
+  compressedDistance: number;
+  /** The moon's radius in radii of the planet in the compressed scale. */
+  compressedSize: number;
+  eccentricity: number;
+  periapsis: number;
+  /** The seconds one orbit takes in the view. */
+  period: number;
+  phase: number;
+}
+
+/** Returns a moon's radius in view units of the compressed scale, with a smaller floor than planets have. */
+export function moonSize(radiusKm: number): number {
+  return Math.min(Math.max(0.12 * (radiusKm / EARTH_RADIUS_KM) ** 0.45, 0.02), 0.2);
+}
+
+/**
+ * Lays out the large moons of a planet, in both scales and measured in radii of the planet. The true scale
+ * keeps their real distances and sizes: Callisto 27 Jupiter radii out, the Moon 60 Earth radii. In the
+ * compressed scale the planets are enlarged a thousandfold while their orbits are squeezed, so moon systems
+ * at their real distances would reach past the star; there the moons start just outside the planet and its
+ * rings (`planet.reach`, in radii) and each doubling of the real distance adds one radius, much as for the
+ * planets. Either way they keep their order, and their periods are compressed alike.
+ */
+export function layoutMoons(
+  moons: MoonInput[],
+  planet: { radiusKm: number; size: number; reach: number },
+  seed = 1,
+): MoonLayout[] {
+  const order = moons.map((moon, index) => ({ moon, index })).sort((a, b) => a.moon.semiMajorAxisKm - b.moon.semiMajorAxisKm);
+  const layouts: MoonLayout[] = [];
+  let previous: { axisKm: number; distance: number; size: number } | null = null;
+  for (const { moon, index } of order) {
+    const size = moonSize(moon.radiusKm) / planet.size;
+    let distance: number;
+    if (!previous) {
+      // How far beyond the planet and its rings the moon really is, in doublings.
+      const beyond = Math.max(0, Math.log2(moon.semiMajorAxisKm / (planet.radiusKm * planet.reach)));
+      distance = planet.reach + 0.5 + 0.35 * beyond + size;
+    } else {
+      const wanted = Math.log2(moon.semiMajorAxisKm / previous.axisKm);
+      distance = previous.distance + Math.max(wanted, previous.size + size + 0.04 / planet.size);
+    }
+    layouts.push({
+      index,
+      distance: moon.semiMajorAxisKm / planet.radiusKm,
+      size: moon.radiusKm / planet.radiusKm,
+      compressedDistance: distance,
+      compressedSize: size,
+      eccentricity: Math.min(Math.max(moon.eccentricity, 0), 0.9),
+      periapsis: scatter(seed, index * 2) * 2 * Math.PI,
+      period: moonViewPeriod(moon.orbitalPeriodDays),
+      phase: scatter(seed, index * 2 + 1) * 2 * Math.PI,
+    });
+    previous = { axisKm: moon.semiMajorAxisKm, distance, size };
+  }
+  return layouts;
+}
+
+/**
+ * Returns the compressed distance, in radii of the planet, of a small moon that is `distance` radii out,
+ * so that the small moons squeeze the way the large ones do: between two large moons by the logarithm of
+ * the distance, inside the innermost in proportion, and beyond the outermost one radius per doubling.
+ * `layouts` must be sorted from the inside out, as `layoutMoons` returns them.
+ */
+export function compressedMoonDistance(layouts: MoonLayout[], distance: number): number {
+  if (layouts.length === 0) return distance;
+  const first = layouts[0];
+  if (distance <= first.distance) return (first.compressedDistance * distance) / first.distance;
+  for (let i = 1; i < layouts.length; i++) {
+    const inner = layouts[i - 1];
+    const outer = layouts[i];
+    if (distance <= outer.distance) {
+      const share = Math.log(distance / inner.distance) / Math.log(outer.distance / inner.distance);
+      return inner.compressedDistance + (outer.compressedDistance - inner.compressedDistance) * (Number.isFinite(share) ? share : 1);
+    }
+  }
+  const last = layouts[layouts.length - 1];
+  return last.compressedDistance + Math.log2(distance / last.distance);
 }
 
 function positive(value: number | null): number | null {

@@ -97,7 +97,7 @@ flowchart LR
     Site -->|role exofinder_web| Read[read the catalogue]:::ro
     Build[Production build]:::job -->|owner| Schema[change the tables]:::rw
     Jobs[Sync, seed, backup<br>GitHub Actions]:::job -->|owner| Data[write and read all data]:::rw
-    Deploy[Smoke test, rollback<br>GitHub Actions]:::job -->|Vercel token| Live[choose the live deployment]:::rw
+    Deploy[Deployment, smoke test,<br>rollback, GitHub Actions]:::job -->|Vercel token| Live[deploy, choose the live deployment]:::rw
 
     classDef who fill:#f3f4f6,stroke:#4b5563,color:#111827
     classDef app fill:#f3f4f6,stroke:#4b5563,color:#111827
@@ -111,7 +111,7 @@ flowchart LR
 | The website (Vercel Functions) | `DATABASE_URL_READONLY`: role `exofinder_web`, through the pooler | read, every query cancelled after 5 seconds |
 | The production build | `DATABASE_URL_UNPOOLED`: the owner, direct | change the tables (migrations) |
 | Sync, seed and backup (GitHub Actions) | secret `PRODUCTION_DATABASE_URL`: the owner, direct | write and read all data |
-| Smoke test and rollback (GitHub Actions) | `VERCEL_TOKEN`, `VERCEL_AUTOMATION_BYPASS_SECRET` | open protected deployments, choose which deployment is live |
+| Deployment, smoke test and rollback (GitHub Actions) | `VERCEL_TOKEN`, `VERCEL_AUTOMATION_BYPASS_SECRET` | deploy a checked commit, open protected deployments, choose which deployment is live |
 | Health check, TLS check (GitHub Actions), UptimeRobot | nothing but HTTPS | read pages, like a visitor |
 | Visitors | nothing but HTTPS | read pages |
 
@@ -121,7 +121,8 @@ flowchart LR
 | --- | --- | --- |
 | [ci.yml](../.github/workflows/ci.yml) | every pull request and push to `main` | type check, lint, unit, database and browser tests, `npm audit`, build |
 | [codeql.yml](../.github/workflows/codeql.yml) | every pull request and push to `main`, Mondays | scans the code for security problems |
-| [deploy-check.yml](../.github/workflows/deploy-check.yml) | after every Vercel deployment | smoke test; puts the previous production deployment back if production fails it |
+| [deploy.yml](../.github/workflows/deploy.yml) | when CI has passed for a pull request or a push to `main` | waits for every other check, CodeQL included, then deploys: a preview, or production from `main` |
+| [deploy-check.yml](../.github/workflows/deploy-check.yml) | after every deployment, called by deploy.yml | smoke test; puts the previous production deployment back if production fails it |
 | [health.yml](../.github/workflows/health.yml) | hourly | asks `/health` on the live site |
 | [sync.yml](../.github/workflows/sync.yml) | daily, 03:17 UTC | compares the catalogue with NASA and writes the differences |
 | [backup.yml](../.github/workflows/backup.yml) | Sundays, 04:41 UTC | dumps the database and keeps the dump for 90 days |
@@ -170,6 +171,9 @@ scripts/
   rollback-production.ts  puts the previous production deployment back live
   check-tls.sh            checks protocols, certificates, headers and redirects of the live site
   fetch-textures.ts       downloads and scales the images in public/textures
+  moon-maps.ts            turns the published mosaics of the moons into textures: centre, colour, brightness, gaps
+  fetch-shapes.ts         downloads the shape models of irregular bodies and writes their radius grids
+  shapes.ts               reads ZIP and OBJ files and samples a shape model into a radius grid
   generate-presets.ts     simulates the base maps of the exoplanets and writes presets.json
   preview-presets.ts      writes the three channels of a base map side by side, to look at them
   planet-sheet.ts         draws a spread of planets from the catalogue onto one picture
@@ -179,7 +183,8 @@ docs/
   DEPLOYMENT.md           hosting, setup step by step, operations
   wiki/                   the user guide as GitHub Wiki pages, with its screenshots in images/
 drizzle/                  SQL migrations: one generated from the schema, two written by hand
-public/textures/          surface maps of the solar system, base maps of the exoplanets, panorama of the sky
+public/textures/          surface maps of the solar system and its moons, base maps of the exoplanets, panorama of the sky
+public/shapes/            radius grids of the irregular bodies: Vesta, Phobos, Deimos, Hyperion
 tests/
   unit/                   unit tests, at the same paths as the code in src/
   scripts/                tests that run a script of scripts/ from start to end
@@ -187,7 +192,7 @@ tests/
   e2e/                    browser tests (Playwright): flows, what the shaders draw, security, accessibility
   smoke/                  the smoke test that runs against every deployment
   support/                test catalogue, test databases, sample rows from NASA
-vercel.json               build command for Vercel
+vercel.json               build command for Vercel; its own Git deployments off (deploy.yml deploys)
 src/
   proxy.ts                answers broken percent-encoding with 400
   db/
@@ -213,11 +218,12 @@ src/
     planets/              /planets (the list), /planets/[slug], classification, still images
       globe/              the moving image and the 3D model (WebGL)
     stars/                /stars/[slug], sky coordinates
-    map/                  /map, /map/stars, /map/systems/[slug], galaxy model, orbits
+    map/                  /map, /map/stars, /map/systems/[slug], galaxy model, orbits, belts
       scene/              everything that draws the map (three.js)
     sync/                 the comparison with NASA
-    solar-system/         the Sun and its eight planets
+    solar-system/         the Sun and its eight planets, /solar-system/[slug]: the large moons, Ceres, Pluto, Vesta; all small moons
     legal/                /legal/notice, /legal/privacy and who runs this copy
+    credits/              /credits: the source and licence of every picture, map, shape and set of values
     health/               /health: is the site up and does it reach its database
 ```
 
@@ -256,6 +262,9 @@ flowchart TD
     Sync --> Planets
     Sync --> Stars
     Sol --> Planets
+    Search --> Sol
+    Stars --> Sol
+    Map --> Sol
     Map --> Planets
     Planets --> Shared
     Planets --> DB
@@ -263,7 +272,7 @@ flowchart TD
     Stars --> DB
 ```
 
-Every feature may use `shared` and `db`; the diagram only draws those arrows for `planets` and `stars`. `planets` is the base feature and imports no other feature. Nothing imports `sync` or `solar-system` except the two scripts. `map` takes the look of the planets from `planets` and is imported by nobody; the star and planet pages only link to it.
+Every feature may use `shared` and `db`; the diagram only draws those arrows for `planets` and `stars`. `planets` is the base feature and imports no other feature, with one exception: the page of a solar-system planet lists its moons, so [planets/[slug]/page.tsx](../src/app/planets/[slug]/page.tsx) imports the list and its card from `solar-system`. Only that page does, so no module imports itself in a circle. `solar-system` builds on `planets` for the look of its bodies; `search`, `stars` and `map` take the moons and dwarf planets from it. Nothing imports `sync` except its script. `map` is imported by nobody; the pages only link to it.
 
 ### Styling
 
@@ -357,6 +366,12 @@ What the plan takes care of:
 The `sync_runs` row is written outside the transaction, so a failed run still leaves a record with its error message.
 
 `npm run seed:sol` is the small sibling: [seed.ts](../src/app/solar-system/seed.ts) writes the Sun and the eight planets from [data.ts](../src/app/solar-system/data.ts) as `sol` rows. It can run any number of times.
+
+The large moons of the planets, the dwarf planets Ceres and Pluto (with Charon) and the asteroid Vesta are not in the database. They live in [bodies.ts](../src/app/solar-system/bodies.ts), with their values from JPL Solar System Dynamics, because nothing ever syncs them and they belong to no star's list of planets: the numbers on the start page, the list of all planets and the filters stay about planets. Their pages, `/solar-system/[slug]`, are built ahead of time from that list. Masses are stored as G·M, which spacecraft measure far more precisely than the mass itself, and converted relative to Earth for the page. A test checks that each density agrees with its mass and radius, which caught a value in JPL's table that does not (Charon's; the page uses the one from New Horizons).
+
+All the other moons of the planets and of Pluto, 439 of them, are in [small-moons.json](../src/app/solar-system/small-moons.json) ([smallMoons.ts](../src/app/solar-system/smallMoons.ts)): their orbits from JPL's mean elements, their discovery from JPL, and their size where JPL measured it, otherwise estimated from their brightness or taken from Scott Sheppard's tables and marked as estimated. With the large moons they number what JPL lists for every planet, which a test checks. Most were found as faint points by telescopes on Earth and have no page; the page of their planet lists them all in a table, and the map shows them as points.
+
+**Irregular bodies.** Vesta, Phobos, Deimos, the tumbling Hyperion, Phoebe and ten small moons near Saturn's rings (Pan, Daphnis, Atlas, Prometheus, Pandora, Epimetheus, Janus, Telesto, Calypso, Helene) are far from round. `npm run shapes` ([fetch-shapes.ts](../scripts/fetch-shapes.ts)) downloads their published shape models (from the PDS Small Bodies Node and the APL's Small Body Mapping Tool) and samples each into a radius grid ([shapes.ts](../scripts/shapes.ts)): from the centre, a ray in every direction of a raster of 256 longitudes and 129 latitudes finds the outermost surface. That keeps the shape at 66 KB instead of several megabytes, and its directions are those of the map, so the map needs no texture coordinates. The volume of each grid matches the published mean radius, which a test checks. [globe/shape.ts](../src/app/planets/globe/shape.ts) turns a grid into a surface with smooth normals and lights it with a mix of the Lommel–Seeliger law and Lambert's, as dusty, airless bodies scatter light. The pages draw it with three.js, which only loads there ([ShapeViewer.tsx](../src/app/solar-system/ShapeViewer.tsx)); the map draws it like any other globe. No spacecraft mapped all of Deimos, Hyperion or the small moons near the rings, so they show their shape in their colour, and their pages say so; Phoebe has a Cassini map, cut out of its published frame (`crop` in maps.ts). Where no spacecraft measured a small moon's pull (Daphnis, Telesto, Calypso), its mass, density and gravity stay unknown on the page rather than guessed.
 
 ### Values derived on the way in
 
@@ -459,7 +474,7 @@ flowchart LR
 
 What nobody has measured is drawn from the slug of the planet, so it is the same every time and different from planet to planet: which base maps it gets and how they lie on the ball, a small shift of all its colours, the tilt of its axis, and whether it has rings, a moon, polar lights or lightning. Rings and moons only go to planets far enough from their star to keep them. These parts are invention and say so on the page of the planet ("Nobody has seen this planet up close").
 
-**Base maps instead of photographs.** Exoplanets are drawn from fifteen simulated base maps ("presets") in `public/textures/presets`, made by `npm run presets` ([generate-presets.ts](../scripts/generate-presets.ts)). A preset holds no colours, only what shaped a surface. For rocky planets that is the height after erosion, the places where water gathers, and the craters. For gas planets it is the belts, fine streaks and storms: coloured gas is carried along by jets, a few lasting whirls and turbulence that changes while it flows, which folds the belts into festoons instead of winding them into neat spirals. The shader turns a preset into a planet with the values of that planet: sea level, ice, lava, colours and climate zones. A rocky planet mixes two presets in large patches, each turned any way in space, so hardly two planets share a face; a gas planet turns its preset about the axis only, as its belts have to follow the latitudes. What the app has to know about a preset is in [globe/presets.json](../src/app/planets/globe/presets.json), written by the same script: the heights below which each share of a rocky surface lies, so a sea can cover a chosen share of it, and the winds each banded preset was simulated with, which the shader lets blow on so the clouds drift the way they were drawn out. The planets of the solar system name real maps in `public/textures/planets` instead. Browsers may keep the files in `public/textures` for a day ([next.config.ts](../next.config.ts)), so they are not asked for again on every page.
+**Base maps instead of photographs.** Exoplanets are drawn from fifteen simulated base maps ("presets") in `public/textures/presets`, made by `npm run presets` ([generate-presets.ts](../scripts/generate-presets.ts)). A preset holds no colours, only what shaped a surface. For rocky planets that is the height after erosion, the places where water gathers, and the craters. For gas planets it is the belts, fine streaks and storms: coloured gas is carried along by jets, a few lasting whirls and turbulence that changes while it flows, which folds the belts into festoons instead of winding them into neat spirals. The shader turns a preset into a planet with the values of that planet: sea level, ice, lava, colours and climate zones. A rocky planet mixes two presets in large patches, each turned any way in space, so hardly two planets share a face; a gas planet turns its preset about the axis only, as its belts have to follow the latitudes. What the app has to know about a preset is in [globe/presets.json](../src/app/planets/globe/presets.json), written by the same script: the heights below which each share of a rocky surface lies, so a sea can cover a chosen share of it, and the winds each banded preset was simulated with, which the shader lets blow on so the clouds drift the way they were drawn out. The planets of the solar system name real maps in `public/textures/planets` instead. Browsers may keep the files in `public/textures` and `public/shapes` for a day ([next.config.ts](../next.config.ts)), so they are not asked for again on every page.
 
 **The still image** ([PlanetImage.tsx](../src/app/planets/PlanetImage.tsx)) is SVG and part of the HTML. It shows at once and stays where WebGL is missing.
 
@@ -519,7 +534,7 @@ sequenceDiagram
 
 `search` in [query.ts](../src/app/search/query.ts) works in two steps:
 
-1. **Names that contain the query.** The query is reduced to the same form as `search_name`, so `kepler 22b`, `Kepler-22B` and `KEPLER22B` all become `kepler22b`. One SQL statement looks through planets and stars together. Order: the exact name, then names that start with the query as a whole word or number (`Kepler-22 b` for `kepler 22`), then other names that start with it (`Kepler-220`), then the rest. Shorter names come first.
+1. **Names that contain the query.** The query is reduced to the same form as `search_name`, so `kepler 22b`, `Kepler-22B` and `KEPLER22B` all become `kepler22b`. One SQL statement looks through planets and stars together. Order: the exact name, then names that start with the query as a whole word or number (`Kepler-22 b` for `kepler 22`), then other names that start with it (`Kepler-220`), then the rest. Shorter names come first. The moons and dwarf planets, which live in code, are ranked by the same rules in TypeScript (`matchBodies`) and merged into the rows from the database, so `io` finds Io first. They do not take part in step 2.
 2. **Similar names, only if step 1 found nothing.** Trigram similarity from `pg_trgm` catches typos: `proxma` finds Proxima Cen. The result page says that these are only similar names.
 
 Queries shorter than two characters return nothing, and queries are cut off at 80 characters.
@@ -591,7 +606,7 @@ sequenceDiagram
 
 **Two halves with a narrow border.** [MilkyWayMap.tsx](../src/app/map/MilkyWayMap.tsx) is React: it fetches the data, holds what is selected and draws the panels, the star finder and the buttons. [scene/engine.ts](../src/app/map/scene/engine.ts) is plain three.js: it owns the canvas, the drawing loop and mouse, touch and keyboard. React tells the engine what to show (`setStars`, `select`, `flyToStar`, `flyHome`, `flyToOverview`, `showSystem`, `showGalaxy`, `focusPlanet`, `setPaused`), and the engine reports back through three callbacks (`onSelect`, `onFocus`, `onEscape`). Nothing that changes 60 times per second is React state.
 
-**The address is the state.** `/map?star=trappist-1` selects a star, `/map?system=sun&planet=saturn` opens a system and follows a planet, `/map?view=galaxy` shows the whole galaxy. The map writes the current place back into the address, so every view can be shared, and the star and planet pages link straight to their place on the map.
+**The address is the state.** `/map?star=trappist-1` selects a star, `/map?system=sun&planet=saturn` opens a system and follows a planet, `/map?system=sun&planet=saturn&moon=titan` follows one of its moons, `&scale=true` shows the true scale, `/map?view=galaxy` shows the whole galaxy. The map writes the current place back into the address, so every view can be shared, and the star and planet pages link straight to their place on the map.
 
 **Two scenes.** From the whole galaxy down to a planet is a factor of a trillion, too much for one scene. So there are two, and the picture fades through black between them:
 
@@ -616,7 +631,15 @@ Adding up the light along every line of sight costs time for each pixel. The gal
 
 **What the system view draws.** [orbits.ts](../src/app/map/orbits.ts) lays out the orbits (`layoutOrbits`). Real proportions cannot be shown: Neptune is 80 times as far from the Sun as Mercury, and next to their orbits all planets are dust. The layout keeps the order, the eccentricity and the relative speed, squeezes the distances and enlarges the planets. A missing distance is derived from the period with Kepler's third law and the other way round. Positions on the ellipse come from Kepler's equation (`solveKepler`), so a planet is faster close to its star. Every planet is a ball with the shader of its planet page, lit from the position of the star. While the camera follows a planet it turns with it around the star, so the day side stays in view, and time slows down for planets that would otherwise race.
 
-**The answers are short.** `/map/stars` sends each star as a list of seven values (slug, name, x, y, z, temperature, number of planets) instead of an object with named fields, and browsers may keep it for an hour ([payload.ts](../src/app/map/payload.ts)). `/map/systems/[slug]` already contains the `GlobeSpec` of each planet, computed on the server by the same `planetAppearance` as on the planet page.
+In the solar system Ceres, Pluto and Vesta have orbits of their own among the planets. The moons appear when the camera follows their planet, and only then are they created and their small maps loaded; a followed moon loads its large map. Following a planet with moons gives the stage to its moon system: the other planets, the orbits around the star and the belts fade out and are neither drawn nor updated, and the camera stays within the moon system. The moons follow the scale like everything else (`layoutMoons`): in the true scale they keep their real distances and sizes relative to the planet (Callisto 27 Jupiter radii out, the Moon 60 Earth radii); in the compressed scale, where the planet is enlarged a thousandfold, they start just outside the planet and its rings and each doubling of the distance adds one radius, and the small moons are squeezed between the large ones by the same rule (`compressedMoonDistance`, repeated in the shader). Each moon's orbit lies in the plane of the planet's equator, tilted by its inclination, so the moons of Uranus circle on their side and Triton runs backwards; the Moon's orbit is measured against the ecliptic. The moons are tidally locked: longitude 0 of each map faces the planet. They run on a clock of their own, so they do not crawl while time slows down for the planet. Every moon can be followed from the list, the small ones too (`&moon=s-2004-s-12`): the processor works out where that one moon is, as the shader does (`SmallMoonsView.place`), and draws it with a shape and surface made up from its name (`inventedBody` in globe/shape.ts): an ellipsoid with the axis ratios measured for small moons, its longest axis towards the planet, lumps, craters and a dark, mottled map. Nobody has seen these moons close up, so the list says under the followed one that its shape and surface are an illustration. The small moons are one instanced draw call of points per planet, moved by the GPU along their orbits like the belts (`SMALL_MOONS_VERTEX`), ([scene/smallMoonsView.ts](../src/app/map/scene/smallMoonsView.ts)). Their orbits are one set of faint lines drawn into a haze at half resolution without multisampling and laid over the picture ([scene/hazeLayer.ts](../src/app/map/scene/hazeLayer.ts)); the globes are drawn into the haze's depth first, so they still hide the lines behind them. Drawn into the picture, the pixels of Saturn's long, crossing ellipses alone cost almost two milliseconds per frame; in the haze they cost nothing measurable. The orbits of the followed planet and moon are traced afresh around them every frame ([scene/orbitTrace.ts](../src/app/map/scene/orbitTrace.ts)): a fixed polygon of Saturn's orbit, 9.5 AU across, strays two radii of Saturn from the planet in the true scale and wobbles as it moves on, while the trace has a corner on the body, short steps near it, and vertices relative to it. Shape models are drawn on the map from every fourth point of their grids, about 4,000 triangles, and in full once the camera follows them (`sharpen`). Their elements refer to the planet's equator or, for most of the far, captured moons, to the ecliptic. **Hide moons**, next to **Page** in the row of the followed planet, switches them all off (`&moons=off`).
+
+**Two scales.** The button next to **Pause** names the scale shown and switches to the other. The true scale shows every distance and size as it is, one view unit to the AU (`TRUE_AU` in orbits.ts), and glides there and back in under two seconds: positions, sizes and the belts are mixed between both layouts by the logarithm, so a change across many powers of ten looks even. In the true scale the planets would be far below a pixel, so every globe is drawn at least `MIN_PIXELS` wide. The camera keeps its distance as a multiple of what it looks at (the radius of the followed planet or moon, or the extent of the system), so the picture stays put while sizes change a thousandfold. In the true scale the camera may go back far enough to take in the Oort cloud. The choice is part of the address (`&scale=true`).
+
+The asteroid belt, Jupiter's trojans and the Hildas, the Kuiper belt with the scattered disc and the Oort cloud are some 14,500 points ([belts.ts](../src/app/map/belts.ts)), each with an orbit drawn from the distributions the surveys found: the Kirkwood gaps that Jupiter clears, the trojans 60 degrees ahead of Jupiter and behind it, the Hildas in their triangle, the plutinos with Pluto, the cold classical belt close to the ecliptic. The Oort cloud has never been seen; its points stand still at the distances models give, from 2,000 to 100,000 AU. One instanced draw call shows them all, each body a quad of a few pixels, and the vertex shader moves it along its Kepler orbit (`BELT_VERTEX` in scene/shaders.ts), so the processor does no work for them per frame; what never changes, the two vectors that span each orbit, is computed once beforehand (`orbitAxes` in scene/beltsView.ts). They are quads rather than points because ANGLE, which runs WebGL on Direct3D under Windows, draws points through a geometry shader: as points the belts cost 0.7 ms per frame on a small built-in graphics card, as quads too little to tell from the measuring noise while following a planet, and about 0.3 ms in the view of the whole system. Their distances are squeezed by the same rule as the orbits (`viewRadius`), which the shader repeats from the laid-out orbits, and mixed with their true distances for the true scale.
+
+**Credits.** The pictures of the sky and the galaxy and the maps of the planets are under CC BY 4.0, which asks for attribution; it allows that to be a link to a page with the details (section 3(a)(2)). So the map's corner holds only **Credits**, **Legal notice** and **Privacy**, and [credits/page.tsx](../src/app/credits/page.tsx) lists every source with its licence and the changes made. It reads the moon maps and shape models from maps.ts and shapes.ts, so a new source shows up there by itself. The site footer links to it too.
+
+**The answers are short.** `/map/stars` sends each star as a list of seven values (slug, name, x, y, z, temperature, number of planets) instead of an object with named fields, and browsers may keep it for an hour ([payload.ts](../src/app/map/payload.ts)). `/map/systems/[slug]` already contains the `GlobeSpec` of each planet, computed on the server by the same `planetAppearance` as on the planet page, and for the Sun the dwarf planets and the moons with theirs.
 
 ## When things go wrong
 

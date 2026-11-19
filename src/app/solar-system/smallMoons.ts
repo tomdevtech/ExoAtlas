@@ -1,0 +1,42 @@
+import SMALL_MOONS from "./small-moons.json";
+
+/**
+ * The small moons of the planets and of Pluto: every known one apart from the large moons of bodies.ts.
+ * Orbits from JPL's mean elements, discoveries from JPL, sizes from JPL where measured and otherwise
+ * estimated from the brightness or taken from Scott Sheppard's tables (see `meta` in the JSON file).
+ */
+export interface SmallMoon {
+  name: string;
+  parent: string;
+  /** Semi-major axis in km. */
+  a: number;
+  e: number;
+  /** Inclination, ascending node, argument of periapsis and mean anomaly at the epoch, in degrees. */
+  i: number;
+  node: number;
+  peri: number;
+  M: number;
+  /** Orbital period in days. */
+  period: number;
+  /** The plane the elements refer to: the planet's equator (or its Laplace plane) or the ecliptic. */
+  plane: "equator" | "ecliptic";
+  /** Mean radius in km, or null where nothing is known yet. */
+  radius: number | null;
+  /** False where the radius is estimated from the brightness rather than measured. */
+  measured: boolean;
+  year: number | null;
+  discoverer: string | null;
+  group: string | null;
+}
+
+const ALL = SMALL_MOONS.moons as SmallMoon[];
+
+/** The small moons of a planet or dwarf planet, from the inside out. */
+export function smallMoonsOf(parent: string): SmallMoon[] {
+  return ALL.filter((moon) => moon.parent === parent).sort((a, b) => a.a - b.a);
+}
+
+/** Retrograde moons orbit against the planet's rotation; most of the far, captured moons do. */
+export function isRetrograde(moon: SmallMoon): boolean {
+  return moon.i > 90;
+}

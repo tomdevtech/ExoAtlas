@@ -2,7 +2,11 @@ import type { Metadata } from "next";
 import { notFound, permanentRedirect } from "next/navigation";
 import { Suspense } from "react";
 import { formatDate } from "@/shared/format";
-import { Notice, PageSkeleton } from "@/shared/ui";
+import { moonsOf } from "@/app/solar-system/bodies";
+import { BodyCard } from "@/app/solar-system/BodyCard";
+import { MoonTable } from "@/app/solar-system/MoonTable";
+import { smallMoonsOf } from "@/app/solar-system/smallMoons";
+import { Notice, PageSkeleton, Section } from "@/shared/ui";
 import { planetAppearance } from "../appearance";
 import { describePlanet } from "../labels";
 import {
@@ -66,6 +70,8 @@ async function PlanetContent({ params }: { params: Props["params"] }) {
   const siblings = systemPlanets.filter(
     (other) => other.slug !== planet.slug && other.status === "active",
   );
+  const moons = planet.source === "sol" ? moonsOf(planet.slug) : [];
+  const smallMoons = planet.source === "sol" ? smallMoonsOf(planet.slug).length : 0;
   const appearance = planetAppearance({
     slug: planet.slug,
     source: planet.source,
@@ -95,6 +101,20 @@ async function PlanetContent({ params }: { params: Props["params"] }) {
       />
       <PlanetFacts planet={planet} appearance={appearance} />
       <OrbitFacts planet={planet} />
+      {moons.length + smallMoons > 0 && (
+        <Section title={moons.length + smallMoons === 1 ? "Moon" : "Moons"}>
+          {moons.length > 0 && (
+            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {moons.map((moon) => (
+                <li key={moon.slug}>
+                  <BodyCard body={moon} />
+                </li>
+              ))}
+            </ul>
+          )}
+          {smallMoons > 0 && <MoonTable parent={planet.slug} name={planet.name} />}
+        </Section>
+      )}
       {planet.source !== "sol" && <DiscoveryFacts planet={planet} />}
       <HostStar star={star} siblings={siblings} />
       {changes.length > 0 && <ChangeHistory changes={changes} />}

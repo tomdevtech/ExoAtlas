@@ -1,14 +1,26 @@
 name: Deployment check
 
 # Smoke-tests each Vercel deployment and rolls production back if the test fails.
-# Vercel must have "repository_dispatch Events" enabled (Project → Settings → Git).
-# A manual run checks any address and never rolls back. Setup is in docs/DEPLOYMENT.md.
-# It needs the secrets VERCEL_TOKEN and, with Deployment Protection,
+# deploy.yml calls it after each deployment. A manual run checks any address and never rolls back.
+# Setup is in docs/DEPLOYMENT.md. It needs the secrets VERCEL_TOKEN and, with Deployment Protection,
 # VERCEL_AUTOMATION_BYPASS_SECRET, plus the variables VERCEL_ORG_ID and VERCEL_PROJECT_ID.
 
 on:
-  repository_dispatch:
-    types: [vercel.deployment.success]
+  workflow_call:
+    inputs:
+      url:
+        type: string
+        required: true
+      environment:
+        type: string
+        required: true
+      sha:
+        type: string
+        required: true
+      rollback:
+        description: "Whether a failed check puts the previous production deployment back"
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       url:
@@ -25,13 +37,13 @@ permissions:
   contents: read
 
 env:
-  DEPLOY_URL: ${{ github.event.client_payload.url || inputs.url }}
-  DEPLOY_ENVIRONMENT: ${{ github.event.client_payload.environment || inputs.environment }}
-  DEPLOY_SHA: ${{ github.event.client_payload.git.sha || inputs.sha }}
+  DEPLOY_URL: ${{ inputs.url }}
+  DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+  DEPLOY_SHA: ${{ inputs.sha }}
 
 # One check per environment at a time; a newer deployment waits for the older check.
 concurrency:
-  group: deploy-check-${{ github.event.client_payload.environment || inputs.environment }}
+  group: deploy-check-${{ inputs.environment }}
   cancel-in-progress: false
 
 jobs:
@@ -88,20 +100,20 @@ jobs:
 
   rollback:
     needs: smoke
-    # Roll back only Vercel-reported production deployments whose smoke test ran and
-    # failed. startsWith is case-insensitive, so it matches "production" and "Production".
+    # Roll back only production deployments that deploy.yml asked to roll back, whose smoke test ran
+    # and failed. A manual run has no `rollback` input, so it never rolls back.
     if: >-
       ${{ failure()
-      && github.event_name == 'repository_dispatch'
+      && inputs.rollback == true
       && needs.smoke.outputs.reachable == 'true'
-      && startsWith(github.event.client_payload.environment, 'production') }}
+      && inputs.environment == 'production' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
-      FAILED_DEPLOYMENT_URL: ${{ github.event.client_payload.url }}
+      FAILED_DEPLOYMENT_URL: ${{ inputs.url }}
     steps:
       - uses: actions/checkout@v7
         with:

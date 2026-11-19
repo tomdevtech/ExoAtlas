@@ -74,6 +74,43 @@ describe("toMapSystem", () => {
     expect(planets[1].globe.rings).not.toBeNull();
   });
 
+  it("adds the dwarf planets to the Sun in the order of their orbits, each with its page", () => {
+    const sun: SystemStarRow = { ...STAR, slug: "sun", name: "Sun", source: "sol", teffK: 5772 };
+    const { planets } = toMapSystem(sun, [
+      planet({ slug: "mars", name: "Mars", source: "sol", orbitalPeriodDays: 687 }),
+      planet({ slug: "jupiter", name: "Jupiter", source: "sol", orbitalPeriodDays: 4331, planetClass: "gas_giant" }),
+      planet({ slug: "neptune", name: "Neptune", source: "sol", orbitalPeriodDays: 59800, planetClass: "neptune_like" }),
+    ]);
+    expect(planets.map((item) => item.slug)).toEqual(["mars", "vesta", "ceres", "jupiter", "neptune", "pluto"]);
+    expect(planets[1]).toMatchObject({ description: "Asteroid", shape: { url: "/shapes/vesta.bin", map: true, tumbling: false } });
+    expect(planets[1].shape!.maxRadius).toBeGreaterThan(1);
+    expect(planets[0].href).toBe("/planets/mars");
+    expect(planets[2]).toMatchObject({ href: "/solar-system/ceres", description: "Dwarf planet", shape: null });
+    expect(planets[2].globe.maps.day).toBe("ceres");
+    expect(planets[2].semiMajorAxisAu).toBeCloseTo(2.77, 2);
+  });
+
+  it("gives the planets of the solar system their large moons, and exoplanets none", () => {
+    const sun: SystemStarRow = { ...STAR, slug: "sun", name: "Sun", source: "sol", teffK: 5772 };
+    const { planets } = toMapSystem(sun, [planet({ slug: "jupiter", name: "Jupiter", source: "sol", planetClass: "gas_giant" })]);
+    const jupiter = planets.find((item) => item.slug === "jupiter")!;
+    expect(jupiter.moons.map((moon) => moon.slug)).toEqual(["io", "europa", "ganymede", "callisto"]);
+    expect(jupiter.moons[0]).toMatchObject({ href: "/solar-system/io", ecliptic: false });
+    expect(jupiter.moons[0].globe.maps.day).toBe("io");
+    expect(planets.find((item) => item.slug === "pluto")!.moons.map((moon) => moon.slug)).toEqual(["charon"]);
+    expect(toMapSystem(STAR, [planet()]).planets[0].moons).toEqual([]);
+    // The small moons travel as compact tuples, as there are hundreds of them.
+    expect(jupiter.smallMoons).toHaveLength(111);
+    expect(jupiter.smallMoons[0]).toHaveLength(10);
+    expect(toMapSystem(STAR, [planet()]).planets[0].smallMoons).toEqual([]);
+    // A NASA planet keeps no moons even if its slug matched a solar-system planet.
+    expect(toMapSystem(STAR, [planet({ slug: "jupiter" })]).planets[0].moons).toEqual([]);
+  });
+
+  it("adds no dwarf planets to other stars", () => {
+    expect(toMapSystem(STAR, [planet()]).planets.map((item) => item.slug)).toEqual(["trappist-1-e"]);
+  });
+
   it("passes missing measurements on as missing", () => {
     const { planets } = toMapSystem(STAR, [
       planet({ planetClass: null, climateClass: null, orbitalPeriodDays: null, radiusEarth: null }),

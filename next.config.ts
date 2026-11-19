@@ -13,22 +13,13 @@ const nextConfig: NextConfig = {
         source: "/:path*",
         headers: securityHeaders(development),
       },
-      // Textures are large and rarely change, but their file names are not hashed.
+      // Textures and shape grids are large and rarely change, but their file names are not hashed.
       // A day of caching plus a week of stale-while-revalidate avoids refetching on
-      // every page. Development skips this so that regenerated textures show at once.
-      ...(development
-        ? []
-        : [
-            {
-              source: "/textures/:path*",
-              headers: [
-                {
-                  key: "Cache-Control",
-                  value: "public, max-age=86400, stale-while-revalidate=604800",
-                },
-              ],
-            },
-          ]),
+      // every page. Development skips this so that regenerated files show at once.
+      ...(development ? [] : ["/textures/:path*", "/shapes/:path*"]).map((source) => ({
+        source,
+        headers: [{ key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" }],
+      })),
     ];
   },
   turbopack: {

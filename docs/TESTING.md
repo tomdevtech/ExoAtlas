@@ -116,7 +116,7 @@ They cover the logic: classification, appearance, colours, coordinates, slugs, f
 
 ### Script tests
 
-`npm run test:scripts` (project `scripts`, [tests/scripts/](../tests/scripts)) runs [generate-presets.ts](../scripts/generate-presets.ts) from start to end, at a fraction of the real size and into a temporary folder (`PRESET_DIR`), so the maps of the app stay untouched. It takes most of a minute. Every preset is simulated without an error, the files and `presets.json` come out complete, a rocky map carries height, water and craters in its three channels, and the same run gives the same files again. Whether the real maps look right is still for the eye: `npx tsx scripts/preview-presets.ts <name> <output.jpg>` writes the three channels of a map side by side.
+`npm run test:scripts` (project `scripts`, [tests/scripts/](../tests/scripts)) runs [generate-presets.ts](../scripts/generate-presets.ts) from start to end, at a fraction of the real size and into a temporary folder (`PRESET_DIR`), so the maps of the app stay untouched. It takes most of a minute. Every preset is simulated without an error, the files and `presets.json` come out complete, a rocky map carries height, water and craters in its three channels, and the same run gives the same files again. Whether the real maps look right is still for the eye: `npx tsx scripts/preview-presets.ts <name> <output.jpg>` writes the three channels of a map side by side. The same project tests [moon-maps.ts](../scripts/moon-maps.ts), which prepares the maps of the moons for `npm run textures`, on small made-up pictures: it turns longitude 0 into the middle, finds the parts no spacecraft saw and fills them with the neighbouring tones without inventing anything, tints grey mosaics, tones down false colours and sets the brightness after the albedo without clipping it to white. It also checks that every moon and dwarf planet names a map, a credit and a licence, apart from Deimos and Hyperion, which no spacecraft mapped whole. It tests [shapes.ts](../scripts/shapes.ts) too: the ZIP and OBJ readers, the radius grid of an ellipsoid against the exact one, its volume, the packing, and that the grid of every irregular body matches its published mean radius.
 
 ### Database tests
 
@@ -130,10 +130,10 @@ Every query also gets hostile input: SQL fragments, wildcards, null bytes and 10
 
 | File | Checks |
 | --- | --- |
-| `navigation.spec.ts` | start page, header and footer, links to the legal pages, not-found pages, old addresses of renamed planets and stars |
-| `search.spec.ts` | suggestions while typing, keyboard and Escape, the results page, similar names for typos, empty and unmatched queries |
-| `planets.spec.ts` | the list of all planets with filter and order, planet and star pages, the 3D model and its buttons, a 3D model from each kind of base map and from the photographs of Earth and Mars, how long browsers may keep the maps, withdrawn planets, the solar system |
-| `map.spec.ts` | loading the stars, finding one by name, opening a system from the address and going back to the galaxy, the whole galaxy from outside on a black sky with its clouds made by a worker, compared with a kept picture of the map, circling the centre and flying freely again, the names of famous sights near the Sun, small maps on the orbits and the large map of the planet the camera follows |
+| `navigation.spec.ts` | start page, header and footer, links to the credits and the legal pages, the credits page naming every source and licence, not-found pages (also of an unknown moon), old addresses of renamed planets and stars |
+| `search.spec.ts` | suggestions while typing, also for moons, keyboard and Escape, the results page, similar names for typos, empty and unmatched queries |
+| `planets.spec.ts` | the list of all planets with filter and order, planet and star pages, the 3D model and its buttons, a 3D model from each kind of base map and from the photographs of Earth and Mars, how long browsers may keep the maps, withdrawn planets, the solar system, the pages of moons and dwarf planets with their real maps, the moons on a planet's page with the table of all its moons, the dwarf planets and Vesta on the Sun's, the shape models of Phobos and Hyperion |
+| `map.spec.ts` | loading the stars, finding one by name, opening a system from the address and going back to the galaxy, the whole galaxy from outside on a black sky with its clouds made by a worker, compared with a kept picture of the map, circling the centre and flying freely again, the names of famous sights near the Sun, small maps on the orbits and the large map of the planet the camera follows, the dwarf planets among the planets, moons that load only with their planet, following a moon from the list and from the address, the scale button naming the scale shown, hiding the moons from the planet's row, following any small moon from the list, the other planets making way for a moon system, only the credits and legal links in the corner |
 | `shaders.spec.ts` | what the shaders draw, see below |
 | `scripts.spec.ts` | `planet-sheet.ts` against the running app: the sheet has its size and a lit planet in every tile |
 | `security.spec.ts` | the headers on every kind of answer, hostile input over HTTP, script injection through the address and the search, `GET` only on the JSON endpoints, framing by another site, broken encoding, null bytes, no violation of the Content Security Policy |
@@ -152,7 +152,7 @@ The browser tests fail on every error in the browser console, so a hydration err
 
 `npm run test:smoke` ([tests/smoke/](../tests/smoke)) checks a running deployment in about a minute: `/health` answers and runs the expected commit, the main pages answer 200 with their security headers, the JSON endpoints return data, and a short walk in the browser has no console errors. It relies only on the solar system, which every filled database has.
 
-[deploy-check.yml](../.github/workflows/deploy-check.yml) runs it after every Vercel deployment, previews and production. When production fails it, the workflow puts the previous deployment back live ([DEPLOYMENT.md](DEPLOYMENT.md), "Automatic rollback").
+[deploy-check.yml](../.github/workflows/deploy-check.yml) runs it after every deployment, previews and production; [deploy.yml](../.github/workflows/deploy.yml) deploys a commit only once all its checks have passed and then calls it. When production fails it, the workflow puts the previous deployment back live ([DEPLOYMENT.md](DEPLOYMENT.md), "Automatic rollback").
 
 ### Checks of the live site
 

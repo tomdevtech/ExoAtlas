@@ -40,7 +40,7 @@ test.describe("map", () => {
   test("opens a system from the address and goes back to the galaxy", async ({ page }) => {
     await page.goto("/map?system=trappist-1");
     await waitForMap(page);
-    const back = page.getByRole("button", { name: "← Galaxy" });
+    const back = page.getByRole("button", { name: "Galaxy", exact: true });
     await expect(back).toBeVisible({ timeout: 45_000 });
     await expect(page.getByRole("heading", { level: 2, name: "TRAPPIST-1" })).toBeVisible();
     await back.click();
@@ -61,7 +61,7 @@ test.describe("map", () => {
     await page.getByRole("link", { name: "See it on its orbit in 3D" }).click();
 
     await expect(page).toHaveURL(/\/map\?system=trappist-1&planet=trappist-1-e$/);
-    await expect(page.getByRole("button", { name: "← Galaxy" })).toBeVisible({ timeout: 45_000 });
+    await expect(page.getByRole("button", { name: "Galaxy", exact: true })).toBeVisible({ timeout: 45_000 });
     await expect(page.getByRole("heading", { level: 2, name: "TRAPPIST-1" })).toBeVisible();
     await expect(page).toHaveURL(/\/map\?system=trappist-1&planet=trappist-1-e$/);
   });
@@ -82,8 +82,6 @@ test.describe("map", () => {
     expect((await worker).url()).toContain("/_next/");
     // From outside the galaxy, the camera circles its centre.
     await expect(page.getByRole("button", { name: "Fly freely" })).toHaveAttribute("aria-pressed", "true");
-    await expect(page.getByRole("link", { name: "NASA/JPL-Caltech/ESO/R. Hurt" })).toBeVisible();
-    await expect(page.getByText("the galaxy is an artist’s impression")).toBeVisible();
 
     // This measures the brightness around a point given as fractions of the canvas width and height.
     const canvas = page.locator("canvas").first();
@@ -137,12 +135,10 @@ test.describe("map", () => {
     const canvas = page.locator("canvas").first();
     const circle = page.getByRole("button", { name: "Orbit centre" });
     await expect(circle).toHaveAttribute("aria-pressed", "false");
-    await expect(page.getByText(/Drag to look around · W A S D to fly/)).toBeVisible();
 
     await circle.click();
     const free = page.getByRole("button", { name: "Fly freely" });
     await expect(free).toHaveAttribute("aria-pressed", "true");
-    await expect(page.getByText(/Drag to turn round the centre · scroll or W and S to zoom/)).toBeVisible();
     // Dragging turns the view around the centre but must not end the circling.
     const box = await canvas.boundingBox();
     if (!box) throw new Error("The map has no canvas.");
@@ -160,6 +156,104 @@ test.describe("map", () => {
     await expect(circle).toHaveAttribute("aria-pressed", "false");
   });
 
+  test("keeps only the links to the credits and the legal pages in its corner", async ({ page }) => {
+    await page.goto("/map?system=sun");
+    await waitForMap(page);
+    await page.getByRole("link", { name: "Credits" }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "Credits" })).toBeVisible();
+    await page.goBack();
+    await expect(page.getByRole("link", { name: "Legal notice" })).toBeVisible();
+    await expect(page.getByText(/Drag to turn/)).toHaveCount(0);
+  });
+
+  test("loads the moons of a planet only when it follows the planet, and follows a moon", async ({ page }) => {
+    const moonMaps: string[] = [];
+    page.on("request", (request) => {
+      const map = /\/textures\/planets\/(io|europa|ganymede|callisto)-(sm|lg)\.jpg$/.exec(request.url());
+      if (map) moonMaps.push(`${map[1]}-${map[2]}`);
+    });
+    await page.goto("/map?system=sun");
+    await waitForMap(page);
+    await expect(page.getByRole("button", { name: "Galaxy", exact: true })).toBeVisible({ timeout: 45_000 });
+    // The dwarf planets join the planets in the order of their orbits.
+    const top = async (name: string) => (await page.getByRole("button", { name: new RegExp(`^${name}`) }).boundingBox())!.y;
+    expect(await top("Mars")).toBeLessThan(await top("Ceres"));
+    expect(await top("Ceres")).toBeLessThan(await top("Jupiter"));
+    expect(await top("Neptune")).toBeLessThan(await top("Pluto"));
+    expect(moonMaps).toEqual([]);
+
+    await page.getByRole("button", { name: /^Jupiter/ }).click();
+    const moons = page.getByRole("list", { name: "Moons of Jupiter" });
+    await expect(moons.getByRole("button").first()).toHaveText("Io");
+    await expect(moons.getByRole("button")).toHaveCount(4 + 111);
+    await expect.poll(() => moonMaps.filter((map) => map.endsWith("-sm")).length).toBe(4);
+    expect(moonMaps).not.toContain("io-lg");
+
+    await expect(moons.getByText("111 smaller moons")).toBeVisible();
+    // Every moon can be followed, the small ones too, and the address names it.
+    await moons.getByRole("button", { name: "Himalia", exact: true }).click();
+    await expect(page).toHaveURL(/planet=jupiter&moon=himalia$/);
+    await moons.getByRole("button", { name: "Io", exact: true }).click();
+    await expect(page).toHaveURL(/system=sun&planet=jupiter&moon=io$/);
+    await expect.poll(() => moonMaps).toContain("io-lg");
+    await expect(page.getByRole("link", { name: "Page", exact: true }).first()).toHaveAttribute("href", "/solar-system/io");
+  });
+
+  test("switches to the true scale and back, names the scale shown, and keeps it in the address", async ({ page }) => {
+    await page.goto("/map?system=sun");
+    await waitForMap(page);
+    await page.getByRole("button", { name: "Compressed", exact: true }).click({ timeout: 45_000 });
+    await expect(page).toHaveURL(/system=sun&scale=true$/);
+    await page.getByRole("button", { name: "True scale" }).click();
+    await expect(page.getByRole("button", { name: "Compressed", exact: true })).toBeVisible();
+    await expect(page).toHaveURL(/system=sun$/);
+  });
+
+  test("folds the panel away to show the whole picture, and brings it back", async ({ page }) => {
+    await page.goto("/map?system=sun&planet=earth");
+    await waitForMap(page);
+    await page.getByRole("button", { name: "Hide panel" }).click({ timeout: 45_000 });
+    await expect(page.getByRole("button", { name: "Galaxy", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Earth" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Show panel" }).click();
+    await expect(page.getByRole("button", { name: "Galaxy", exact: true })).toBeVisible();
+    // The view itself is unchanged: the planet is still followed.
+    await expect(page).toHaveURL(/planet=earth$/);
+  });
+
+  test("hides the moons on request, also from the address", async ({ page }) => {
+    await page.goto("/map?system=sun&planet=jupiter&moons=off");
+    await waitForMap(page);
+    const show = page.getByRole("button", { name: "Show moons" });
+    await expect(show).toBeVisible({ timeout: 45_000 });
+    await expect(page.getByRole("list", { name: "Moons of Jupiter" })).toHaveCount(0);
+    await show.click();
+    await expect(page.getByRole("list", { name: "Moons of Jupiter" })).toBeVisible();
+    await expect(page).toHaveURL(/planet=jupiter$/);
+    await page.getByRole("button", { name: "Hide moons" }).click();
+    await expect(page).toHaveURL(/planet=jupiter&moons=off$/);
+  });
+
+  test("lets the other planets give way while it follows a planet with moons", async ({ page }) => {
+    // The names on the map are HTML over the canvas, so they show which planets are drawn.
+    const label = (name: string) => page.locator("div.will-change-transform", { hasText: new RegExp(`^${name}$`) });
+    await page.goto("/map?system=sun");
+    await waitForMap(page);
+    await expect(label("Mars")).toBeVisible({ timeout: 45_000 });
+    await page.getByRole("button", { name: /^Jupiter/ }).click();
+    await expect(label("Io")).toBeVisible();
+    await expect(label("Mars")).toBeHidden();
+    await page.getByRole("button", { name: "Whole system" }).click();
+    await expect(label("Mars")).toBeVisible();
+  });
+
+  test("opens a moon from the address", async ({ page }) => {
+    await page.goto("/map?system=sun&planet=saturn&moon=titan");
+    await waitForMap(page);
+    await expect(page.getByRole("button", { name: "Titan", pressed: true })).toBeVisible({ timeout: 45_000 });
+    await expect(page).toHaveURL(/planet=saturn&moon=titan$/);
+  });
+
   test("draws the planets from their small maps and loads the large map of the one it follows", async ({ page }) => {
     const maps: string[] = [];
     page.on("request", (request) => {
@@ -168,7 +262,7 @@ test.describe("map", () => {
     });
     await page.goto("/map?system=trappist-1");
     await waitForMap(page);
-    await expect(page.getByRole("button", { name: "← Galaxy" })).toBeVisible({ timeout: 45_000 });
+    await expect(page.getByRole("button", { name: "Galaxy", exact: true })).toBeVisible({ timeout: 45_000 });
     await expect.poll(() => maps.includes("sm")).toBe(true);
     expect(maps).not.toContain("lg");
 

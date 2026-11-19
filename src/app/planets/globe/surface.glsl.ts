@@ -1,6 +1,45 @@
 import { NOISE_GLSL } from "./noise";
 
 /**
+ * GLSL ES 3.00 that reads a body's equirectangular map in the direction p (a unit vector with y as the
+ * axis and longitude 0 on +z) and turns linear light into display colours. The surface below and the
+ * shader of irregular bodies (shape.ts) both use it, so a map lies the same way on either.
+ */
+export const MAP_GLSL = /* glsl */ `
+const float PI = 3.141592653589793;
+
+vec3 toLinear(vec3 c) { return pow(c, vec3(2.2)); }
+
+// Converts linear light for display. Values above the knee are compressed so glints and lava fade
+// into white instead of clipping, and a dither smaller than one brightness step prevents banding on
+// the dark night side.
+vec3 toDisplay(vec3 c) {
+  const float knee = 0.6;
+  vec3 over = max(c - knee, 0.0) / (1.0 - knee);
+  vec3 pressed = min(c, knee) + (1.0 - knee) * (1.0 - exp(-over));
+  float grain = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))) - 0.5;
+  return pow(max(pressed, 0.0), vec3(1.0 / 2.2)) + grain / 255.0;
+}
+
+// Samples an equirectangular map. The longitude jumps from 1 to 0 on the far side, so the gradients
+// come from a second longitude with its seam on the near side; otherwise the seam would show.
+vec4 sampleMap(sampler2D map, vec3 p, float shift) {
+  float u = atan(p.x, p.z) / (2.0 * PI) + 0.5;
+  float v = asin(clamp(p.y, -1.0, 1.0)) / PI + 0.5;
+  float uAlt = atan(-p.x, -p.z) / (2.0 * PI);
+  vec2 dx = vec2(dFdx(u), dFdx(v));
+  vec2 dy = vec2(dFdy(u), dFdy(v));
+  float dxAlt = dFdx(uAlt);
+  float dyAlt = dFdy(uAlt);
+  if (abs(dxAlt) + abs(dyAlt) < abs(dx.x) + abs(dy.x)) {
+    dx.x = dxAlt;
+    dy.x = dyAlt;
+  }
+  return textureGrad(map, vec2(u + shift, v), dx, dy);
+}
+`;
+
+/**
  * GLSL ES 3.00 that computes and lights a planet's surface. Both globe.glsl.ts and the system view
  * of the map include it, so a planet looks the same in both. It works in planet space (a unit
  * sphere with y as the axis) and in linear light. The uniforms come from surfaceUniforms() and the
@@ -59,20 +98,7 @@ uniform sampler2D uMapClouds;
 uniform sampler2D uRingMap;
 uniform highp sampler3D uNoise;
 
-const float PI = 3.141592653589793;
-
-vec3 toLinear(vec3 c) { return pow(c, vec3(2.2)); }
-
-// Converts linear light for display. Values above the knee are compressed so glints and lava fade
-// into white instead of clipping, and a dither smaller than one brightness step prevents banding on
-// the dark night side.
-vec3 toDisplay(vec3 c) {
-  const float knee = 0.6;
-  vec3 over = max(c - knee, 0.0) / (1.0 - knee);
-  vec3 pressed = min(c, knee) + (1.0 - knee) * (1.0 - exp(-over));
-  float grain = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))) - 0.5;
-  return pow(max(pressed, 0.0), vec3(1.0 / 2.2)) + grain / 255.0;
-}
+${MAP_GLSL}
 
 ${NOISE_GLSL}
 
@@ -175,22 +201,6 @@ vec3 flowPhases(float scale, vec3 p) {
   return vec3((a - 0.5) * reach, (b - 0.5) * reach, 1.0 - abs(1.0 - 2.0 * a));
 }
 
-// Samples an equirectangular map. The longitude jumps from 1 to 0 on the far side, so the gradients
-// come from a second longitude with its seam on the near side; otherwise the seam would show.
-vec4 sampleMap(sampler2D map, vec3 p, float shift) {
-  float u = atan(p.x, p.z) / (2.0 * PI) + 0.5;
-  float v = asin(clamp(p.y, -1.0, 1.0)) / PI + 0.5;
-  float uAlt = atan(-p.x, -p.z) / (2.0 * PI);
-  vec2 dx = vec2(dFdx(u), dFdx(v));
-  vec2 dy = vec2(dFdy(u), dFdy(v));
-  float dxAlt = dFdx(uAlt);
-  float dyAlt = dFdy(uAlt);
-  if (abs(dxAlt) + abs(dyAlt) < abs(dx.x) + abs(dy.x)) {
-    dx.x = dxAlt;
-    dy.x = dyAlt;
-  }
-  return textureGrad(map, vec2(u + shift, v), dx, dy);
-}
 
 // Map brightness stands in for height, which is good enough for craters and mountains to catch the
 // light.

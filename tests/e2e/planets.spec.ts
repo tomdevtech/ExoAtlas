@@ -19,7 +19,11 @@ test.describe("list of all planets", () => {
 
   test("filters while typing and keeps the filter in the address", async ({ page }) => {
     await page.goto("/planets");
-    await page.getByRole("searchbox", { name: "Filter planets by name" }).pressSequentially("trappist", { delay: 30 });
+    const filter = page.getByRole("searchbox", { name: "Filter planets by name" });
+    // The page streams a disabled stand-in first and swaps in the live field once the list is known; typing
+    // into the stand-in would be lost, as it would for a visitor.
+    await expect(filter).toBeEnabled();
+    await filter.pressSequentially("trappist", { delay: 30 });
 
     await expect(page).toHaveURL(/\/planets\?q=trappist$/);
     await expect(page.getByText("7 planets match “trappist”")).toBeVisible();
@@ -97,6 +101,7 @@ test.describe("planet page", () => {
       "/textures/presets/continents-sm.webp",
       "/textures/planets/earth-lg.jpg",
       "/textures/sky/galaxy.jpg",
+      "/shapes/vesta.bin",
     ]) {
       const response = await request.get(path);
       expect(response.status(), path).toBe(200);
@@ -143,5 +148,78 @@ test.describe("star page", () => {
   test("the Sun shows the eight planets", async ({ page }) => {
     await page.goto("/stars/sun");
     await expect(page.getByText("Our own star with 8 known planets")).toBeVisible();
+  });
+
+  test("the Sun lists its dwarf planets apart from the planets", async ({ page }) => {
+    await page.goto("/stars/sun");
+    await expect(page.getByRole("heading", { name: "Dwarf planets" })).toBeVisible();
+    await page.getByRole("link", { name: /^Ceres/ }).click();
+    await expect(page).toHaveURL(/\/solar-system\/ceres$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Ceres" })).toBeVisible();
+  });
+});
+
+test.describe("moon and dwarf planet pages", () => {
+  test("show the moon, its real map and the way to its planet", async ({ page }) => {
+    const realMap = page.waitForResponse((response) => response.url().endsWith("/textures/planets/europa-lg.jpg"));
+    await page.goto("/solar-system/europa");
+    await expect(page).toHaveTitle("Europa · ExoFinder");
+    await expect(page.getByRole("heading", { level: 1, name: "Europa" })).toBeVisible();
+    for (const section of ["Moon", "Orbit", "Discovery", "Other large moons of Jupiter"]) {
+      await expect(page.getByRole("heading", { name: section, exact: true })).toBeVisible();
+    }
+    expect((await realMap).status()).toBe(200);
+    await waitForGlobe(page);
+    await expect(page.getByText("Galileo Galilei")).toBeVisible();
+    await expect(page.getByRole("link", { name: "See it on its orbit in 3D" })).toHaveAttribute(
+      "href",
+      "/map?system=sun&planet=jupiter&moon=europa",
+    );
+    await page.getByRole("main").getByRole("link", { name: "Jupiter", exact: true }).click();
+    await expect(page).toHaveURL(/\/planets\/jupiter$/);
+  });
+
+  test("a planet lists its large moons and, on request, every known moon", async ({ page }) => {
+    await page.goto("/planets/saturn");
+    await expect(page.getByRole("heading", { name: "Moons", exact: true })).toBeVisible();
+    for (const name of ["Mimas", "Titan", "Iapetus"]) {
+      await expect(page.getByRole("link", { name: new RegExp(`^${name}`) }).first()).toBeVisible();
+    }
+    const all = page.getByText(/^All 293 known moons of Saturn/);
+    await expect(page.getByRole("cell", { name: "S/2009 S1" })).toBeHidden();
+    await all.click();
+    await expect(page.getByRole("cell", { name: "S/2009 S1" })).toBeVisible();
+    await expect(page.getByRole("cell", { name: "Pan", exact: true })).toBeVisible();
+    await page.getByRole("link", { name: /^Titan/ }).first().click();
+    await expect(page.getByRole("heading", { level: 1, name: "Titan" })).toBeVisible();
+  });
+
+  test("an irregular body shows its real shape with its map, or its colour where no map exists", async ({ page }) => {
+    const shape = page.waitForResponse((response) => response.url().endsWith("/shapes/phobos.bin"));
+    const map = page.waitForResponse((response) => response.url().endsWith("/textures/planets/phobos-lg.jpg"));
+    await page.goto("/solar-system/phobos");
+    expect((await shape).status()).toBe(200);
+    expect((await map).status()).toBe(200);
+    await expect(page.getByRole("group", { name: /3D model of Phobos/ }).getByRole("button", { name: "Reset" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(/^Shape:/)).toBeVisible();
+
+    await page.goto("/solar-system/hyperion");
+    await expect(page.getByText(/No spacecraft has mapped its whole surface/)).toBeVisible();
+    await expect(page.getByRole("group", { name: /3D model of Hyperion/ }).getByRole("button", { name: "Reset" })).toBeVisible({ timeout: 30_000 });
+  });
+
+  test("Mars lists its two small moons, which have pages of their own", async ({ page }) => {
+    await page.goto("/planets/mars");
+    await expect(page.getByRole("heading", { name: "Moons", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: /^Phobos/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /^Deimos/ })).toBeVisible();
+  });
+
+  test("a dwarf planet shows its moon, and the Moon its ancient discovery", async ({ page }) => {
+    await page.goto("/solar-system/pluto");
+    await expect(page.getByText("Dwarf planet orbiting the")).toBeVisible();
+    await expect(page.getByRole("link", { name: /^Charon/ })).toBeVisible();
+    await page.goto("/solar-system/moon");
+    await expect(page.getByText(/Known since antiquity/)).toBeVisible();
   });
 });

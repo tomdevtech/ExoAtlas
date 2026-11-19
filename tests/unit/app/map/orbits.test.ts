@@ -1,12 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
   axisFromPeriod,
+  compressedMoonDistance,
+  layoutMoons,
   layoutOrbits,
+  moonSize,
+  moonViewPeriod,
   orbitPoint,
   periodFromAxis,
   planetSize,
   solveKepler,
   starSize,
+  TRUE_AU,
+  truePlanetSize,
+  trueStarSize,
+  viewPeriod,
+  viewRadius,
   type OrbitInput,
 } from "@/app/map/orbits";
 
@@ -165,5 +174,141 @@ describe("layoutOrbits", () => {
     const planets = [planet({ semiMajorAxisAu: 1 }), planet({ semiMajorAxisAu: 2 })];
     expect(layoutOrbits(planets, SUN, 42)).toEqual(layoutOrbits(planets, SUN, 42));
     expect(layoutOrbits(planets, SUN, 42)[0].phase).not.toBe(layoutOrbits(planets, SUN, 43)[0].phase);
+  });
+});
+
+describe("viewRadius", () => {
+  const layouts = layoutOrbits(
+    [planet({ semiMajorAxisAu: 1 }), planet({ semiMajorAxisAu: 5.2 }), planet({ semiMajorAxisAu: 30 })],
+    SUN,
+  );
+
+  it("lands exactly on every orbit", () => {
+    for (const layout of layouts) expect(viewRadius(layouts, layout.axisAu)).toBeCloseTo(layout.semiMajor, 9);
+  });
+
+  it("grows with the real distance, inside, between and beyond the orbits", () => {
+    const distances = [0.3, 0.9, 2.8, 5.2, 12, 30, 45, 2000, 100000];
+    const radii = distances.map((au) => viewRadius(layouts, au));
+    for (let i = 1; i < radii.length; i++) expect(radii[i]).toBeGreaterThan(radii[i - 1]);
+  });
+
+  it("adds 1.6 units for each doubling beyond the outermost orbit, like layoutOrbits", () => {
+    const last = layouts[layouts.length - 1];
+    expect(viewRadius(layouts, last.axisAu * 4) - last.semiMajor).toBeCloseTo(3.2, 9);
+  });
+
+  it("is proportional inside the innermost orbit", () => {
+    expect(viewRadius(layouts, 0.5)).toBeCloseTo(layouts[0].semiMajor / 2, 9);
+  });
+});
+
+describe("viewPeriod", () => {
+  it("lets longer orbits take longer, within limits", () => {
+    expect(viewPeriod(88)).toBeLessThan(viewPeriod(365));
+    expect(viewPeriod(0.1)).toBe(3);
+    expect(viewPeriod(1e7)).toBe(240);
+  });
+});
+
+describe("layoutMoons", () => {
+  const galilean = [
+    { semiMajorAxisKm: 1882700, orbitalPeriodDays: 16.69, eccentricity: 0.007, radiusKm: 2410 },
+    { semiMajorAxisKm: 421800, orbitalPeriodDays: 1.77, eccentricity: 0.004, radiusKm: 1821 },
+    { semiMajorAxisKm: 671100, orbitalPeriodDays: 3.55, eccentricity: 0.009, radiusKm: 1561 },
+    { semiMajorAxisKm: 1070400, orbitalPeriodDays: 7.15, eccentricity: 0.001, radiusKm: 2631 },
+  ];
+  const jupiter = { radiusKm: 69911, size: planetSize(11.21), reach: 1 };
+
+  it("sorts the moons from the inside out and remembers each one", () => {
+    const layouts = layoutMoons(galilean, jupiter);
+    expect(layouts.map((layout) => layout.index)).toEqual([1, 2, 3, 0]);
+    for (let i = 1; i < layouts.length; i++) {
+      expect(layouts[i].compressedDistance).toBeGreaterThan(layouts[i - 1].compressedDistance);
+      expect(layouts[i].period).toBeGreaterThan(layouts[i - 1].period);
+    }
+  });
+
+  it("keeps the true distances and sizes in radii of the planet for the true scale", () => {
+    const [io, , ganymede, callisto] = layoutMoons(galilean, jupiter);
+    expect(io.distance).toBeCloseTo(6.03, 2);
+    expect(callisto.distance).toBeCloseTo(26.93, 2);
+    expect(ganymede.size).toBeCloseTo(2631 / 69911, 6);
+  });
+
+  it("squeezes a moon system to a few radii in the compressed scale, clear of the planet, its rings and each other", () => {
+    for (const reach of [1, 2.27]) {
+      const layouts = layoutMoons(galilean, { ...jupiter, reach });
+      expect(layouts[0].compressedDistance * (1 - layouts[0].eccentricity) - layouts[0].compressedSize).toBeGreaterThan(reach);
+      for (let i = 1; i < layouts.length; i++) {
+        expect(layouts[i].compressedDistance - layouts[i - 1].compressedDistance).toBeGreaterThan(
+          layouts[i].compressedSize + layouts[i - 1].compressedSize,
+        );
+      }
+    }
+    // Callisto is 27 Jupiter radii out; compressed it stays within six.
+    expect(layoutMoons(galilean, jupiter)[3].compressedDistance).toBeLessThan(6);
+  });
+
+  it("makes moons smaller than their planet but never invisible in the compressed scale", () => {
+    for (const layout of layoutMoons(galilean, jupiter)) {
+      expect(layout.compressedSize).toBeLessThan(1);
+      expect(layout.compressedSize * jupiter.size).toBeGreaterThanOrEqual(0.02);
+    }
+    expect(moonSize(10)).toBe(0.02);
+  });
+
+  it("compresses the periods, within limits, and starts the moons the same way on every visit", () => {
+    for (const layout of layoutMoons(galilean, jupiter)) {
+      expect(layout.period).toBeGreaterThanOrEqual(6);
+      expect(layout.period).toBeLessThanOrEqual(120);
+    }
+    expect(moonViewPeriod(0.1)).toBe(6);
+    expect(moonViewPeriod(10000)).toBe(120);
+    expect(layoutMoons(galilean, jupiter, 7)).toEqual(layoutMoons(galilean, jupiter, 7));
+  });
+});
+
+describe("compressedMoonDistance", () => {
+  const layouts = layoutMoons(
+    [
+      { semiMajorAxisKm: 421800, orbitalPeriodDays: 1.77, eccentricity: 0, radiusKm: 1821 },
+      { semiMajorAxisKm: 1882700, orbitalPeriodDays: 16.69, eccentricity: 0, radiusKm: 2410 },
+    ],
+    { radiusKm: 69911, size: planetSize(11.21), reach: 1 },
+  );
+
+  it("lands exactly on every large moon", () => {
+    for (const layout of layouts) expect(compressedMoonDistance(layouts, layout.distance)).toBeCloseTo(layout.compressedDistance, 9);
+  });
+
+  it("squeezes the small moons in between and beyond in order, one radius per doubling outside", () => {
+    const distances = [2, 5, 10, 20, 100, 400];
+    const squeezed = distances.map((distance) => compressedMoonDistance(layouts, distance));
+    for (let i = 1; i < squeezed.length; i++) expect(squeezed[i]).toBeGreaterThan(squeezed[i - 1]);
+    const last = layouts[layouts.length - 1];
+    expect(compressedMoonDistance(layouts, last.distance * 8) - last.compressedDistance).toBeCloseTo(3, 9);
+    expect(compressedMoonDistance([], 7)).toBe(7);
+  });
+});
+
+describe("the true scale", () => {
+  it("measures the Sun and the planets in AU", () => {
+    expect(trueStarSize(1)).toBeCloseTo(0.00465, 5);
+    expect(truePlanetSize(1)).toBeCloseTo(4.26e-5, 7);
+    // A missing radius counts as the Sun's, or as two Earth radii.
+    expect(trueStarSize(null)).toBe(trueStarSize(1));
+    expect(truePlanetSize(null)).toBeCloseTo(truePlanetSize(2), 12);
+  });
+
+  it("gives every orbit its true size beside the compressed one", () => {
+    const [earth, jupiter] = layoutOrbits(
+      [planet({ semiMajorAxisAu: 1, radiusEarth: 1 }), planet({ semiMajorAxisAu: 5.2, radiusEarth: 11.2 })],
+      SUN,
+    );
+    expect(earth.axisAu * TRUE_AU).toBe(TRUE_AU);
+    expect(jupiter.trueSize / earth.trueSize).toBeCloseTo(11.2, 6);
+    // The compressed scale enlarges Earth far beyond its true size.
+    expect(earth.size / earth.trueSize).toBeGreaterThan(1000);
   });
 });
